@@ -1,0 +1,29 @@
+# Exclude Python virtualenvs and caches
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# VCS
+.git
+.gitignore
+.dockerignore
+
+# Environment and secrets
+.env
+
+# Build artifacts
+build
+dist
+*.egg-info
+
+# Project-specific files to exclude from Docker context
+memory_backup.jsonl
+test_phase6_out*.txt
+
+# Editor/IDE
+.vscode
+.idea
+*.swp

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Start Chroma (best-effort)
+        run: |
+          docker-compose up -d chroma || echo "docker-compose not available or failed; integration test will skip"
+
+      - name: Wait for services
+        run: sleep 8
+
+      - name: Run unit-style tests
+        run: |
+          python tests/test_tools_unit.py
+
+      - name: Run integration test (Chroma)
+        run: |
+          python tests/test_integration_chroma.py
