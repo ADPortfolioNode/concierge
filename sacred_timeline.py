@@ -115,132 +115,193 @@ class SacredTimeline:
         plan = await planner.plan(goal)
         tasks = plan.get("tasks", [])
 
-        # task map holds task state
-        task_map = {t["task_id"]: {**t, "status": "pending", "output": None} for t in tasks}
-        completed = set()
+        # initialize task_map with dedup fields and deterministic state
+        import hashlib
+
+        task_map = {
+            t["task_id"]: {
+                **t,
+                "depth": t.get("depth", 0),
+                "refine_count": 0,
+                "status": "pending",
+                "output": None,
+                "seen_hashes": set(),
+                "last_evaluated_hash": None,
+                "needs_review": True,
+            }
+            for t in tasks
+        }
+
         total_spawned = len(tasks)
-        depth = 0
-        refine_count = 0
         max_refine = 2
 
-        while depth < max_depth and total_spawned <= max_tasks:
-            depth += 1
-            # find ready tasks
-            ready = [t for tid, t in task_map.items() if t["status"] == "pending" and all(d in completed for d in t.get("depends_on", []))]
-            if not ready:
-                logger.info("No ready tasks at depth %s", depth)
+        # routing helper (deterministic keyword matching, prefer explicit task_type)
+        def route_task_to_agent(task: Dict[str, Any]):
+            # prefer explicit metadata.task_type
+            meta = task.get("metadata", {}) or {}
+            ttype = meta.get("task_type")
+            if ttype:
+                if ttype.lower() == "coding":
+                    return CodingAgent(self._memory, llm=self._llm)
+                if ttype.lower() == "research":
+                    return ResearchAgent(self._memory, llm=self._llm)
+
+            title = (task.get("title", "") or "").lower()
+            instr = (task.get("instructions", "") or "").lower()
+            text = f"{title} {instr}"
+
+            coding_keywords = [
+                "code", "implement", "build", "create", "write",
+                "function", "class", "api", "endpoint", "service",
+                "library", "script", "module",
+            ]
+            research_keywords = [
+                "research", "analyze", "investigate", "web", "search",
+                "compare", "study",
+            ]
+
+            if any(k in text for k in coding_keywords):
+                return CodingAgent(self._memory, llm=self._llm)
+            if any(k in text for k in research_keywords):
+                return ResearchAgent(self._memory, llm=self._llm)
+
+            # default
+            return TaskAgent(task_name=task.get("title") or task.get("task_id"), task_input=task, memory=self._memory, vector_tool=self._vector_tool, llm_tool=self._llm)
+
+        # Main control loop
+        while True:
+            # find pending tasks whose dependencies are done
+            pending = [t for t in task_map.values() if t["status"] == "pending" and all(task_map.get(d, {}).get("status") == "done" for d in t.get("depends_on", []))]
+
+            # termination guard: no pending, no running, no needs_review
+            if (
+                not pending
+                and not any(t["status"] == "running" for t in task_map.values())
+                and not any(t.get("needs_review", False) for t in task_map.values())
+            ):
                 break
 
-            # spawn specialized agents
+            # dispatch pending tasks
             trackers = []
-            for t in ready:
+            for t in pending:
                 tid = t["task_id"]
+                # depth cap enforcement before execution
+                if t["depth"] > max_depth:
+                    t["status"] = "failed"
+                    t["needs_review"] = False
+                    continue
+
                 t["status"] = "running"
-                instr = t.get("instructions", "")
-                title = t.get("title", tid)
-
-                # select an agent using the ToolRouter (LLM-assisted) with heuristics fallback
-                router = ToolRouter(llm=self._llm)
-                try:
-                    selected_tool = await router.select_tool(instr, available_tools=registry().list_tools())
-                except Exception:
-                    selected_tool = None
-
-                if selected_tool == "web_search":
-                    agent = ResearchAgent(self._memory, llm=self._llm)
-                    coro = agent.execute(t)
-                elif selected_tool == "code_exec":
-                    agent = CodingAgent(self._memory, llm=self._llm)
-                    coro = agent.execute(t)
+                agent_obj = route_task_to_agent(t)
+                # use agent.execute for BaseAgent subclasses or TaskAgent.run for TaskAgent
+                if hasattr(agent_obj, "execute"):
+                    coro = agent_obj.execute(t)
                 else:
-                    # fallback heuristics (keyword-based)
-                    lower = instr.lower()
-                    if "search" in lower or "survey" in lower or "summar" in lower:
-                        agent = ResearchAgent(self._memory, llm=self._llm)
-                        coro = agent.execute(t)
-                    elif "code" in lower or "implement" in lower or "execute" in lower or "python" in lower:
-                        agent = CodingAgent(self._memory, llm=self._llm)
-                        coro = agent.execute(t)
-                    else:
-                        agent = TaskAgent(task_name=title, task_input=t, memory=self._memory, vector_tool=self._vector_tool, llm_tool=self._llm)
-                        coro = agent.run()
+                    coro = agent_obj.run()
 
-                # register and track
                 manager_agent_id, result_future = await self._concurrency.register(coro)
-                trackers.append((tid, agent, manager_agent_id, asyncio.create_task(self._track_agent(agent, manager_agent_id, result_future, t))))
+                trackers.append((tid, agent_obj, manager_agent_id, asyncio.create_task(self._track_agent(agent_obj, manager_agent_id, result_future, t))))
 
-            results = await asyncio.gather(*(tr[3] for tr in trackers), return_exceptions=True)
+            # gather results for this dispatch round
+            if trackers:
+                results = await asyncio.gather(*(tr[3] for tr in trackers), return_exceptions=True)
 
-            # collect outputs
-            combined_outputs = []
-            for (tid, agent, manager_agent_id, _), res in zip(trackers, results):
-                if isinstance(res, Exception):
-                    logger.exception("Tracker for %s failed", tid)
-                    task_map[tid]["status"] = "failed"
-                    task_map[tid]["output"] = str(res)
-                else:
-                    task_map[tid]["status"] = "done"
-                    # result may be nested differently depending on agent
-                    out = None
-                    if isinstance(res, dict):
-                        out = res.get("result", {}).get("output") if res.get("result") else res.get("output")
-                    elif isinstance(res, str):
-                        out = res
-                    task_map[tid]["output"] = out
-                    if out:
-                        combined_outputs.append(str(out))
-                    completed.add(tid)
+                for (tid, agent, manager_agent_id, _), res in zip(trackers, results):
+                    t = task_map.get(tid)
+                    if t is None:
+                        continue
+                    if isinstance(res, Exception):
+                        logger.exception("Tracker for %s failed", tid)
+                        t["status"] = "failed"
+                        t["output"] = str(res)
+                        t["needs_review"] = False
+                    else:
+                        t["status"] = "done"
+                        out = None
+                        if isinstance(res, dict):
+                            out = res.get("result", {}).get("output") if res.get("result") else res.get("output")
+                        elif isinstance(res, str):
+                            out = res
+                        t["output"] = out
+                        t["needs_review"] = True
 
-            combined_text = "\n".join(combined_outputs)
+            # Critic: evaluate tasks that are done and need review (per-task, in-place refinement)
+            for tid, t in list(task_map.items()):
+                if t["status"] != "done" or not t.get("needs_review", False):
+                    continue
 
-            # Critic reviews combined outputs (run as an agent)
-            critic_task = {"outputs": combined_text, "goal": goal}
-            crit_manager_id, crit_future = await self._concurrency.register(critic_agent.execute(critic_task))
-            try:
-                evaluation = await crit_future
-            except Exception:
-                logger.exception("Critic failed; defaulting to refine")
-                evaluation = {"decision": "refine", "comments": "critic error"}
-            logger.info("Critic decision: %s", evaluation)
+                out_text = t.get("output")
+                if not out_text:
+                    t["needs_review"] = False
+                    continue
 
-            if evaluation.get("decision") == "approve":
-                reflection = {"goal": goal, "depth": depth, "evaluation": evaluation}
-                await self._memory.store_summary(task_name="reflection", summary=str(reflection), metadata={"goal": goal})
-                return {"status": "approved", "evaluation": evaluation, "task_map": task_map}
+                output_hash = hashlib.sha256(str(out_text).encode()).hexdigest()
 
-            # refine requested
-            if evaluation.get("decision") == "refine":
-                refine_count += 1
-                if refine_count > max_refine:
-                    reflection = {"goal": goal, "depth": depth, "status": "max_refine_exceeded", "evaluation": evaluation}
-                    await self._memory.store_summary(task_name="reflection", summary=str(reflection), metadata={"goal": goal})
-                    return {"status": "failed", "reason": "max_refine_exceeded", "evaluation": evaluation, "task_map": task_map}
+                # duplicate output -> fail-fast
+                if output_hash in t.get("seen_hashes", set()):
+                    t["status"] = "failed"
+                    t["needs_review"] = False
+                    continue
 
-                # ask planner for suggested subtasks from critic feedback
-                feedback = evaluation.get("feedback", "") or evaluation.get("comments", "")
-                refine_prompt = goal + "\nCritic feedback:\n" + feedback
-                new_plan = await planner.plan(refine_prompt)
-                new_tasks = new_plan.get("tasks", [])
-                for nt in new_tasks:
-                    nid = nt.get("task_id")
-                    if nid in task_map:
-                        idx = 1
-                        new_id = f"{nid}_{idx}"
-                        while new_id in task_map:
-                            idx += 1
-                            new_id = f"{nid}_{idx}"
-                        nt["task_id"] = new_id
-                        nid = new_id
-                    task_map[nid] = {**nt, "status": "pending", "output": None}
-                    total_spawned += 1
+                # only evaluate if not evaluated already for same output
+                if output_hash == t.get("last_evaluated_hash"):
+                    continue
 
-                # continue loop to execute refined tasks
-                continue
+                # mark seen and evaluate
+                t["seen_hashes"].add(output_hash)
+                crit_task = {"outputs": str(out_text), "goal": goal, "context": {"last_suggestion": None}}
+                crit_manager_id, crit_future = await self._concurrency.register(critic_agent.execute(crit_task))
+                try:
+                    evaluation = await crit_future
+                except Exception:
+                    logger.exception("Critic failed; defaulting to approve")
+                    evaluation = {"decision": "approve", "comments": "critic error"}
 
-        # ended without approval
-        reflection = {"goal": goal, "depth": depth, "status": "incomplete"}
+                logger.info("Critic decision for %s: %s", tid, evaluation)
+
+                # store last evaluated hash
+                t["last_evaluated_hash"] = output_hash
+
+                # persist last evaluation globally for return
+                last_evaluation = evaluation
+
+                if evaluation.get("decision") == "approve":
+                    t["needs_review"] = False
+                    continue
+
+                # refine requested -> in-place refinement
+                t["refine_count"] = t.get("refine_count", 0) + 1
+                suggestions = evaluation.get("suggestions") or []
+                if t["refine_count"] >= max_refine:
+                    t["status"] = "failed"
+                    t["needs_review"] = False
+                    continue
+                # in-place update of instructions, bump depth, reset status to pending
+                t["instructions"] = suggestions[0] if suggestions else f"Refine and improve:\n\n{t.get('output')}"
+                t["status"] = "pending"
+                t["depth"] = t.get("depth", 0) + 1
+                t["needs_review"] = False
+
+            # small sleep to yield
+            await asyncio.sleep(0.02)
+
+        # assemble final reflection and return
+        reflection = {"goal": goal, "status": "complete"}
         await self._memory.store_summary(task_name="reflection", summary=str(reflection), metadata={"goal": goal})
-        return {"status": "incomplete", "task_map": task_map}
+
+        # Make task_map JSON-serializable (convert sets to lists)
+        serializable_map = {}
+        for tid, info in task_map.items():
+            entry = dict(info)
+            # convert any set values to lists (seen_hashes)
+            if isinstance(entry.get("seen_hashes"), set):
+                entry["seen_hashes"] = list(entry["seen_hashes"])
+            # ensure last_evaluated_hash is JSON-friendly
+            if isinstance(entry.get("last_evaluated_hash"), set):
+                entry["last_evaluated_hash"] = list(entry["last_evaluated_hash"])
+            serializable_map[tid] = entry
+
+        return {"status": "complete", "task_map": serializable_map, "evaluation": last_evaluation if 'last_evaluation' in locals() else None}
 
     async def handle_user_input(self, user_input: str) -> Dict[str, Any]:
         """Handle user input asynchronously.

@@ -21,8 +21,8 @@ class TestConcurrencyManager(AsyncConcurrencyManager):
 
     async def _run_agent(self, agent_id: str, agent_coro: asyncio.Future, result_future: asyncio.Future) -> None:  # type: ignore[override]
         try:
-            # account for this agent starting
-            self.peak = max(self.peak, self.active_count() + 1)
+            # active_count already includes this task when _run_agent is scheduled by register()
+            self.peak = max(self.peak, self.active_count())
         except Exception:
             pass
         await super()._run_agent(agent_id, agent_coro, result_future)
@@ -119,7 +119,8 @@ async def main() -> None:
     checks: Dict[str, Any] = {
         "no_infinite_loop": True,
         "concurrency_respected": cm.peak <= cm.max_agents,
-        "critic_ran": bool(result.get("evaluation")),
+        # consider critic ran if coordinator returned evaluation or any task has last_evaluated_hash
+        "critic_ran": bool(result.get("evaluation")) or any((t.get("last_evaluated_hash") for t in (result.get("task_map") or {}).values())),
         "research_and_coding_assigned": ("ResearchAgent" in agent_types) and ("CodingAgent" in agent_types),
         "reflection_stored": len(reflections) > 0 or any((m.get("task_name") == "reflection") for m in backup_entries),
         "persistence_available": os.path.exists(backup_path) and len(backup_entries) > 0,
