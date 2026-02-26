@@ -17,6 +17,7 @@ from agents.summarizer import Summarizer
 from agents.research_agent import ResearchAgent
 from agents.coding_agent import CodingAgent
 from agents.critic_agent import CriticAgent
+from agents.synthesizer_agent import SynthesizerAgent
 from agents.base_agent import BaseAgent
 from concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
@@ -50,6 +51,12 @@ class SacredTimeline:
         self._memory = memory_store or MemoryStore(collection_name=settings.memory_collection, llm_tool=self._llm)
         self._planner = planner or Planner(llm=self._llm)
         self._summarizer = summarizer or Summarizer()
+        # agent registry for specialized terminal agents (not used in routing)
+        self._agents: Dict[str, Any] = {}
+        try:
+            self._agents["synthesizer"] = SynthesizerAgent(self._llm)
+        except Exception:
+            logger.exception("Failed to initialize SynthesizerAgent")
         self._vector_tool = vector_tool or VectorSearchTool(self._memory)
         # Register default tools so specialized agents can find them
         try:
@@ -107,10 +114,46 @@ class SacredTimeline:
         them under the concurrency manager, collects outputs, and asks the
         CriticAgent to approve or request refinements. Prevents infinite
         critique loops via `max_refine`.
+
+        Memory recall support is added before planning.  Any prior structured
+        intelligence relevant to the goal is fetched deterministically and
+        injected into the context object that accompanies every task.  The
+        context may be mutated by agents (e.g. reflection_reused flag) and is
+        returned to the caller as part of the final result.
         """
         logger.info("Coordinator starting for goal: %s", goal)
         planner = self._planner
         critic_agent = CriticAgent(self._memory, llm=self._llm)
+
+        # --- deterministic memory retrieval ---
+        prior_entries = []
+        try:
+            prior_entries = await self._memory.retrieve_relevant_intelligence(goal)
+        except Exception:
+            logger.exception("Memory retrieval failed during run_autonomous")
+            prior_entries = []
+        print(f"[MEMORY] retrieval_count={len(prior_entries)}")
+        print(f"[MEMORY] artifacts_used={[p.get('id') for p in prior_entries]}")
+
+        # build task context that will be passed into every dispatched task
+        context: Dict[str, Any] = {
+            "goal": goal,
+            "prior_summaries": [p.get("summary") for p in prior_entries],
+            "prior_key_points": [],
+            "prior_recommendations": [],
+            "memory_hit": bool(prior_entries),
+            "reflection_reused": False,
+            "recall_run": getattr(self, '_recall_run', False),
+        }
+        for p in prior_entries:
+            struct = p.get("metadata", {}).get("structured") or {}
+            if struct:
+                kps = struct.get("key_points") or []
+                if kps:
+                    context["prior_key_points"].append(kps)
+                recs = struct.get("recommendations")
+                if recs:
+                    context["prior_recommendations"].append(recs)
 
         plan = await planner.plan(goal)
         tasks = plan.get("tasks", [])
@@ -185,6 +228,8 @@ class SacredTimeline:
             trackers = []
             for t in pending:
                 tid = t["task_id"]
+                # attach shared context object so agents can reason over prior memory
+                t["context"] = context
                 # depth cap enforcement before execution
                 if t["depth"] > max_depth:
                     t["status"] = "failed"
@@ -216,10 +261,22 @@ class SacredTimeline:
                         t["output"] = str(res)
                         t["needs_review"] = False
                     else:
+                        # detect if agent result indicated reflection reuse
+                        if isinstance(res, dict):
+                            r = res.get("result")
+                            if isinstance(r, dict) and r.get("reflection_reused"):
+                                context["reflection_reused"] = True
+                                logger.info("[MEMORY] reflection_reused=True")
                         t["status"] = "done"
                         out = None
                         if isinstance(res, dict):
-                            out = res.get("result", {}).get("output") if res.get("result") else res.get("output")
+                            # attempt to coerce meaningful output for harness
+                            r = res.get("result")
+                            if isinstance(r, dict):
+                                # prefer summary or output fields
+                                out = r.get("summary") or r.get("output") or str(r)
+                            else:
+                                out = str(r)
                         elif isinstance(res, str):
                             out = res
                         t["output"] = out
@@ -249,7 +306,12 @@ class SacredTimeline:
 
                 # mark seen and evaluate
                 t["seen_hashes"].add(output_hash)
-                crit_task = {"outputs": str(out_text), "goal": goal, "context": {"last_suggestion": None}}
+                # propagate original task context so critic can detect recall
+                crit_context: Dict[str, Any] = {"last_suggestion": None}
+                if t.get("context") and isinstance(t.get("context"), dict):
+                    # merge without overwriting last_suggestion
+                    crit_context.update({k: v for k, v in t.get("context", {}).items() if k != "last_suggestion"})
+                crit_task = {"outputs": str(out_text), "goal": goal, "context": crit_context}
                 crit_manager_id, crit_future = await self._concurrency.register(critic_agent.execute(crit_task))
                 try:
                     evaluation = await crit_future
@@ -285,9 +347,37 @@ class SacredTimeline:
             # small sleep to yield
             await asyncio.sleep(0.02)
 
-        # assemble final reflection and return
+        # After main loop: assemble final synthesis from approved tasks
+        approved = {tid: t["output"] for tid, t in task_map.items() if t.get("status") == "done" and t.get("output")}
+
+        # persist a lightweight reflection entry regardless
         reflection = {"goal": goal, "status": "complete"}
         await self._memory.store_summary(task_name="reflection", summary=str(reflection), metadata={"goal": goal})
+
+        final_result = None
+        if not approved:
+            # No approved tasks — return failure-like summary
+            final_result = {"summary": "No approved task outputs available for synthesis", "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+            status_out = "failure"
+        else:
+            synth = self._agents.get("synthesizer")
+            if synth is not None:
+                try:
+                    final_result = await synth.run(goal, approved)
+                except Exception:
+                    logger.exception("Synthesizer failed; falling back to deterministic aggregation")
+                    # deterministic fallback
+                    concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
+                    final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+            else:
+                concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
+                final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+
+        # Persist final synthesis into memory with structured payload for restart-safety
+        try:
+            await self._memory.store_summary(task_name="final_synthesis", summary=final_result.get("summary", ""), metadata={"type": "final_summary", "structured": final_result.get("structured", {}), "agent_type": "SynthesizerAgent"})
+        except Exception:
+            logger.exception("Failed to persist final synthesis into memory")
 
         # Make task_map JSON-serializable (convert sets to lists)
         serializable_map = {}
@@ -301,7 +391,18 @@ class SacredTimeline:
                 entry["last_evaluated_hash"] = list(entry["last_evaluated_hash"])
             serializable_map[tid] = entry
 
-        return {"status": "complete", "task_map": serializable_map, "evaluation": last_evaluation if 'last_evaluation' in locals() else None}
+        # make sure evaluation field is always a dict for downstream consumers
+        eval_out = {}
+        if 'last_evaluation' in locals() and last_evaluation is not None:
+            if isinstance(last_evaluation, dict):
+                eval_out = last_evaluation
+            else:
+                eval_out = {"decision": last_evaluation}
+        result_out: Dict[str, Any] = {"status": status_out if 'status_out' in locals() else "success", "goal": goal, "task_map": serializable_map, "final": final_result, "evaluation": eval_out}
+        # attach reflection flag if available
+        if 'context' in locals():
+            result_out["reflection_reused"] = context.get("reflection_reused", False)
+        return result_out
 
     async def handle_user_input(self, user_input: str) -> Dict[str, Any]:
         """Handle user input asynchronously.

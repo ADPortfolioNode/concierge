@@ -55,6 +55,16 @@ async def main() -> None:
     # Create the coordinator with injected manager and memory
     coordinator = SacredTimeline(concurrency_manager=cm, memory_store=ms)
 
+    # Optionally override planner to return a simple multi-root plan for deterministic testing
+    async def fake_plan(goal_str: str):
+        return {
+            "tasks": [
+                {"task_id": "t1", "title": "Task One", "instructions": "Research the goal details and provide a short summary.", "depends_on": []},
+                {"task_id": "t2", "title": "Task Two", "instructions": "Write example code implementing a simple demo of the goal.", "depends_on": []},
+            ]
+        }
+    coordinator._planner.plan = fake_plan  # type: ignore[attr-defined]
+
     # Run coordinator with timeout to avoid infinite loops
     try:
         result = await asyncio.wait_for(coordinator.run_autonomous(GOAL, max_depth=3, max_tasks=12), timeout=120)
@@ -63,6 +73,12 @@ async def main() -> None:
         return
 
     print("Coordinator result:", json.dumps(result, indent=2))
+    # also dump to a file for external inspection
+    try:
+        with open("phase7a_result.json", "w", encoding="utf-8") as fh:
+            json.dump(result, fh, indent=2)
+    except Exception:
+        pass
 
     # Query memory for reflection entries
     try:
@@ -125,6 +141,12 @@ async def main() -> None:
         "reflection_stored": len(reflections) > 0 or any((m.get("task_name") == "reflection") for m in backup_entries),
         "persistence_available": os.path.exists(backup_path) and len(backup_entries) > 0,
         "restart_safe_validation": len(reflections2) > 0 or len(backup_entries) > 0,
+        # Phase 7A checks (final synthesis)
+        "final_result_exists": bool(result.get("final")),
+        "final_summary_non_empty": bool(result.get("final", {}).get("summary")),
+        "final_structured_has_key_points": bool(result.get("final", {}).get("structured", {}).get("key_points")),
+        "synthesizer_ran": "SynthesizerAgent" in agent_types,
+        "final_reflection_stored": any((m.get("task_name") == "final_synthesis") for m in backup_entries) or any((r.get("metadata", {}).get("type") == "final_summary") for r in reflections),
         "concurrency_peak": cm.peak,
         "agent_types_observed": list(agent_types),
     }

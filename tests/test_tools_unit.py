@@ -74,6 +74,23 @@ async def run_all():
     await _test_code_execution_tool()
     await _test_tool_router()
 
+    # memory retrieval deterministic behaviour
+    async def _test_memory_retrieval():
+        from memory.memory_store import MemoryStore
+        ms = MemoryStore()
+        # clear any preloaded entries
+        ms._in_memory.clear()
+        # store a couple of summaries with overlapping keywords
+        await ms.store_summary("t1", "Findings about cats and dogs", {})
+        await ms.store_summary("t2", "More research about cats", {})
+        hits = await ms.retrieve_relevant_intelligence("cats")
+        assert hits, "expected some memories for 'cats'"
+        # deterministic order
+        hits2 = await ms.retrieve_relevant_intelligence("cats")
+        assert hits == hits2
+
+    await _test_memory_retrieval()
+
     shutil.rmtree(tmpdir)
     print("All tool unit tests passed")
 

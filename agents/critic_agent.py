@@ -23,8 +23,27 @@ class CriticAgent(BaseAgent):
         - Strip recursive identical suggestions if provided via context
         """
         outputs = task.get("outputs") or task.get("output") or ""
-        # default decision
+        context = task.get("context") or {}
+        # default decision template
         default = {"agent": self.name, "decision": "approve", "score": 80, "comments": "heuristic approve", "suggestions": []}
+
+        # determine if this is a memory recall run (flag injected by coordinator)
+        is_recall = isinstance(context, dict) and bool(context.get("recall_run"))
+        if is_recall:
+            # simple deterministic check: did the ResearchAgent include the context marker?
+            txt = str(outputs or "")
+            if "context:" in txt:
+                res = {"agent": self.name, "decision": "approve", "score": 80, "comments": "memory context used", "suggestions": []}
+            else:
+                res = {"agent": self.name, "decision": "refine", "score": 20,
+                       "comments": "no memory context referenced", "suggestions": [
+                           "Please reference prior findings from memory (include context: ...)."
+                       ]}
+            try:
+                await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(res), metadata={"agent_type": self.name, "decision": res.get("decision")})
+            except Exception:
+                logger.exception("Failed to store critic feedback in memory")
+            return res
 
         prompt = (
             f"Evaluate the following outputs for quality, correctness, and completeness: {outputs}\n"
@@ -34,6 +53,7 @@ class CriticAgent(BaseAgent):
         if self.llm is None:
             return default
 
+        # attempt LLM call
         try:
             resp = await self.llm.generate(prompt, context=str(outputs))
         except Exception:
@@ -41,13 +61,35 @@ class CriticAgent(BaseAgent):
             # Fail-safe: approve to avoid triggering refinements
             return default
 
-        # Try to parse structured JSON; if parsing fails, APPROVE (deterministic safe fallback)
+        # Try to parse structured JSON.  Only for recall tasks do we retry and
+        # refuse to approve; non-recall falls back to default approval on parse
+        # failure.
         parsed = None
+        parse_failed = False
         try:
             parsed = json.loads(resp)
         except Exception:
-            logger.warning("Critic LLM returned non-JSON response; approving by default")
-            return default
+            parse_failed = True
+            if is_recall:
+                logger.warning("Critic LLM returned non-JSON response on recall; retrying once")
+                try:
+                    resp2 = await self.llm.generate(prompt + "\nReturn valid JSON.", context=str(outputs))
+                    parsed = json.loads(resp2)
+                    parse_failed = False
+                except Exception:
+                    logger.warning("Critic retry also failed on recall; will refine")
+            else:
+                # non-recall: simply approve
+                logger.warning("Critic LLM returned non-JSON response; approving by default")
+                return default
+        if parse_failed and is_recall:
+            # still failed after retry
+            res = {"agent": self.name, "decision": "refine", "score": 0, "comments": "critic parsing failure", "suggestions": []}
+            try:
+                await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(res), metadata={"agent_type": self.name, "decision": res.get("decision")})
+            except Exception:
+                logger.exception("Failed to store critic feedback in memory")
+            return res
 
         if not isinstance(parsed, dict):
             logger.warning("Critic parsed payload not a dict; approving")
@@ -68,27 +110,25 @@ class CriticAgent(BaseAgent):
 
         # Strip duplicate suggestion text if prior suggestion present in context
         prior = None
-        if isinstance(task.get("context"), dict):
-            prior = task.get("context", {}).get("last_suggestion")
+        if isinstance(context, dict):
+            prior = context.get("last_suggestion")
         if prior:
             suggestions = [s for s in suggestions if s.strip() and s.strip() != prior.strip()]
 
         # fallback heuristic score
         if score is None:
-            # simple heuristic: longer outputs get higher base score; presence of 'error' lowers score
             txt = str(outputs or "")
             heur = max(10, min(90, len(txt) // 20))
             if any(k in txt.lower() for k in ("error", "fail", "incorrect", "bug")):
                 heur = min(heur, 40)
             score = heur
 
-        # If score is high enough, approve regardless of suggestions
+        # high score approval
         threshold = 70
         if score >= threshold:
             parsed["decision"] = "approve"
             parsed["suggestions"] = []
             parsed["score"] = score
-            # persist critic feedback
             try:
                 await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(parsed), metadata={"agent_type": self.name, "decision": parsed.get("decision")})
             except Exception:
@@ -99,7 +139,6 @@ class CriticAgent(BaseAgent):
         if not suggestions:
             suggestions = ["Clarify ambiguous steps, correct factual errors, and add a small concrete example."]
 
-        # Finalize parsed response
         parsed["decision"] = "refine"
         parsed["score"] = score
         parsed["suggestions"] = suggestions

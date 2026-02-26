@@ -318,13 +318,46 @@ class MemoryStore:
                         point_id = str(_uuid.uuid5(_uuid.NAMESPACE_OID, rec_id))
 
                     if vec is not None:
-                        try:
-                            # Use named vector field 'embedding' to match collection schema
-                            point = {"id": point_id, "payload": payload, "vectors": {"embedding": vec}}
-                            logger.debug("Qdrant upsert: raw point id=%s vectors_keys=%s vector_len=%s", point_id, list(point.get("vectors", {}).keys()), len(vec) if hasattr(vec, '__len__') else None)
-                            self._client.upsert(collection_name=self._collection_name, points=[point])
-                        except Exception:
-                            logger.exception("Qdrant upsert failed for rec_id=%s (vec path)", rec_id)
+                        # Try multiple strategies for upserting to support different qdrant-client/server versions:
+                        # 1) Prefer PointStruct objects when available
+                        # 2) Fallback to dict with named 'vectors' ({'embedding': [...]}) to match collection schema
+                        # 3) Fallback to dict with 'vector' for older client expectations
+                        upsert_error = None
+                        # Attempt PointStruct path first when available
+                        if PointStruct is not None:
+                            try:
+                                try:
+                                    p = PointStruct(id=point_id, payload=payload, vector=vec)
+                                except TypeError:
+                                    # Some PointStruct versions accept 'vectors' mapping; try that form
+                                    try:
+                                        p = PointStruct(id=point_id, payload=payload, vectors={"embedding": vec})
+                                    except Exception:
+                                        raise
+                                logger.debug("Qdrant upsert using PointStruct id=%s", point_id)
+                                self._client.upsert(collection_name=self._collection_name, points=[p])
+                                upsert_error = None
+                            except Exception as e:  # pragma: no cover - runtime fallback
+                                upsert_error = e
+                                logger.debug("PointStruct upsert failed, will try dict fallbacks: %s", e)
+
+                        # If PointStruct not used or failed, try dict-shaped upsert
+                        if upsert_error is not None or PointStruct is None:
+                            try:
+                                # Preferred form for named vectors
+                                point = {"id": point_id, "payload": payload, "vectors": {"embedding": vec}}
+                                logger.debug("Qdrant upsert: dict 'vectors' id=%s vectors_keys=%s vector_len=%s", point_id, list(point.get("vectors", {}).keys()), len(vec) if hasattr(vec, '__len__') else None)
+                                self._client.upsert(collection_name=self._collection_name, points=[point])
+                            except Exception as e2:
+                                logger.debug("Dict 'vectors' upsert failed: %s", e2)
+                                try:
+                                    # Older clients may expect a single 'vector' key
+                                    point = {"id": point_id, "payload": payload, "vector": vec}
+                                    logger.debug("Qdrant upsert: dict 'vector' id=%s", point_id)
+                                    self._client.upsert(collection_name=self._collection_name, points=[point])
+                                except Exception:
+                                    logger.exception("Qdrant upsert failed for rec_id=%s (vec path)", rec_id)
+                                    # let caller see failure via logs but continue; last-resort will raise below if payload-only also fails
                     else:
                         # last-resort: payload-only may not be supported depending on collection schema
                         try:
@@ -446,6 +479,38 @@ class MemoryStore:
                     results.append({"id": r["id"], "summary": r["summary"], "metadata": r.get("metadata", {})})
             return results[:top_k]
         return []
+
+    async def retrieve_relevant_intelligence(self, goal: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """Return relevant intelligence artifacts for a new root goal.
+
+        The retrieval is deterministic and keyword-driven.  We split the goal
+        into meaningful tokens (length>3) and perform a separate query for each
+        token, aggregating results while preserving order and removing
+duplicates.
+        Finally, results are sorted by id to ensure a stable return order.
+        """
+        try:
+            # extract keywords from goal
+            tokens = [w.strip('.,').lower() for w in goal.split() if len(w) > 3]
+            hits: List[Dict[str, Any]] = []
+            for tok in tokens:
+                sub = await self.query(tok, top_k=top_k)
+                if sub:
+                    hits.extend(sub)
+            # dedupe preserving first-seen order
+            seen_ids = set()
+            unique: List[Dict[str, Any]] = []
+            for h in hits:
+                hid = h.get('id')
+                if hid and hid not in seen_ids:
+                    seen_ids.add(hid)
+                    unique.append(h)
+            # sort deterministic
+            unique.sort(key=lambda r: r.get("id", ""))
+            return unique[:top_k]
+        except Exception:
+            logger.exception("Memory retrieval failed")
+            return []
 
     async def health_check(self) -> bool:
         """Async health check for the configured vector DB client.
