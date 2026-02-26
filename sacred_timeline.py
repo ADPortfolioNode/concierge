@@ -103,6 +103,12 @@ class SacredTimeline:
             "manager_agent_id": manager_agent_id,
             "agent_type": getattr(agent_obj, 'name', getattr(agent_obj, '__class__', {}).__name__),
         }
+        # if context contains prior_ids, treat them as parent relationships
+        ctx = task_info.get("context") if isinstance(task_info.get("context"), dict) else None
+        if ctx:
+            pids = ctx.get("prior_ids")
+            if pids:
+                metadata["parent_ids"] = pids
         summary_id = await self._memory.store_summary(task_name=metadata.get("task_name", "task"), summary=summary, metadata=metadata)
 
         return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
@@ -139,6 +145,7 @@ class SacredTimeline:
         context: Dict[str, Any] = {
             "goal": goal,
             "prior_summaries": [p.get("summary") for p in prior_entries],
+            "prior_ids": [p.get("id") for p in prior_entries],
             "prior_key_points": [],
             "prior_recommendations": [],
             "memory_hit": bool(prior_entries),

@@ -41,12 +41,29 @@ except Exception:  # pragma: no cover - optional
 logger = logging.getLogger(__name__)
 
 
-class MemoryStore:
-    """Async-friendly memory store.
+from dataclasses import dataclass, field
 
-    If `chromadb` is available it will be used via a synchronous client
-    executed in a threadpool. Otherwise an in-memory list is used as a
-    fallback for development and tests.
+
+@dataclass
+class IntelligenceNode:
+    id: str
+    goal: Optional[str]
+    summary: str
+    key_points: List[str] = field(default_factory=list)
+    recommendation: str = ""
+    delta_from_previous: str = ""
+    parent_ids: List[str] = field(default_factory=list)
+    timestamp: str = ""
+    confidence: float = 0.0
+
+
+class MemoryStore:
+    """Async-friendly memory store backed by a directed intelligence graph.
+
+    The graph is kept in memory with an optional external vector database
+    for retrieval. Writes are serialized via a lock; reads rely on indices for
+    performance. The store maintains an inverted keyword index for deterministic
+    lookup and a simple embedding fallback.
     """
 
     def __init__(
@@ -154,6 +171,12 @@ class MemoryStore:
                 self._client = None
 
         self._in_memory: List[Dict[str, Any]] = []
+        # intelligence graph structures
+        self._graph: Dict[str, IntelligenceNode] = {}
+        # simple inverted index token -> set of node ids
+        self._index: Dict[str, set] = {}
+        # lock to serialize graph writes
+        self._graph_lock = asyncio.Lock()
         # threshold for compressing old memories; can be overridden by env
         env_thresh = os.getenv("MEMORY_COMPRESS_THRESHOLD")
         try:
@@ -178,8 +201,19 @@ class MemoryStore:
                     for line in fh:
                         try:
                             obj = __import__("json").loads(line)
-                            if isinstance(obj, dict) and "id" in obj:
-                                self._in_memory.append({"id": obj.get("id"), "summary": obj.get("summary"), "metadata": obj.get("metadata", {})})
+                            if isinstance(obj, dict) and obj.get("id"):
+                                # old-format entry? treat as summary - keep for backward compatibility
+                                if "node" not in obj:
+                                    self._in_memory.append({"id": obj.get("id"), "summary": obj.get("summary"), "metadata": obj.get("metadata", {})})
+                                else:
+                                    # new style: node record
+                                    node_data = obj.get("node")
+                                    node = IntelligenceNode(**node_data)
+                                    self._graph[node.id] = node
+                                    # rebuild index tokens
+                                    tokens = set(w.strip('.,').lower() for w in (node.summary + ' ' + (node.goal or '')) .split() if len(w) > 3)
+                                    for tok in tokens:
+                                        self._index.setdefault(tok, set()).add(node.id)
                         except Exception:
                             continue
         except Exception:
@@ -195,10 +229,19 @@ class MemoryStore:
                     for line in fh:
                         try:
                             obj = __import__("json").loads(line)
-                            if isinstance(obj, dict) and "id" in obj:
-                                # avoid dupes
-                                if not any(r.get("id") == obj.get("id") for r in self._in_memory):
-                                    self._in_memory.append({"id": obj.get("id"), "summary": obj.get("summary"), "metadata": obj.get("metadata", {})})
+                            if isinstance(obj, dict) and obj.get("id"):
+                                if "node" not in obj:
+                                    # legacy
+                                    if not any(r.get("id") == obj.get("id") for r in self._in_memory):
+                                        self._in_memory.append({"id": obj.get("id"), "summary": obj.get("summary"), "metadata": obj.get("metadata", {})})
+                                else:
+                                    node_data = obj.get("node")
+                                    node = IntelligenceNode(**node_data)
+                                    if node.id not in self._graph:
+                                        self._graph[node.id] = node
+                                        tokens = set(w.strip('.,').lower() for w in (node.summary + ' ' + (node.goal or '')) .split() if len(w) > 3)
+                                        for tok in tokens:
+                                            self._index.setdefault(tok, set()).add(node.id)
                         except Exception:
                             continue
             except Exception:
@@ -238,11 +281,35 @@ class MemoryStore:
         }
         # Use a UUID for qdrant-friendly point ids
         rec_id = str(uuid.uuid4())
+        # Build graph node and index tokens atomically
+        try:
+            async with self._graph_lock:
+                struct = metadata.get("structured") or {}
+                node = IntelligenceNode(
+                    id=rec_id,
+                    goal=metadata.get("goal"),
+                    summary=summary,
+                    key_points=struct.get("key_points", []) or [],
+                    recommendation=struct.get("recommendations", [""])[0] if struct.get("recommendations") else "",
+                    delta_from_previous=metadata.get("delta", ""),
+                    parent_ids=metadata.get("parent_ids", []),
+                    timestamp=metadata.get("timestamp", ""),
+                    confidence=float(metadata.get("confidence", 0.0)) if metadata.get("confidence") is not None else 0.0,
+                )
+                self._graph[rec_id] = node
+                # update inverted index using keywords from summary and task_name
+                tokens = set(w.strip('.,').lower() for w in (summary + ' ' + task_name).split() if len(w) > 3)
+                for tok in tokens:
+                    self._index.setdefault(tok, set()).add(rec_id)
+        except Exception:
+            logger.exception("Failed to update intelligence graph")
         # Always append a local backup record to support restart-safe tests
         try:
             backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
             with open(backup_path, "a", encoding="utf-8") as fh:
-                fh.write(__import__("json").dumps({"id": rec_id, "summary": summary, "metadata": metadata}) + "\n")
+                # persist node structure rather than raw summary
+                backup_obj = {"id": rec_id, "node": node.__dict__}
+                fh.write(__import__("json").dumps(backup_obj) + "\n")
         except Exception:
             logger.exception("Failed to write memory backup")
         # if neither chroma nor qdrant available, fallback to in-memory
@@ -386,16 +453,21 @@ class MemoryStore:
         The returned list contains dicts with `id`, `summary`, and `metadata`.
         """
         if self._collection is None:
-            # simple substring match fallback
+            # use keyword index fallback
             results = []
-            for r in self._in_memory:
-                # guard: summaries may be stored as non-strings (JSON objects)
-                summary_val = r.get("summary", "")
-                summary_text = summary_val if isinstance(summary_val, str) else str(summary_val)
-                task_name_text = r.get("metadata", {}).get("task_name", "")
-                if context.lower() in summary_text.lower() or context.lower() in str(task_name_text).lower():
-                    results.append({"id": r["id"], "summary": r["summary"], "metadata": r.get("metadata", {})})
+            # tokenize query into keywords
+            keys = set(w.strip('.,').lower() for w in context.split() if len(w) > 3)
+            candidate_ids = set()
+            for k in keys:
+                candidate_ids.update(self._index.get(k, set()))
+            for cid in candidate_ids:
+                node = self._graph.get(cid)
+                if not node:
+                    continue
+                results.append({"id": node.id, "summary": node.summary, "metadata": node.__dict__})
             await asyncio.sleep(0)
+            # deterministic sort by id, then truncate
+            results.sort(key=lambda r: r.get("id", ""))
             return results[:top_k]
 
         loop = asyncio.get_running_loop()

@@ -18,6 +18,9 @@ class AsyncConcurrencyManager:
         self._active: Dict[str, asyncio.Task] = {}
         self._queue: asyncio.Queue[Tuple[str, Awaitable[Any], asyncio.Future]] = asyncio.Queue()
         self._lock = asyncio.Lock()
+        # metrics
+        self.peak = 0
+        self.overlap_count = 0
 
     def active_count(self) -> int:
         return len(self._active)
@@ -39,6 +42,12 @@ class AsyncConcurrencyManager:
         return agent_id, result_future
 
     async def _run_agent(self, agent_id: str, agent_coro: Awaitable[Any], result_future: asyncio.Future) -> None:
+        # update metrics
+        cnt = self.active_count()
+        if cnt > self.peak:
+            self.peak = cnt
+        if cnt > 1:
+            self.overlap_count += 1
         try:
             result = await agent_coro
             if not result_future.cancelled():
@@ -69,6 +78,9 @@ class AsyncConcurrencyManager:
 
     def list_active(self) -> Dict[str, asyncio.Task]:
         return dict(self._active)
+
+    def metrics(self) -> Dict[str, int]:
+        return {"peak": self.peak, "overlap_count": self.overlap_count}
 
 
 __all__ = ["AsyncConcurrencyManager"]
