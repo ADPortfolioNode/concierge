@@ -13,6 +13,17 @@ class Settings:
     """
     max_concurrent_agents: int = 3
     memory_collection: str = "quesarc_memory"
+    # priority score weights
+    relevance_weight: float = 1.0
+    confidence_weight: float = 1.0
+    recency_weight: float = 0.5
+    impact_weight: float = 0.5
+    contradiction_weight: float = 2.0
+    # phase9 additional parameters
+    priority_weight: float = 1.0  # external multiplier for explicit priority flags
+    autonomous_task_priority: float = 2.0  # priority assigned to self-generated tasks
+    contradiction_risk_threshold: float = 0.5
+    low_confidence_threshold: float = 0.3
 
 
 def get_settings() -> Settings:

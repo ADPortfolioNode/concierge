@@ -72,6 +72,49 @@ whether reflections were reused:
 Capability tests include a dedicated `memory_recall_test` which now passes
 deterministically, confirming the feature.
 
+## Phase 8 – Scalable Concurrent Reasoning
+
+The system now supports running multiple root goals concurrently using a
+shared `AsyncConcurrencyManager` with priority queuing. The intelligence
+store evolved into a directed graph (`IntelligenceGraph`) capturing lineage,
+confidence scores, and contradiction risks. Agents can perform reflection and
+reuse previous context when confidence is low. Tasks spawn adaptively during
+execution, and self-initiated refinement occurs when contradictions or
+low-confidence nodes are detected. The test suite includes `tests/phase8_tests.py`
+which validates concurrency metrics, graph integrity, reflection bounds, and
+retrieval performance.
+
+## Phase 9 – Adaptive Self‑Optimizing Intelligence
+
+Building on Phase 8, the platform now computes deterministic priority scores
+for tasks and memory artifacts. The score considers relevance, prior
+confidence, impact, contradiction risk, and explicit priority flags. A
+priority queue ensures high‑importance work is scheduled first. The memory
+retrieval engine biases results by confidence, contradiction risk, and encoded
+priorities. Nodes evolve confidence over time, contradictions are flagged
+automatically, and a pruning mechanism archives stale low‑confidence data.
+
+The coordinator can spawn autonomous reconciliation or refinement tasks when
+issues are detected, and a dedicated testing script `tests/phase9_tests.py`
+exercises priority ordering, contradiction detection, graph pruning, and
+retrieval bias.
+
+### Running the Tests
+
+```bash
+python tests/phase8_tests.py  # concurrency & graph integrity
+python tests/phase9_tests.py  # adaptive priority and self‑refinement
+```
+
+---
+
+## Changelog
+
+- **v0.6.0-phase6-stable**: Added persistent vector DB (Qdrant/Chroma) with restart-safe fallback, specialized Research/Coding/Critic agents, in-place refinement, deterministic routing, strict concurrency, depth/refine caps, deduplication, and phase‑6 harness.
+- **v0.7.0-phase7a**: Added SynthesizerAgent for final aggregation, multi-root task orchestration support, and expanded harness checks to validate final synthesis. Persistence now stores structured synthesis results.
+
+POST /agent with JSON `{"prompt":"..."}` to run the agent.
+
 ## Changelog
 
 - **v0.6.0-phase6-stable**: Added persistent vector DB (Qdrant/Chroma) with restart-safe fallback, specialized Research/Coding/Critic agents, in-place refinement, deterministic routing, strict concurrency, depth/refine caps, deduplication, and phase‑6 harness.

@@ -130,7 +130,7 @@ class CriticAgent(BaseAgent):
             parsed["suggestions"] = []
             parsed["score"] = score
             try:
-                await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(parsed), metadata={"agent_type": self.name, "decision": parsed.get("decision")})
+                await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(parsed), metadata={"agent_type": self.name, "decision": parsed.get("decision"), "score": parsed.get("score")})
             except Exception:
                 logger.exception("Failed to store critic feedback in memory")
             return parsed

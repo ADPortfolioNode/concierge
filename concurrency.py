@@ -16,7 +16,9 @@ class AsyncConcurrencyManager:
     def __init__(self, max_agents: int = 3) -> None:
         self.max_agents = max_agents
         self._active: Dict[str, asyncio.Task] = {}
-        self._queue: asyncio.Queue[Tuple[str, Awaitable[Any], asyncio.Future]] = asyncio.Queue()
+        # priority queue: list of tuples (-priority, counter, agent_id, coro, future)
+        self._queue = []
+        self._counter = 0
         self._lock = asyncio.Lock()
         # metrics
         self.peak = 0
@@ -28,7 +30,7 @@ class AsyncConcurrencyManager:
     def can_spawn(self) -> bool:
         return self.active_count() < self.max_agents
 
-    async def register(self, agent_coro: Awaitable[Any]) -> Tuple[str, asyncio.Future]:
+    async def register(self, agent_coro: Awaitable[Any], priority: float = 0.0) -> Tuple[str, asyncio.Future]:
         agent_id = str(uuid.uuid4())
         result_future: asyncio.Future = asyncio.get_running_loop().create_future()
 
@@ -37,7 +39,10 @@ class AsyncConcurrencyManager:
                 task = asyncio.create_task(self._run_agent(agent_id, agent_coro, result_future))
                 self._active[agent_id] = task
             else:
-                await self._queue.put((agent_id, agent_coro, result_future))
+                # push onto heap with negative priority for max-heap behavior
+                self._counter += 1
+                import heapq
+                heapq.heappush(self._queue, (-priority, self._counter, agent_id, agent_coro, result_future))
 
         return agent_id, result_future
 
@@ -61,10 +66,11 @@ class AsyncConcurrencyManager:
                 await self._start_next_from_queue()
 
     async def _start_next_from_queue(self) -> None:
-        if self.can_spawn() and not self._queue.empty():
+        if self.can_spawn() and self._queue:
             try:
-                agent_id, agent_coro, result_future = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
+                import heapq
+                _, _, agent_id, agent_coro, result_future = heapq.heappop(self._queue)
+            except Exception:
                 return
             task = asyncio.create_task(self._run_agent(agent_id, agent_coro, result_future))
             self._active[agent_id] = task

@@ -60,7 +60,7 @@ def _get_agent_types_from_entries(entries: List[Dict[str, Any]]) -> List[str]:
     return list(types)
 
 
-def _compute_checks(test: Dict[str, Any], result: Dict[str, Any], agent_types: List[str], cm: TestConcurrencyManager) -> Dict[str, bool]:
+def _compute_checks(test: Dict[str, Any], result: Dict[str, Any], agent_types: List[str], cm: TestConcurrencyManager, new_entries: Optional[List[Dict[str, Any]]] = None) -> Dict[str, bool]:
     checks: Dict[str, bool] = {}
     if result is None:
         # should not normally happen; mark failure and return early
@@ -113,6 +113,25 @@ def _compute_checks(test: Dict[str, Any], result: Dict[str, Any], agent_types: L
         reflect_flag = bool(result.get("reflection_reused"))
         checks["memory_hit"] = mem_hit or reflect_flag
         checks["reflection_reused"] = reflect_flag or mem_hit
+    # priority ordering check
+    if test.get("priority_test"):
+        # extract start times from new entries
+        start_times: Dict[str, str] = {}
+        for e in new_entries:
+            if e.get("summary") == "task_started":
+                meta = e.get("metadata") or {}
+                tn = meta.get("task_name")
+                ts = meta.get("timestamp")
+                if tn and ts:
+                    start_times[tn] = ts
+        # expect high priority task started no later than low priority
+        h = start_times.get("High Priority Task")
+        l = start_times.get("Low Priority Task")
+        checks["priority_order_ok"] = True
+        if h and l:
+            checks["priority_order_ok"] = h <= l
+        else:
+            checks["priority_order_ok"] = False
     return checks
 
 
@@ -179,7 +198,7 @@ async def run_test(test: Dict[str, Any], shared_memory: MemoryStore, prev_backup
     new_entries = entries[prev_backup_count:]
     agent_types = _get_agent_types_from_entries(new_entries)
 
-    checks = _compute_checks(test, result, agent_types, cm)
+    checks = _compute_checks(test, result, agent_types, cm, new_entries)
     task_count = len(result.get("task_map", {}))
     synthesis_length = len(result.get("final", {}).get("summary", ""))
 

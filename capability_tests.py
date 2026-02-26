@@ -73,4 +73,26 @@ CAPABILITY_TESTS = [
             },
         ],
     },
+    {
+        "id": "priority_scheduling",
+        "goal": "Ensure high-priority tasks execute before low-priority ones.",
+        "expected_agents": ["TaskAgent", "CriticAgent"],
+        "plan": [
+            {
+                "task_id": "hp",
+                "title": "High Priority Task",
+                "instructions": "Complete a trivial step.",
+                "priority": 10,
+                "depends_on": [],
+            },
+            {
+                "task_id": "lp",
+                "title": "Low Priority Task",
+                "instructions": "Complete a trivial step.",
+                "priority": 1,
+                "depends_on": [],
+            },
+        ],
+        "priority_test": True,
+    },
 ]

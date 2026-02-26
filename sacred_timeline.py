@@ -113,6 +113,42 @@ class SacredTimeline:
 
         return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
 
+    def _compute_priority(self, task: Dict[str, Any], ctx: Any = None) -> float:
+        """Score a task deterministically using settings and context.
+
+        This method is exposed for testing and reuse. Parameters mirror the
+        logic previously embedded in :meth:`run_autonomous`.
+        """
+        settings = get_settings()
+        score = 0.0
+        goal_text = task.get("title", "") + " " + task.get("instructions", "")
+        # relevance: count tokens
+        tokens = [w for w in goal_text.split() if len(w) > 3]
+        score += settings.relevance_weight * len(tokens)
+        # confidence: check any prior_ids in context if exists
+        if isinstance(ctx, dict) and ctx.get("prior_ids"):
+            vals = []
+            for pid in ctx.get("prior_ids"):
+                n = self._memory._graph.get(pid)
+                if n:
+                    vals.append(n.confidence)
+            if vals:
+                score += settings.confidence_weight * (sum(vals) / len(vals))
+        # recency: none for task-level, skip
+        # impact: number of dependents? approximate by len(depends_on)
+        deps = task.get("depends_on") or []
+        score += settings.impact_weight * len(deps)
+        # contradiction: use context flag
+        if isinstance(ctx, dict) and ctx.get("contradiction_risk"):
+            score -= settings.contradiction_weight * ctx.get("contradiction_risk")
+        # explicit task priority override (external config/historical hint)
+        try:
+            prio = float(task.get("priority", 1.0))
+        except Exception:
+            prio = 1.0
+        score *= (settings.priority_weight * prio)
+        return score
+
     async def run_autonomous(self, goal: str, max_depth: int = 3, max_tasks: int = 20, per_task_timeout: int = 60) -> Dict[str, Any]:
         """Coordinator: plan -> assign to specialized agents -> critic loop.
 
@@ -130,6 +166,7 @@ class SacredTimeline:
         logger.info("Coordinator starting for goal: %s", goal)
         planner = self._planner
         critic_agent = CriticAgent(self._memory, llm=self._llm)
+        settings = get_settings()
 
         # --- deterministic memory retrieval ---
         prior_entries = []
@@ -152,6 +189,9 @@ class SacredTimeline:
             "reflection_reused": False,
             "recall_run": getattr(self, '_recall_run', False),
         }
+        # autonomous refinement limits
+        MAX_AUTONOMOUS_TASKS = getattr(self, '_max_auton_tasks', 2)
+        autonomous_count = 0
         for p in prior_entries:
             struct = p.get("metadata", {}).get("structured") or {}
             if struct:
@@ -218,10 +258,63 @@ class SacredTimeline:
             # default
             return TaskAgent(task_name=task.get("title") or task.get("task_id"), task_input=task, memory=self._memory, vector_tool=self._vector_tool, llm_tool=self._llm)
 
+        # helper for priority calculation delegates to class method
+        def compute_priority(task: Dict[str, Any]) -> float:
+            ctx = task.get("context")
+            return self._compute_priority(task, ctx)
+
         # Main control loop
         while True:
             # find pending tasks whose dependencies are done
             pending = [t for t in task_map.values() if t["status"] == "pending" and all(task_map.get(d, {}).get("status") == "done" for d in t.get("depends_on", []))]
+            # sort pending by priority descending
+            pending.sort(key=lambda t: compute_priority(t), reverse=True)
+
+            # self-initiated refinement before dispatch (handles case of zero initial tasks)
+            if autonomous_count < MAX_AUTONOMOUS_TASKS:
+                # contradictions
+                for node in self._memory.get_contradiction_nodes():
+                    tid_new = f"auto_reconcile_{node.id}"
+                    if tid_new not in task_map:
+                        task_map[tid_new] = {
+                            "task_id": tid_new,
+                            "title": "Auto Reconcile",
+                            "instructions": f"Reconcile contradictions related to node {node.id}",
+                            "depends_on": [],
+                            "depth": 0,
+                            "refine_count": 0,
+                            "status": "pending",
+                            "output": None,
+                            "seen_hashes": set(),
+                            "last_evaluated_hash": None,
+                            "needs_review": True,
+                            "priority": settings.autonomous_task_priority,
+                        }
+                        autonomous_count += 1
+                        if autonomous_count >= MAX_AUTONOMOUS_TASKS:
+                            break
+                # low confidence
+                if autonomous_count < MAX_AUTONOMOUS_TASKS:
+                    for node in self._memory.get_low_confidence_nodes():
+                        tid_new = f"auto_refine_{node.id}"
+                        if tid_new not in task_map:
+                            task_map[tid_new] = {
+                                "task_id": tid_new,
+                                "title": "Auto Refine",
+                                "instructions": f"Refine low-confidence node {node.id}",
+                                "depends_on": [],
+                                "depth": 0,
+                                "refine_count": 0,
+                                "status": "pending",
+                                "output": None,
+                                "seen_hashes": set(),
+                                "last_evaluated_hash": None,
+                                "needs_review": True,
+                                "priority": settings.autonomous_task_priority,
+                            }
+                            autonomous_count += 1
+                            if autonomous_count >= MAX_AUTONOMOUS_TASKS:
+                                break
 
             # termination guard: no pending, no running, no needs_review
             if (
@@ -251,7 +344,9 @@ class SacredTimeline:
                 else:
                     coro = agent_obj.run()
 
-                manager_agent_id, result_future = await self._concurrency.register(coro)
+                pr = compute_priority(t)
+                logger.debug(f"[PRIORITY] task={t.get('task_id')} priority={pr}")
+                manager_agent_id, result_future = await self._concurrency.register(coro, priority=pr)
                 trackers.append((tid, agent_obj, manager_agent_id, asyncio.create_task(self._track_agent(agent_obj, manager_agent_id, result_future, t))))
 
             # gather results for this dispatch round
@@ -288,6 +383,51 @@ class SacredTimeline:
                             out = res
                         t["output"] = out
                         t["needs_review"] = True
+                # self-initiated refinement: check graph for contradictions or low confidence
+                if autonomous_count < MAX_AUTONOMOUS_TASKS:
+                    # contradictions
+                    for node in self._memory.get_contradiction_nodes():
+                        tid_new = f"auto_reconcile_{node.id}"
+                        if tid_new not in task_map:
+                            task_map[tid_new] = {
+                                "task_id": tid_new,
+                                "title": "Auto Reconcile",
+                                "instructions": f"Reconcile contradictions related to node {node.id}",
+                                "depends_on": [],
+                                "depth": 0,
+                                "refine_count": 0,
+                                "status": "pending",
+                                "output": None,
+                                "seen_hashes": set(),
+                                "last_evaluated_hash": None,
+                                "needs_review": True,
+                                "priority": settings.autonomous_task_priority,
+                            }
+                            autonomous_count += 1
+                            if autonomous_count >= MAX_AUTONOMOUS_TASKS:
+                                break
+                    # low confidence
+                    if autonomous_count < MAX_AUTONOMOUS_TASKS:
+                        for node in self._memory.get_low_confidence_nodes():
+                            tid_new = f"auto_refine_{node.id}"
+                            if tid_new not in task_map:
+                                task_map[tid_new] = {
+                                    "task_id": tid_new,
+                                    "title": "Auto Refine",
+                                    "instructions": f"Refine low-confidence node {node.id}",
+                                    "depends_on": [],
+                                    "depth": 0,
+                                    "refine_count": 0,
+                                    "status": "pending",
+                                    "output": None,
+                                    "seen_hashes": set(),
+                                    "last_evaluated_hash": None,
+                                    "needs_review": True,
+                                    "priority": settings.autonomous_task_priority,
+                                }
+                                autonomous_count += 1
+                                if autonomous_count >= MAX_AUTONOMOUS_TASKS:
+                                    break
 
             # Critic: evaluate tasks that are done and need review (per-task, in-place refinement)
             for tid, t in list(task_map.items()):
@@ -409,6 +549,11 @@ class SacredTimeline:
         # attach reflection flag if available
         if 'context' in locals():
             result_out["reflection_reused"] = context.get("reflection_reused", False)
+        # housekeeping: prune low-confidence graph entries after run
+        try:
+            self._memory.prune_graph()
+        except Exception:
+            logger.exception("Pruning graph failed")
         return result_out
 
     async def handle_user_input(self, user_input: str) -> Dict[str, Any]:

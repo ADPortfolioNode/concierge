@@ -55,6 +55,8 @@ class IntelligenceNode:
     parent_ids: List[str] = field(default_factory=list)
     timestamp: str = ""
     confidence: float = 0.0
+    active: bool = True                    # archived flag
+    contradiction_risk: float = 0.0        # computed on insertion
 
 
 class MemoryStore:
@@ -253,6 +255,55 @@ class MemoryStore:
         except Exception:
             pass
 
+    async def _update_confidence(self, node_id: str, score: float) -> None:
+        """Deterministically update confidence of an existing node.
+
+        Use a simple average to evolve confidence over time.
+        """
+        try:
+            async with self._graph_lock:
+                node = self._graph.get(node_id)
+                if node:
+                    node.confidence = (node.confidence + float(score) / 100.0) / 2.0
+        except Exception:
+            logger.exception("Failed to update node confidence")
+
+    def get_low_confidence_nodes(self, threshold: Optional[float] = None) -> List[IntelligenceNode]:
+        """Return active nodes with confidence below threshold.
+
+        If no threshold is provided, use the configured low confidence threshold.
+        """
+        if threshold is None:
+            from config.settings import get_settings
+
+            threshold = get_settings().low_confidence_threshold
+        return [n for n in self._graph.values() if n.active and n.confidence < threshold]
+
+    def get_contradiction_nodes(self, threshold: Optional[float] = None) -> List[IntelligenceNode]:
+        """Return active nodes with contradiction risk above threshold.
+
+        If no threshold is provided, use configured contradiction risk threshold.
+        """
+        if threshold is None:
+            from config.settings import get_settings
+
+            threshold = get_settings().contradiction_risk_threshold
+        return [n for n in self._graph.values() if n.active and n.contradiction_risk > threshold]
+
+    def prune_graph(self, confidence_threshold: float = 0.1) -> None:
+        """Archive nodes whose confidence has decayed below threshold.
+
+        Archived nodes remain in graph but marked inactive and excluded from
+        retrieval. Lineage is preserved in metadata for audit.
+        """
+        try:
+            for node in list(self._graph.values()):
+                if node.active and node.confidence < confidence_threshold:
+                    node.active = False
+                    logger.info("Archiving low-confidence node %s", node.id)
+        except Exception:
+            logger.exception("Graph pruning failed")
+
     def _pseudo_embed(self, text: str, dim: int = 8) -> List[float]:
         """Generate a deterministic pseudo-embedding for local testing.
 
@@ -333,6 +384,25 @@ class MemoryStore:
 
         loop = asyncio.get_running_loop()
 
+        # update graph node confidence if Critic score is present
+        if metadata.get("score") is not None and rec_id in self._graph:
+            await self._update_confidence(rec_id, metadata.get("score"))
+        # compute contradiction risk based on key_points heuristics
+        try:
+            node = self._graph.get(rec_id)
+            if node:
+                # simple check: any summary containing 'not X' vs existing 'X'
+                for other in self._graph.values():
+                    if other.id == node.id or not other.active:
+                        continue
+                    for kp in other.key_points:
+                        if kp and kp.lower() in node.summary.lower() and "not" in node.summary.lower():
+                            node.contradiction_risk = 1.0
+                            break
+                    if node.contradiction_risk:
+                        break
+        except Exception:
+            pass
         # Chroma path
         if self._vector_db == "chroma" and self._collection is not None:
             def _add_chroma():
@@ -555,33 +625,42 @@ class MemoryStore:
     async def retrieve_relevant_intelligence(self, goal: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Return relevant intelligence artifacts for a new root goal.
 
-        The retrieval is deterministic and keyword-driven.  We split the goal
-        into meaningful tokens (length>3) and perform a separate query for each
-        token, aggregating results while preserving order and removing
-duplicates.
-        Finally, results are sorted by id to ensure a stable return order.
+        The retrieval is deterministic and keyword-driven and biases results by
+        node confidence and optional priority weight encoded in metadata.
         """
         try:
-            # extract keywords from goal
             tokens = [w.strip('.,').lower() for w in goal.split() if len(w) > 3]
             hits: List[Dict[str, Any]] = []
             for tok in tokens:
                 sub = await self.query(tok, top_k=top_k)
                 if sub:
                     hits.extend(sub)
-            # dedupe preserving first-seen order
             seen_ids = set()
             unique: List[Dict[str, Any]] = []
             for h in hits:
                 hid = h.get('id')
                 if hid and hid not in seen_ids:
                     seen_ids.add(hid)
+                    # compute score bias
+                    node = self._graph.get(hid)
+                    score = 1.0
+                    if node:
+                        score *= node.confidence or 1.0
+                        score *= max(0.1, 1.0 - node.contradiction_risk)
+                    # bias by explicit priority stored in metadata
+                    try:
+                        prio = float(h.get("metadata", {}).get("priority", 1.0))
+                    except Exception:
+                        prio = 1.0
+                    score *= prio
+                    h["score"] = score
                     unique.append(h)
-            # sort deterministic
-            unique.sort(key=lambda r: r.get("id", ""))
+            # sort by score desc then id
+            unique.sort(key=lambda r: (-r.get("score", 0.0), r.get("id", "")))
+            # ensure deterministic return order
             return unique[:top_k]
         except Exception:
-            logger.exception("Memory retrieval failed")
+            logger.exception("retrieve_relevant_intelligence failed")
             return []
 
     async def health_check(self) -> bool:
