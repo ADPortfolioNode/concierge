@@ -4,6 +4,15 @@ export default defineConfig({
   testDir: './tests',
   timeout: 30_000,
   expect: { timeout: 5000 },
+
+  // automatically start the frontend dev server before running tests
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+    cwd: __dirname,
+  },
+
   projects: [
     {
       name: 'chromium',
