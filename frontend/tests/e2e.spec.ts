@@ -15,22 +15,31 @@ test.describe('Concierge UI', () => {
     // POST to the API and return raw response details so Playwright can surface
     // status codes, headers and body without assuming JSON.
     const result = await page.evaluate(async () => {
-      const res = await fetch('/api/v1/concierge/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'playwright-test' }),
-      });
-      const status = res.status;
-      const headers = Object.fromEntries(res.headers.entries());
-      // read text but truncate to avoid transferring enormous payloads
-      let text = '';
-      try {
-        const full = await res.text();
-        text = full.length > 5000 ? full.slice(0, 5000) + '...[truncated]' : full;
-      } catch (e) {
-        text = `<error reading body: ${String(e)}>`;
-      }
-      return { status, headers, text };
+      // wrap the fetch in a manual timeout so the evaluation will finish even if
+      // the network request hangs indefinitely. 10s is generous.
+      const timed = Promise.race([
+        (async () => {
+          const res = await fetch('/api/v1/concierge/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: 'playwright-test' }),
+          });
+          const status = res.status;
+          const headers = Object.fromEntries(res.headers.entries());
+          let text = '';
+          try {
+            const full = await res.text();
+            text = full.length > 5000 ? full.slice(0, 5000) + '...[truncated]' : full;
+          } catch (e) {
+            text = `<error reading body: ${String(e)}>`;
+          }
+          return { status, headers, text };
+        })(),
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ timeout: true }), 10000)
+        ),
+      ]);
+      return timed;
     });
 
     // dump what we got to help debug failures
