@@ -20,11 +20,17 @@ test.describe('Concierge UI', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'playwright-test' }),
       });
-      return {
-        status: res.status,
-        headers: Object.fromEntries(res.headers.entries()),
-        text: await res.text(),
-      };
+      const status = res.status;
+      const headers = Object.fromEntries(res.headers.entries());
+      // read text but truncate to avoid transferring enormous payloads
+      let text = '';
+      try {
+        const full = await res.text();
+        text = full.length > 5000 ? full.slice(0, 5000) + '...[truncated]' : full;
+      } catch (e) {
+        text = `<error reading body: ${String(e)}>`;
+      }
+      return { status, headers, text };
     });
 
     // dump what we got to help debug failures
