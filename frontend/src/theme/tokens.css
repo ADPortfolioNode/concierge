@@ -1,0 +1,41 @@
+/* Tokens Layer */
+:root {
+  /* colors */
+  --color-bg: #000;
+  --color-bg-secondary: #111;
+  --color-text: #eee;
+  --color-accent: #c0392b;
+
+  /* spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+  --space-10: 64px;
+
+  /* motion tokens */
+  --motion-fast: 150ms ease-out;
+  --motion-normal: 200ms cubic-bezier(0.4,0,0.2,1);
+  --motion-slow: 250ms cubic-bezier(0.4,0,0.2,1);
+
+  /* breakpoints */
+  --bp-mobile: 640px;
+  --bp-tablet: 768px;
+  --bp-laptop: 1024px;
+  --bp-desktop: 1280px;
+
+  /* z-index */
+  --z-concierge: 100;
+  --z-media: 200;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
