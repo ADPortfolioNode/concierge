@@ -12,6 +12,14 @@ test.describe('Concierge UI', () => {
     // Check the landing text
     await expect(page.locator('text=Welcome to Concierge')).toBeVisible();
 
+    // perform a node-side request first to verify the proxy/backend from
+    // the test runner itself. this uses Playwright's request API which does not
+    // go through the browser network stack.
+    const nodeResp = await page.request.post('/api/v1/concierge/message', {
+      data: { message: 'playwright-test' },
+    });
+    console.log('node-side request status', nodeResp.status());
+
     // POST to the API and return raw response details so Playwright can surface
     // status codes, headers and body without assuming JSON.
     const result = await page.evaluate(async () => {
