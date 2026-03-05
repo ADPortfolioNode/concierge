@@ -3,8 +3,9 @@ services:
   app:
     build: .
     container_name: quesarc_app
+    # avoid port clash with chroma service; expose on 8001 host port instead
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - .:/app
     depends_on:
@@ -16,7 +17,7 @@ services:
       - CHROMA_PORT=8000
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
-      - MEMORY_COMPRESS_THRESHOLD=100
+      - MEMORY_COMPRESS_THRESHOLD=999999
 
   chroma:
     image: chromadb/chroma:latest
@@ -25,11 +26,34 @@ services:
       - "8000:8000"
     environment:
       - CHROMA_SERVER_ALLOW_ORIGIN=*
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # healthcheck removed: the official image does not include curl, so the
+    # default check always fails and prevents dependent services from starting.
+    # If you need a healthcheck, add an appropriate command or build a custom
+    # image with curl/wget available.
+
+  frontend:
+    # containerized development server for React frontend. we mount the
+    # project directory but keep a separate volume for `node_modules` so that
+    # Linux-native packages are installed inside the container rather than
+    # reusing whatever the host built (Windows packages would cause
+    # "MODULE_NOT_FOUND" errors).
+    image: node:18-alpine
+    container_name: quesarc_frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app:cached
+      - frontend_node_modules:/app/node_modules
+    environment:
+      - IN_DOCKER=true
+    # always run `npm ci` first to populate the container's node_modules, then
+    # launch the dev server. `npm ci` is fast when the lockfile hasn't changed.
+    # `--host` is redundant when `vite.config.ts` already sets `host: true`,
+    # but we include it here as a belt‑and‑suspenders measure so that the
+    # container's output explicitly tells us the server will accept external
+    # connections.
+    command: ["sh","-c","npm ci && npm run dev -- --host"]
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -41,6 +65,7 @@ services:
 
 volumes:
   qdrant_data:
+  frontend_node_modules:
 
 networks:
   default:

@@ -2,9 +2,17 @@ import apiClient from './client';
 import { ApiResponse } from '../types/api';
 
 export const sendMessage = async (message: string) => {
-  return apiClient.post<ApiResponse>('/concierge/message', { message });
+  const res = await apiClient.post<ApiResponse>('/concierge/message', { message });
+  if ((res as any).error) {
+    throw new Error((res as any).error);
+  }
+  return res;
 };
 
 export const fetchConversation = async () => {
-  return apiClient.get<ApiResponse>('/concierge/conversation');
+  const res = await apiClient.get<ApiResponse>('/concierge/conversation');
+  if ((res as any).error) {
+    throw new Error((res as any).error);
+  }
+  return res;
 };

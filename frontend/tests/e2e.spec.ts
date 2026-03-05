@@ -47,4 +47,26 @@ test.describe('Concierge UI', () => {
     // banner should contain the HTTP status code or a generic error message
     await expect(banner).toContainText('500');
   });
+
+  test('navigation includes how-to and page renders', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    // confirm link is present in header
+    const link = page.locator('nav >> text=How‑To');
+    await expect(link).toBeVisible();
+    await link.click();
+    // new page should have the heading we added
+    await expect(page.locator('h1')).toHaveText('How to use Concierge');
+  });
+
+  test('real backend chat returns a response', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    // send a message without stubbing to ensure backend interaction
+    await page.fill('textarea', 'integration test');
+    await page.keyboard.press('Enter');
+    // wait for an assistant bubble to appear (timeout longer to account for processing)
+    const bubbles = page.locator('[aria-label^="message-"]');
+    await expect(bubbles).toHaveCount(2, { timeout: 15000 });
+    // the second bubble should be from assistant and contain some text
+    await expect(bubbles.nth(1)).not.toContainText('integration test');
+  });
 });

@@ -14,8 +14,8 @@ import asyncio
 import logging
 from typing import Any, Dict
 
-from sacred_timeline import SacredTimeline
-from concurrency import AsyncConcurrencyManager
+from orchestration.sacred_timeline import SacredTimeline
+from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
 import tools.llm_tool as llm_module
 from tools.vector_search_tool import VectorSearchTool

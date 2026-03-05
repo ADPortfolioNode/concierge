@@ -13,7 +13,7 @@ import json
 import logging
 from typing import Any, Dict
 
-from concurrency import AsyncConcurrencyManager
+from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
 from tools.vector_search_tool import VectorSearchTool
 
@@ -21,7 +21,7 @@ import agents.planner as planner_mod
 import agents.evaluator as evaluator_mod
 import task_agent as task_agent_mod
 import tools.llm_tool as llm_mod
-from sacred_timeline import SacredTimeline
+from orchestration.sacred_timeline import SacredTimeline
 
 
 logging.basicConfig(level=logging.INFO)

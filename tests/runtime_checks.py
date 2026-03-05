@@ -17,7 +17,7 @@ from tools.file_memory_tool import FileMemoryTool
 from task_agent import TaskAgent
 from memory.memory_store import MemoryStore
 from tools.llm_tool import LLMTool
-from concurrency import AsyncConcurrencyManager
+from core.concurrency import AsyncConcurrencyManager
 
 logging.basicConfig(level=logging.INFO)
 

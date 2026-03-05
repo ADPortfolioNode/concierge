@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from sacred_timeline import SacredTimeline
+from orchestration.sacred_timeline import SacredTimeline
 from memory.memory_store import MemoryStore
 from agents.planner import Planner
 

@@ -1,5 +1,5 @@
 import asyncio
-from concurrency import AsyncConcurrencyManager
+from core.concurrency import AsyncConcurrencyManager
 from task_agent import TaskAgent
 from memory.memory_store import MemoryStore
 from tools.vector_search_tool import VectorSearchTool

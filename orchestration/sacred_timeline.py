@@ -1,12 +1,23 @@
-"""Compatibility shim.
+"""Async SacredTimeline orchestrator (root agent).
 
-The real implementation now lives under :mod:`orchestration.sacred_timeline`.
-This module exists so that imports from the project root continue to work
-without modification.
+This orchestrator is responsible for receiving user input, asking the
+Planner for a course of action, spawning `TaskAgent`s as async coroutines,
+registering them with `AsyncConcurrencyManager`, awaiting their results,
+and persisting summaries in `MemoryStore`.
 """
+from __future__ import annotations
 
-from orchestration.sacred_timeline import *
+from typing import Any, Dict, Optional, Tuple
+import logging
+import asyncio
 
+from agents.planner import Planner
+from agents.evaluator import Evaluator
+from agents.summarizer import Summarizer
+from agents.research_agent import ResearchAgent
+from agents.coding_agent import CodingAgent
+from agents.critic_agent import CriticAgent
+from agents.synthesizer_agent import SynthesizerAgent
 from agents.base_agent import BaseAgent
 from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore

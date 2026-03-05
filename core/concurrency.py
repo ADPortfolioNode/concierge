@@ -1,15 +1,28 @@
-"""Facade pointing to core concurrency implementation.
+"""Async concurrency manager for scheduling TaskAgent coroutines.
 
-The real logic lives in :mod:`core.concurrency`. This module exists to
-preserve backward-compatibility for imports such as ``from concurrency
-import AsyncConcurrencyManager`` while the codebase transitions to a
-package-based layout.
+Enforces a maximum number of concurrently running agents and queues
+additional agent coroutines. Exposes `register` to schedule a coroutine
+and returns `(agent_id, future)` where the future resolves with the
+coroutine's result.
 """
-
 from __future__ import annotations
 
-# re-export all public names from core.concurrency
-from core.concurrency import *
+import asyncio
+import uuid
+from typing import Any, Awaitable, Dict, Tuple
+
+
+class AsyncConcurrencyManager:
+    def __init__(self, max_agents: int = 3) -> None:
+        self.max_agents = max_agents
+        self._active: Dict[str, asyncio.Task] = {}
+        # priority queue: list of tuples (-priority, counter, agent_id, coro, future)
+        self._queue = []
+        self._counter = 0
+        self._lock = asyncio.Lock()
+        # metrics
+        self.peak = 0
+        self.overlap_count = 0
 
     def active_count(self) -> int:
         return len(self._active)

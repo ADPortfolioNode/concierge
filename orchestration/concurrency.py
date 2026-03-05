@@ -1,15 +1,25 @@
-"""Facade pointing to core concurrency implementation.
+"""Facade to shared concurrency logic.
 
-The real logic lives in :mod:`core.concurrency`. This module exists to
-preserve backward-compatibility for imports such as ``from concurrency
-import AsyncConcurrencyManager`` while the codebase transitions to a
-package-based layout.
+Orchestration modules previously imported this class directly from
+``orchestration.concurrency``.  Moving the implementation into ``core``
+namespaced package lets us share it widely, so this file now simply
+re-exports from the new location.
 """
 
 from __future__ import annotations
 
-# re-export all public names from core.concurrency
+# re-export everything for backwards compatibility
 from core.concurrency import *
+    def __init__(self, max_agents: int = 3) -> None:
+        self.max_agents = max_agents
+        self._active: Dict[str, asyncio.Task] = {}
+        # priority queue: list of tuples (-priority, counter, agent_id, coro, future)
+        self._queue = []
+        self._counter = 0
+        self._lock = asyncio.Lock()
+        # metrics
+        self.peak = 0
+        self.overlap_count = 0
 
     def active_count(self) -> int:
         return len(self._active)

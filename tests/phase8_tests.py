@@ -15,8 +15,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from sacred_timeline import SacredTimeline
-from concurrency import AsyncConcurrencyManager
+from orchestration.sacred_timeline import SacredTimeline
+from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore, IntelligenceNode
 
 logging.basicConfig(level=logging.DEBUG)

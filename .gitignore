@@ -1,3 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+.env
+.env.*
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite / build
+/dist
+/.vite
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker / logs
+docker-compose.override.yml
+start.log
+*.log
+
+# pytest
+.pytest_cache/
+
+# Coverage
+coverage.xml
+htmlcov/
+
+# Temp
+*.tmp
+*.swp
 # Python bytecode
 __pycache__/
 *.py[cod]

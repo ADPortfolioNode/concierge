@@ -7,7 +7,8 @@ backend. It conforms to the architecture outlined in the project specification:
 - **TypeScript** strict mode.
 - **React Router v6** for page navigation.
 - **Zustand** global state store.
-- **Axios** client with centralized interceptors.
+- **Axios** client with centralized interceptors.  Timeout defaults to 10 000 ms but can be changed
+  with the `VITE_API_TIMEOUT` environment variable (useful for slow local servers).
 - **ESLint + Prettier** configured for style consistency.
 - Absolute imports (`@/` alias) and feature-based folder structure.
 

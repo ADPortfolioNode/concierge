@@ -19,9 +19,18 @@ logging.basicConfig(level=logging.INFO)
 def try_start_chroma():
     try:
         subprocess.run(["docker-compose", "up", "-d", "chroma"], check=False, capture_output=True, text=True, timeout=60)
-        # give container a moment to start
-        time.sleep(5)
-        return True
+        # poll the listening port rather than sleeping a fixed duration
+        for _ in range(10):
+            try:
+                # using socket to test readiness
+                import socket
+
+                with socket.create_connection(("localhost", 8001), timeout=1):
+                    return True
+            except Exception:
+                time.sleep(0.5)
+        # if we fall through, container never became available
+        return False
     except Exception:
         return False
 

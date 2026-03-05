@@ -95,4 +95,47 @@ CAPABILITY_TESTS = [
         ],
         "priority_test": True,
     },
+    {
+        "id": "autonomy_orchestration",
+        "goal": "Run conflicting tasks and reuse past outcomes automatically.",
+        "expected_agents": ["TaskAgent", "CriticAgent"],
+        "requires_memory": True,
+        "plan": [
+            {
+                "task_id": "a1",
+                "title": "First Task",
+                "instructions": "Produce artifact A.",
+                "priority": 5,
+                "depends_on": [],
+            },
+            {
+                "task_id": "a2",
+                "title": "Second Task",
+                "instructions": "Build upon artifact A.",
+                "priority": 5,
+                "depends_on": [],
+            },
+        ],
+        "priority_test": True
+    },
+    {
+        "id": "distributed_execution",
+        "goal": "Verify distributed nodes can write to shared memory and obey global concurrency.",
+        "expected_agents": ["TaskAgent", "CriticAgent"],
+        "distributed_test": True,
+        "plan": [
+            {
+                "task_id": "d1",
+                "title": "NodeTask1",
+                "instructions": "step",
+                "depends_on": [],
+            },
+            {
+                "task_id": "d2",
+                "title": "NodeTask2",
+                "instructions": "step",
+                "depends_on": [],
+            }
+        ],
+    },
 ]

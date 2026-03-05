@@ -1,3 +1,29 @@
+# Exclude host node_modules - container will install its own
+node_modules
+frontend/node_modules
+
+# Python venvs and caches
+.venv
+venv
+__pycache__
+*.pyc
+
+# Git
+.git
+.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+tmp
+*.tmp
+
+# Editor configs
+.vscode
+.idea
 # Exclude Python virtualenvs and caches
 .venv
 venv

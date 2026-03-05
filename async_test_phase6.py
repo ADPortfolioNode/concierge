@@ -7,8 +7,8 @@ from typing import Any, Dict
 # Minimal logging
 logging.basicConfig(level=logging.WARNING)
 
-from sacred_timeline import SacredTimeline
-from concurrency import AsyncConcurrencyManager
+from orchestration.sacred_timeline import SacredTimeline
+from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
 
 GOAL = "Research async orchestration, implement demo, evaluate quality, and store persistent reflection."

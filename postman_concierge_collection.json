@@ -1,0 +1,90 @@
+{
+  "info": {
+    "name": "Concierge API Tests",
+    "_postman_id": "b1a5f6d0-0000-4000-8000-000000000000",
+    "description": "Basic Postman collection to test Concierge endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST /api/v1/concierge/message",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"message\": \"hello from Postman\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5173/api/v1/concierge/message",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5173",
+          "path": [
+            "api", "v1", "concierge", "message"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('HTTP 2xx', () => pm.response.code >= 200 && pm.response.code < 300);",
+              "pm.test('ApiResponse present', () => res && typeof res === 'object' && res.status);",
+              "pm.test('data present', () => res.data !== undefined && res.data !== null);",
+              "// If content is a JSON string, try to parse for additional checks",
+              "if (res.data && res.data.content && typeof res.data.content === 'string') {",
+              "  try {",
+              "    const parsed = JSON.parse(res.data.content);",
+              "    pm.test('content parses as JSON object or array', () => typeof parsed === 'object');",
+              "  } catch (e) {",
+              "    // not JSON - that's acceptable depending on backend
+              "  }",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GET /api/v1/concierge/conversation",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5173/api/v1/concierge/conversation",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5173",
+          "path": ["api","v1","concierge","conversation"]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "pm.test('HTTP 2xx', () => pm.response.code >= 200 && pm.response.code < 300);",
+              "pm.test('ApiResponse present', () => res && typeof res === 'object' && res.status);",
+              "pm.test('data is array', () => Array.isArray(res.data));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ]
+}

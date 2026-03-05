@@ -1,8 +1,13 @@
 import axios from 'axios';
 
+// allow the timeout to be tuned in development/CI via an environment
+// variable. Vite exposes variables prefixed with `VITE_` on
+// `import.meta.env`; fall back to the existing hard‑coded 10s value if unset.
+const defaultTimeout = Number(import.meta.env.VITE_API_TIMEOUT ?? 10000);
+
 const apiClient = axios.create({
   baseURL: '/api/v1',
-  timeout: 10000,
+  timeout: defaultTimeout,
 });
 
 // request interceptor
@@ -73,6 +78,8 @@ function generateRequestId() {
 }
 
 // convenience helper that mirrors fetch-style API but still uses axios
+// and provides a defensive wrapper. callers may expect an object with a
+// `status` or check for `error` rather than blindly mutating state.
 export async function apiRequest(
   input: string,
   init?: {
@@ -87,8 +94,29 @@ export async function apiRequest(
     headers: init?.headers,
     data: init?.body,
   };
-  const response = await apiClient.request(config);
-  return response.data;
+
+  try {
+    const response = await apiClient.request(config);
+    // axios already parses JSON; if we reach here response.data is usable
+    return response.data;
+  } catch (err: any) {
+    // normalize to an Error instance with user-friendly message
+    let message = 'Unknown error';
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        message = `API error: ${err.response.status}`;
+      } else if (err.request) {
+        message = 'Network error: no response received';
+      } else if (err.message) {
+        message = err.message;
+      }
+    } else if (err instanceof Error) {
+      message = err.message;
+    }
+    // we return a structured object instead of throwing to avoid unhandled
+    // promise rejections in components; callers can still throw if desired.
+    return { error: message } as any;
+  }
 }
 
 export default apiClient;

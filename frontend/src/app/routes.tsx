@@ -7,6 +7,7 @@ const TasksPage = lazy(() => import('../features/tasks/TasksPage'));
 const GoalsPage = lazy(() => import('../features/goals/GoalsPage'));
 const WorkspacePage = lazy(() => import('../features/workspace/WorkspacePage'));
 const StrategyPage = lazy(() => import('../features/strategy/StrategyPage'));
+const HowToPage = lazy(() => import('../features/concierge/HowToPage'));
 
 import Layout from '../components/layout/Layout';
 
@@ -20,6 +21,7 @@ const Routes: React.FC = () => {
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
           <Route path="/strategy" element={<StrategyPage />} />
+          <Route path="/howto" element={<HowToPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Switch>
       </Suspense>

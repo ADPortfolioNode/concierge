@@ -61,28 +61,23 @@ class CriticAgent(BaseAgent):
             # Fail-safe: approve to avoid triggering refinements
             return default
 
-        # Try to parse structured JSON.  Only for recall tasks do we retry and
-        # refuse to approve; non-recall falls back to default approval on parse
-        # failure.
+        # Try to parse structured JSON.  We do not auto-approve on failure;
+        # any parse error (recall or not) results in refine decision.
         parsed = None
         parse_failed = False
         try:
             parsed = json.loads(resp)
         except Exception:
             parse_failed = True
-            if is_recall:
-                logger.warning("Critic LLM returned non-JSON response on recall; retrying once")
-                try:
-                    resp2 = await self.llm.generate(prompt + "\nReturn valid JSON.", context=str(outputs))
-                    parsed = json.loads(resp2)
-                    parse_failed = False
-                except Exception:
-                    logger.warning("Critic retry also failed on recall; will refine")
-            else:
-                # non-recall: simply approve
-                logger.warning("Critic LLM returned non-JSON response; approving by default")
-                return default
-        if parse_failed and is_recall:
+            logger.warning("Critic LLM returned non-JSON response; will refine")
+            # attempt single retry with JSON hint
+            try:
+                resp2 = await self.llm.generate(prompt + "\nReturn valid JSON.", context=str(outputs))
+                parsed = json.loads(resp2)
+                parse_failed = False
+            except Exception:
+                logger.warning("Critic retry also failed; refining")
+        if parse_failed:
             # still failed after retry
             res = {"agent": self.name, "decision": "refine", "score": 0, "comments": "critic parsing failure", "suggestions": []}
             try:

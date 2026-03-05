@@ -12,6 +12,7 @@ import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import json
 
 # local import to avoid hard dependency for environments that don't need LLM
 try:
@@ -330,24 +331,38 @@ class MemoryStore:
             "agent_type": metadata.get("agent_type", "unknown"),
             "reflection": bool(metadata.get("reflection", False)),
         }
-        # Use a UUID for qdrant-friendly point ids
-        rec_id = str(uuid.uuid4())
-        # Build graph node and index tokens atomically
+        # Use provided task_id if available for idempotent tracking
+        rec_id = metadata.get("task_id") or str(uuid.uuid4())
+        # Build graph node and index tokens atomically. If a node with this
+        # id already exists, we update its fields rather than replace it so that
+        # historical data is preserved and we can track state changes.
         try:
             async with self._graph_lock:
                 struct = metadata.get("structured") or {}
-                node = IntelligenceNode(
-                    id=rec_id,
-                    goal=metadata.get("goal"),
-                    summary=summary,
-                    key_points=struct.get("key_points", []) or [],
-                    recommendation=struct.get("recommendations", [""])[0] if struct.get("recommendations") else "",
-                    delta_from_previous=metadata.get("delta", ""),
-                    parent_ids=metadata.get("parent_ids", []),
-                    timestamp=metadata.get("timestamp", ""),
-                    confidence=float(metadata.get("confidence", 0.0)) if metadata.get("confidence") is not None else 0.0,
-                )
-                self._graph[rec_id] = node
+                node = self._graph.get(rec_id)
+                if node:
+                    # update existing node summary and metadata
+                    node.summary = summary
+                    node.goal = metadata.get("goal") or node.goal
+                    node.key_points = struct.get("key_points", []) or node.key_points
+                    node.recommendation = struct.get("recommendations", [node.recommendation])[0] if struct.get("recommendations") else node.recommendation
+                    node.delta_from_previous = metadata.get("delta", node.delta_from_previous)
+                    node.parent_ids = metadata.get("parent_ids", node.parent_ids)
+                    node.timestamp = metadata.get("timestamp", node.timestamp)
+                    # confidence may be updated separately via _update_confidence
+                else:
+                    node = IntelligenceNode(
+                        id=rec_id,
+                        goal=metadata.get("goal"),
+                        summary=summary,
+                        key_points=struct.get("key_points", []) or [],
+                        recommendation=struct.get("recommendations", [""])[0] if struct.get("recommendations") else "",
+                        delta_from_previous=metadata.get("delta", ""),
+                        parent_ids=metadata.get("parent_ids", []),
+                        timestamp=metadata.get("timestamp", ""),
+                        confidence=float(metadata.get("confidence", 0.0)) if metadata.get("confidence") is not None else 0.0,
+                    )
+                    self._graph[rec_id] = node
                 # update inverted index using keywords from summary and task_name
                 tokens = set(w.strip('.,').lower() for w in (summary + ' ' + task_name).split() if len(w) > 3)
                 for tok in tokens:
@@ -403,11 +418,39 @@ class MemoryStore:
                         break
         except Exception:
             pass
+        # helper to sanitize metadata for Chroma which restricts metadata value types
+        def _sanitize_for_chroma(m: Dict[str, Any]) -> Dict[str, Any]:
+            out: Dict[str, Any] = {}
+            for k, v in (m or {}).items():
+                # allowed primitive types by chroma: str, int, float, bool, list, None
+                if v is None or isinstance(v, (str, int, float, bool)):
+                    out[k] = v
+                elif isinstance(v, list):
+                    # ensure list elements are primitives; serialize non-primitives
+                    new_list = []
+                    for item in v:
+                        if item is None or isinstance(item, (str, int, float, bool)):
+                            new_list.append(item)
+                        else:
+                            try:
+                                new_list.append(json.dumps(item))
+                            except Exception:
+                                new_list.append(str(item))
+                    out[k] = new_list
+                else:
+                    # for dicts or other complex objects serialize to JSON string
+                    try:
+                        out[k] = json.dumps(v)
+                    except Exception:
+                        out[k] = str(v)
+            return out
+
         # Chroma path
         if self._vector_db == "chroma" and self._collection is not None:
             def _add_chroma():
                 try:
-                    self._collection.add(documents=[summary], metadatas=[metadata], ids=[rec_id])
+                    safe_meta = _sanitize_for_chroma(metadata)
+                    self._collection.add(documents=[summary], metadatas=[safe_meta], ids=[rec_id])
                 except Exception:
                     logger.exception("Chroma add failed")
 
@@ -808,7 +851,29 @@ class MemoryStore:
                 except Exception:
                     logger.debug("Chroma collection delete not supported or failed; continuing")
                 try:
-                    self._collection.add(documents=[summary], metadatas=[comp_meta], ids=[comp_id])
+                    # sanitize comp_meta values to primitives or JSON strings for chroma
+                    safe_comp_meta = {}
+                    for kk, vv in (comp_meta or {}).items():
+                        if vv is None or isinstance(vv, (str, int, float, bool)):
+                            safe_comp_meta[kk] = vv
+                        elif isinstance(vv, list):
+                            new_list = []
+                            for item in vv:
+                                if item is None or isinstance(item, (str, int, float, bool)):
+                                    new_list.append(item)
+                                else:
+                                    try:
+                                        new_list.append(json.dumps(item))
+                                    except Exception:
+                                        new_list.append(str(item))
+                            safe_comp_meta[kk] = new_list
+                        else:
+                            try:
+                                safe_comp_meta[kk] = json.dumps(vv)
+                            except Exception:
+                                safe_comp_meta[kk] = str(vv)
+
+                    self._collection.add(documents=[summary], metadatas=[safe_comp_meta], ids=[comp_id])
                 except Exception:
                     logger.exception("Chroma add of compressed doc failed")
                     return None
