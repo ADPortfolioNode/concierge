@@ -11,6 +11,7 @@ interface AppState {
   priority: number;
   loading: boolean;
   error: string | null;
+  setError: (msg: string | null) => void;
   setConversation: (msgs: ConversationMessage[]) => void;
   setActiveMedia: (url: string | null) => void;
   appendMessage: (msg: ConversationMessage) => void;
@@ -26,6 +27,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   priority: 0,
   loading: false,
   error: null,
+  setError: (msg) => set({ error: msg }),
   setConversation: (msgs) => set({ conversation: msgs }),
   setActiveMedia: (url) => set({ activeMedia: url }),
   appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, msg] })),
@@ -111,16 +113,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         else reportApiError(new Error(String(e)));
       } catch {}
 
-      // Render a system message on error
-      const systemMsg: ConversationMessage = {
-        id: 'system-' + Date.now(),
-        role: 'system',
-        content: 'Connection interrupted. Please retry.',
-        timestamp: new Date().toISOString(),
-        media: null,
-        meta: null,
-      };
-      set((s) => ({ conversation: [...s.conversation, systemMsg], error: String(e) }));
+      // set error state; UI will render a banner.
+      set({ error: String(e) });
     } finally {
       set({ loading: false });
     }

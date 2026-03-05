@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import ChatContainer from '../chat/ChatContainer';
 import MediaRenderer from '../media/MediaRenderer';
+import ErrorBanner from '../ui/ErrorBanner';
 import { useViewport } from '@/utils/useViewport';
 import { useAppStore } from '@/state/appStore';
 
@@ -47,6 +48,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <aside className="concierge-panel" role="complementary">
         <ChatContainer />
       </aside>
+
+      {/* global error banner appears below panels */}
+      <ErrorBanner />
 
       <main className="context-panel">{children}</main>
 
