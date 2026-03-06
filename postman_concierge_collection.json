@@ -18,7 +18,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"message\": \"hello from Postman\"\n}"
+          "raw": "{\n  \"message\": \"hello from Postman\" \n  // you may also send \"input\": \"...\" as an alias for legacy clients\n}"
         },
         "url": {
           "raw": "http://localhost:5173/api/v1/concierge/message",
@@ -48,7 +48,7 @@
               "    const parsed = JSON.parse(res.data.content);",
               "    pm.test('content parses as JSON object or array', () => typeof parsed === 'object');",
               "  } catch (e) {",
-              "    // not JSON - that's acceptable depending on backend
+              "    // not JSON - that's acceptable depending on backend",
               "  }",
               "}"
             ],

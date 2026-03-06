@@ -114,6 +114,7 @@ YES=false
 BUILD=false
 DIAG=false
 LOGS=false
+TEST=false
 # frontend will be started by default; use --no-frontend to skip
 FRONTEND=true
 CLEAR=false
@@ -124,7 +125,8 @@ for arg in "$@"; do
         --yes) YES=true ;;
         --build) BUILD=true ;;
         --diag) DIAG=true ;;
-        --log) LOGS=true ;;
+        --log) LOGS=true ;; 
+        --test) TEST=true ;;
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
         --clear) CLEAR=true ;;
@@ -199,25 +201,18 @@ else
     compose up -d || die "compose up failed"
 fi
 
-# if requested, dump current service logs as well (append)
-if $LOGS; then
-    echo "Writing service logs to start.log"
-    echo "--- compose logs (snapshot) ---" | tee -a start.log
-    compose logs --no-color --timestamps | tee -a start.log
+# if --test was requested, kick off Playwright and tail backend logs
+if $TEST; then
+    echo "--test flag detected: launching Playwright suite and capturing logs"
+    # tail logs so we can see server output during the test
+    docker logs -f quesarc_app --since 1s > playwright_backend.log 2>&1 &
+    LOGPID=$!
+    # run tests from the embedded frontend directory; allow custom args via TEST_ARGS
+    (cd frontend && npx playwright test ${TEST_ARGS:-})
+    # stop log tail
+    kill $LOGPID 2>/dev/null || true
+    echo "Playwright run complete; backend log written to playwright_backend.log"
 fi
-
-
-# optionally start frontend dev server (enabled by default)
-if $FRONTEND; then
-    # install dependencies on host for editor tooling; the container will
-    # install its own Linux‑compatible modules in a named volume when it starts.
-    # this step is therefore optional but harmless, and remains for users who
-    # occasionally want to run `npm` outside of Docker.
-    if [ -d frontend ]; then
-        echo "Installing frontend dependencies locally (optional)"
-        if command -v npm.cmd >/dev/null 2>&1; then
-            npm.cmd --prefix frontend install || {
-                echo "npm install failed; check frontend/package.json for invalid version ranges (e.g. zustand)" >&2
                 die "npm install failed"
             }
         else

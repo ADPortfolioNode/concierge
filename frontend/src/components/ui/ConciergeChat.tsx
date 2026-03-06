@@ -7,9 +7,15 @@ const ConciergeChat: React.FC = () => {
     <div>
       <h2>Concierge</h2>
       <ul>
-        {conversation.map((msg) => (
-          <li key={msg.id}>{msg.text}</li>
-        ))}
+        {conversation.map((msg) => {
+          // stringified metadata for debugging/testing; put in data attribute
+          const metaAttr = msg.meta ? JSON.stringify(msg.meta) : undefined;
+          return (
+            <li key={msg.id} data-meta={metaAttr}>
+              {msg.content || msg.text}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -2,6 +2,9 @@ import apiClient from './client';
 import { ApiResponse } from '../types/api';
 
 export const sendMessage = async (message: string) => {
+  if (!message || !message.trim()) {
+    throw new Error('message must be a nonempty string');
+  }
   const res = await apiClient.post<ApiResponse>('/concierge/message', { message });
   if ((res as any).error) {
     throw new Error((res as any).error);

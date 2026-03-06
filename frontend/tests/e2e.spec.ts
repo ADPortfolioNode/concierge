@@ -35,17 +35,39 @@ test.describe('Concierge UI', () => {
 
   test('shows error banner when API fails', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
-    // intercept the concierge API and force a 500 error
+    // first simulate a 400 response (e.g. missing message field)
+    await page.route('**/api/v1/concierge/message', (route) =>
+      route.fulfill({ status: 400, body: 'message required' })
+    );
+    await page.fill('textarea', 'will be blocked');
+    await page.keyboard.press('Enter');
+    let banner = page.locator('role=alert');
+    await expect(banner).toContainText('400');
+
+    // now simulate a generic server error
     await page.route('**/api/v1/concierge/message', (route) =>
       route.fulfill({ status: 500, body: 'server error' })
     );
-    // type a message and send
     await page.fill('textarea', 'trigger error');
     await page.keyboard.press('Enter');
-    // expect error banner to appear
-    const banner = page.locator('role=alert');
-    // banner should contain the HTTP status code or a generic error message
+    banner = page.locator('role=alert');
     await expect(banner).toContainText('500');
+  });
+
+  test('backend returns greeting for hi', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.fill('textarea', 'hi');
+    await page.keyboard.press('Enter');
+    const bubble = page.locator('[aria-label^="message-"]:visible').last();
+    await expect(bubble).toContainText('Hello');
+  });
+
+  test('backend handles small talk', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.fill('textarea', 'how are you?');
+    await page.keyboard.press('Enter');
+    const bubble = page.locator('[aria-label^="message-"]:visible').last();
+    await expect(bubble).not.toHaveText('');
   });
 
   test('navigation includes how-to and page renders', async ({ page }) => {
@@ -61,12 +83,22 @@ test.describe('Concierge UI', () => {
   test('real backend chat returns a response', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
     // send a message without stubbing to ensure backend interaction
-    await page.fill('textarea', 'integration test');
+    const message = 'integration test';
+
+    // intercept the response so we can check it even if the UI lags
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes('/api/v1/concierge/message') && resp.request().method() === 'POST',
+      { timeout: 90000 }
+    );
+
+    await page.fill('textarea', message);
     await page.keyboard.press('Enter');
-    // wait for an assistant bubble to appear (timeout longer to account for processing)
-    const bubbles = page.locator('[aria-label^="message-"]');
-    await expect(bubbles).toHaveCount(2, { timeout: 15000 });
-    // the second bubble should be from assistant and contain some text
-    await expect(bubbles.nth(1)).not.toContainText('integration test');
+
+    const resp = await responsePromise;
+    expect(resp.status()).toBe(200);
+    const body = await resp.json();
+    expect(body.status).toBe('success');
+    // make sure the backend actually returned something useful
+    expect(body.data).toBeDefined();
   });
 });

@@ -66,6 +66,26 @@ class SacredTimeline:
         except Exception:
             logger.exception("Failed to register default tools")
 
+    async def _generate_chat_reply(self, user_input: str) -> str:
+        """Produce a friendly chat-style response for non-goal input.
+
+        This helper uses the shared LLM instance (`self._llm`). Tests may
+        override `self._chat_llm` if they need a dummy implementation.
+        """
+        # prefer injected chat-specific LLM for tests or customization
+        llm = getattr(self, "_chat_llm", None) or self._llm
+        prompt = (
+            "You are a helpful, friendly assistant conversing with a user. "
+            "The user said:\n" + user_input + "\n"
+            "Respond naturally and encourage next steps, but do not attempt to "
+            "break the input into tasks unless the user explicitly asks you to."
+        )
+        try:
+            return (await llm.generate(prompt, context=user_input)).strip()
+        except Exception:
+            logger.exception("Chat reply generation failed; echoing input")
+            return user_input
+
     async def _track_agent(self, agent_obj: Any, manager_agent_id: str, result_future: asyncio.Future, task_info: Dict[str, Any]) -> Dict[str, Any]:
         """Await an agent coroutine result, summarize and store it in memory.
 
@@ -567,16 +587,38 @@ class SacredTimeline:
           return structured metadata to the caller.
         """
         logger.info("SacredTimeline handling input")
-        # Use new planner.plan() API to get structured tasks
+        # quick replies for simple greetings to avoid unnecessary planning
+        greeting = user_input.strip().lower()
+        if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
+            return {"status": "success", "response": "Hello! I'm Concierge — how can I assist you today?"}
+
+        # ask planner to decompose into tasks. planner may return a trivial "echo"
         plan = await self._planner.plan(user_input)
-        tasks = plan.get("tasks")
+        tasks = plan.get("tasks") or []
+
+        # if the planner produced a single task that simply repeats the user_input,
+        # consider treating the exchange as casual conversation.  however, don't
+        # do this for longer inputs – a real goal may look exactly like the
+        # original sentence when the planner falls back, so we require the input
+        # to be quite short (<=5 words) before abandoning the autonomous loop.
         if tasks:
-            # Launch autonomous loop
+            if (
+                len(tasks) == 1
+                and tasks[0].get("instructions", "").strip().lower() == user_input.strip().lower()
+            ):
+                word_count = len(user_input.strip().split())
+                if word_count <= 5:
+                    # small talk or unstructured input; hand off to chat reply
+                    reply = await self._generate_chat_reply(user_input)
+                    return {"status": "success", "response": reply}
+                # otherwise the user likely has a genuine goal; fall through
+
+            # proceed with autonomous execution for non-trivial plans
             return await self.run_autonomous(user_input)
 
-        # Fallback: no tasks generated
-        logger.error("Planner returned no tasks for input: %s", user_input)
-        return {"status": "error", "reason": "no_tasks"}
+        # no tasks at all: still conversational
+        reply = await self._generate_chat_reply(user_input)
+        return {"status": "success", "response": reply}
 
 
 if __name__ == "__main__":

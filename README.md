@@ -22,6 +22,36 @@ Run the API server (development):
 uvicorn app.main:app --reload --port 8000  # when running locally without containers
 ```
 
+## Conversation workflow
+
+The server now implements a simple but clear input workflow that keeps the
+agent friendly unless the user asks it to do something concrete:
+
+1. **Greetings & small talk** – very short messages ("hi", "hello", "how are you?", etc.)
+   are handled directly and elicit a polite, conversational response. A lightweight
+   chat prompt is sent to the LLM so the assistant behaves like a companion rather
+   than launching task planning.
+2. **Goal detection** – longer or goal‑oriented inputs are passed to the
+   `Planner`, which attempts to decompose them into ordered subtasks. If
+   meaningful tasks are returned the system will spawn `TaskAgent`s to execute
+   and synthesize the results.
+3. **Fallback conversation** – if the planner produces no tasks or only a trivial
+   echo of the user’s comment, the workflow remains in chat mode and returns a
+   friendly reply instead of spinning up agents. This prevents noise when the
+   user is just chatting.
+
+The frontend understands the `response` field returned by the API and will
+render it as the assistant's message, ensuring greetings and small talk appear
+naturally in the chat history.
+
+### Message metadata
+
+All responses include a `meta` object containing the raw result produced by
+`SacredTimeline`.  The UI stores this separately from the displayed text so
+that conversations remain uncluttered; metadata can be surfaced in tooltips or
+collapsible panels when needed (e.g. for debugging or showing goal/task
+details).
+
 > **Note:** in the Docker Compose setup the FastAPI app is exposed on host port
 > **8001** to avoid conflicting with the Chroma vector database, which listens on
 > 8000. The helper script maps `8001:8000` for the `app` service.
@@ -96,6 +126,12 @@ script will start the backend services **and** the frontend container; use
 
 # skip the frontend service
 ./start.sh --no-frontend
+
+# bring up the stack and run Playwright end‑to‑end tests (backend logs in playwright_backend.log)
+./start.sh --test
+
+# you can also pass extra arguments to the test command via TEST_ARGS, e.g.
+TEST_ARGS="tests/e2e.spec.ts --project=chromium -g Concierge UI" ./start.sh --test
 ```
 
 The script accepts flags `--prune`, `--yes`, `--build`, `--diag`, and
@@ -195,8 +231,66 @@ harness checks ensure cross-task reuse, critic strictness, and graph
 state updates.
 
 
-## Example prompts for UI testing
+## API Endpoints
 
+The backend exposes a simple JSON API used by the React frontend and any
+other clients.
+
+### POST `/api/v1/concierge/message`
+
+Send a user message to the conversational engine.  The request body must be
+JSON and include **either** a `message` property or an `input` property
+(the latter is accepted for historical reasons).  Whitespace-only strings are
+rejected with a 400 error.
+
+```json
+{
+  "message": "What is the weather today?"
+}
+```
+
+The response is wrapped in a generic envelope:
+
+```json
+{
+  "status": "success",
+  "timestamp": "2026-03-06T04:16:06.421054Z",
+  "request_id": "...",
+  "data": {
+    "id": "...",
+    "role": "assistant",
+    "content": "<assistant reply>",
+    "meta": { "raw": { /* full timeline output */ } }
+  },
+  "meta": {"confidence":null,"priority":null,"media":null},
+  "errors": null
+}
+```
+
+Clients should display `data.content` to end users; the `meta.raw` field
+contains structured details used for debugging or advanced UI widgets.
+
+### GET `/api/v1/concierge/conversation`
+
+Returns an array representing the current conversation.  In this simple demo
+service the list is always empty, but production systems would persist
+messages across requests.
+
+```json
+{"status":"success","timestamp":"...","request_id":"...","data":[],"meta":{...},"errors":null}
+```
+
+{
+  "message": "What is the weather today?"
+}
+```
+
+The response is always wrapped in the generic `ApiResponse` envelope with a
+`data` field containing an object representing the assistant’s reply.  The
+`data` object has at least the following properties:
+
+* `id` – an opaque string (millisecond timestamp by default)
+* `role` – `
 While the core API is text‑based, the frontend is built to support
 multimodal requests when paired with a capable model (for example,
 Google’s Gemini family).  Here are some sample user prompts you can feed

@@ -9,7 +9,7 @@ import logging
 import asyncio
 import json
 import traceback
-from typing import Any
+from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -72,8 +72,25 @@ class AskPayload(BaseModel):
     input: str
 
 
+from pydantic import root_validator
+
+
 class ConciergeMessagePayload(BaseModel):
-    message: str
+    # legacy clients may send either `message` or `input`; normalize to
+    # `message` for the rest of the code.
+    message: Optional[str] = None
+    input: Optional[str] = None
+
+    @root_validator(pre=True)
+    def require_one_field(cls, values):
+        # prefer explicit "message" but fall back to "input" alias
+        msg = values.get("message")
+        if not msg and "input" in values:
+            msg = values.get("input")
+        if not msg or not isinstance(msg, str) or not msg.strip():
+            raise ValueError("either 'message' or 'input' field must be provided and nonempty")
+        values["message"] = msg
+        return values
 
 
 def _api_response(data: any, status: str = 'success'):
@@ -125,23 +142,34 @@ async def ask(payload: AskPayload):
 
 @app.post("/api/v1/concierge/message")
 async def concierge_message(payload: ConciergeMessagePayload):
-    if not payload.message:
-        raise HTTPException(status_code=400, detail="message required")
-    result = await app.state.timeline.handle_user_input(payload.message)
-    # return in frontend-friendly ApiResponse envelope
-    # Prefer returning structured objects so frontend can render them.
-    # If the result is not JSON-serializable, fall back to its string form.
-    content_val = result
+    # the Pydantic validator above guarantees we have a nonempty `message`
+    msg = payload.message
+    result = await app.state.timeline.handle_user_input(msg)
+    # The timeline may return a friendly conversational response in the
+    # `response` field.  Convert that to the usual `content` string so the
+    # frontend rendering logic (which looks at payload.content/text) works
+    # correctly.
+    content_val: Any
+    if isinstance(result, dict) and "response" in result:
+        content_val = result["response"]
+    else:
+        content_val = result
     try:
         # test serializability
-        json.dumps(result)
+        json.dumps(content_val)
     except Exception:
-        content_val = str(result)
+        content_val = str(content_val)
 
     data = {
         'id': str(int(__import__('time').time() * 1000)),
         'role': 'assistant',
         'content': content_val,
+        # store the full timeline result in metadata so the frontend can
+        # render a clean chat line while still retaining structured data for
+        # inspection or UI widgets. downstream components should treat
+        # `meta` as opaque and display it only when the user explicitly
+        # expands or hovers.
+        'meta': {'raw': result},
     }
     return _api_response(data)
 
