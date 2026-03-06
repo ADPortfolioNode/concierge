@@ -20,6 +20,14 @@ from memory.memory_store import MemoryStore
 from config.settings import get_settings
 from pathlib import Path
 
+# Capability layers — plugins, tools, integrations
+from plugins.plugin_loader import load_default_plugins
+import plugins.plugin_registry as _plugin_reg
+from integrations.integration_loader import load_default_integrations
+import integrations.integration_registry as _intg_reg
+from tools.tool_registry import list_tools as _list_tool_names, get_tool as _get_tool
+from tools.tool_registry import register_tool as _register_tool
+
 # load application version from file
 _VERSION_FILE = Path(__file__).parent / "VERSION"
 try:
@@ -118,6 +126,20 @@ async def _startup():
     app.state.memory = MemoryStore(collection_name=settings.memory_collection)
     app.state.timeline = SacredTimeline(concurrency_manager=app.state.concurrency, memory_store=app.state.memory)
 
+    # Register built-in tools so /api/v1/tools can list them
+    from tools.web_search_tool import WebSearchTool
+    from tools.code_execution_tool import CodeExecutionTool
+    from tools.file_memory_tool import FileMemoryTool
+    for tool_cls in (WebSearchTool, CodeExecutionTool, FileMemoryTool):
+        try:
+            _register_tool(tool_cls())
+        except Exception:
+            logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
+
+    # Load capability layers
+    load_default_plugins()
+    load_default_integrations()
+
 
 # versioned endpoints are used by the frontend; we keep the old
 # `/ask` path as an unversioned alias for compatibility but wrap all
@@ -179,6 +201,34 @@ async def concierge_conversation():
     # no persistent conversation in this simple server; return empty list
     return _api_response([])
 
+
+# --- capability endpoints ---------------------------------------------------
+
+@app.get('/api/v1/plugins')
+async def get_plugins():
+    """List all registered plugins and their metadata."""
+    return _api_response(_plugin_reg.list_plugins())
+
+
+@app.get('/api/v1/tools')
+async def get_tools():
+    """List all registered tools and their metadata."""
+    names = _list_tool_names()
+    serialized = []
+    for name in names:
+        tool = _get_tool(name)
+        serialized.append({
+            "name": name,
+            "description": getattr(tool, "description", ""),
+            "type": "tool",
+        })
+    return _api_response(serialized)
+
+
+@app.get('/api/v1/integrations')
+async def get_integrations():
+    """List all registered integrations and their metadata."""
+    return _api_response(_intg_reg.list_integrations())
 
 
 # --- health endpoints ------------------------------------------------------

@@ -42,6 +42,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             <Link to="/tasks">Tasks</Link>
             <Link to="/goals">Goals</Link>
             <Link to="/howto">How‑To</Link>
+            <Link to="/capabilities">Capabilities</Link>
           </nav>
         </div>
       </header>
