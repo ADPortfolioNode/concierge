@@ -1,17 +1,14 @@
 import axios from 'axios';
 
-// allow the timeout to be tuned in development/CI via an environment
-// variable. Vite exposes variables prefixed with `VITE_` on
-// `import.meta.env`; fall back to the existing hard‑coded 30s value if unset.
-//
-// A 10‑second default was occasionally too short for slow backends, so we
-// bump it here; tests and CI can override with `VITE_API_TIMEOUT`. Use the
-// same environment variable when running the containerized frontend.
-const defaultTimeout = Number(import.meta.env.VITE_API_TIMEOUT ?? 30000);
+// Timeout is disabled by default (0 = no limit) to accommodate slow LLM
+// inference and large file uploads.  Override via the VITE_API_TIMEOUT env
+// variable (milliseconds) if you want an explicit cap, e.g. VITE_API_TIMEOUT=120000.
+const _envTimeout = import.meta.env.VITE_API_TIMEOUT;
+const defaultTimeout = _envTimeout !== undefined ? Number(_envTimeout) : 0;
 
 const apiClient = axios.create({
   baseURL: '/api/v1',
-  timeout: defaultTimeout,
+  timeout: defaultTimeout,   // 0 = no Axios built-in timeout
 });
 
 // Helper to start/stop adaptive timeout timers. We attach the timer and
@@ -20,7 +17,9 @@ const apiClient = axios.create({
 // restarted, which effectively grants another `timeout` ms of grace.  This
 // avoids failures when a slow-but-steady response is arriving in chunks.
 function attachAdaptiveTimeout(config: any) {
-  const timeout = config.timeout || defaultTimeout;
+  // Treat 0 / undefined as "disabled" — do not install a cancel timer.
+  const timeout = (config.timeout != null ? config.timeout : defaultTimeout);
+  if (!timeout) return;  // 0 means no timeout
   const source = axios.CancelToken.source();
   config.cancelToken = source.token;
 

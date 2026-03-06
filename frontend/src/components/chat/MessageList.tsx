@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ConversationMessage } from '@/types/domain';
 import MessageBubble from './MessageBubble';
+import { useAppStore } from '@/state/appStore';
 
 interface Props {
   messages: ConversationMessage[];
@@ -8,20 +9,19 @@ interface Props {
 
 const MessageList: React.FC<Props> = ({ messages }) => {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const prevLenRef = useRef<number>(messages.length);
+  const streamingId = useAppStore((s) => s.streamingId);
 
+  // Scroll to bottom whenever messages are added OR the streaming bubble grows
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
-    // auto-scroll to bottom when new message appended
-    if (messages.length !== prevLenRef.current) {
-      // small timeout to wait for layout
-      setTimeout(() => {
-        el.scrollTop = el.scrollHeight;
-      }, 10);
+    // Only auto-scroll when the user is already near the bottom (within 120 px)
+    // so we don't hijack scrolling when they've intentionally scrolled up.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (atBottom || streamingId) {
+      el.scrollTop = el.scrollHeight;
     }
-    prevLenRef.current = messages.length;
-  }, [messages]);
+  }, [messages, streamingId]);
 
   if (!messages || messages.length === 0) {
     // first-load system prompt

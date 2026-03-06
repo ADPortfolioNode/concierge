@@ -577,6 +577,91 @@ class SacredTimeline:
             logger.exception("Pruning graph failed")
         return result_out
 
+    async def stream_user_input(self, user_input: str):
+        """Stream a response to *user_input* as an async generator of SSE-ready strings.
+
+        For conversational input the LLM tokens are yielded one-by-one so the
+        browser can render them in real-time.  For autonomous goal execution a
+        series of progress events are emitted followed by the final summary tokens.
+
+        Every yielded value is a JSON-encoded dict so the HTTP layer only needs to
+        do ``f"data: {token}\\n\\n"``.
+
+        Event shapes
+        ------------
+        ``{"type": "token",    "text": "<token>"}``          – LLM output fragment
+        ``{"type": "progress", "text": "<status message>"}`` – orchestration step
+        ``{"type": "done",     "result": {...}}``             – final structured result
+        ``{"type": "error",    "text": "<message>"}``         – error (stream ends)
+        """
+        import json as _json
+
+        def _evt(obj: dict) -> str:
+            return _json.dumps(obj)
+
+        greeting = user_input.strip().lower()
+        if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
+            yield _evt({"type": "token", "text": "Hello! I'm Concierge — how can I assist you today?"})
+            yield _evt({"type": "done", "result": {"response": "Hello! I'm Concierge — how can I assist you today?"}})
+            return
+
+        # Ask planner: is this conversational or a real goal?
+        try:
+            plan = await self._planner.plan(user_input)
+        except Exception as exc:
+            yield _evt({"type": "error", "text": f"Planner error: {exc}"})
+            return
+
+        tasks = plan.get("tasks") or []
+        is_conversational = (
+            not tasks
+            or (
+                len(tasks) == 1
+                and tasks[0].get("instructions", "").strip().lower() == user_input.strip().lower()
+                and len(user_input.strip().split()) <= 5
+            )
+        )
+
+        if is_conversational:
+            # Stream LLM tokens directly
+            llm = getattr(self, "_chat_llm", None) or self._llm
+            prompt = (
+                "You are a helpful, friendly assistant conversing with a user. "
+                "The user said:\n" + user_input + "\n"
+                "Respond naturally and encourage next steps."
+            )
+            full_response: list[str] = []
+            try:
+                async for token in llm.astream(prompt, context=user_input):
+                    full_response.append(token)
+                    yield _evt({"type": "token", "text": token})
+            except Exception as exc:
+                logger.exception("Streaming chat reply failed")
+                yield _evt({"type": "error", "text": str(exc)})
+                return
+            yield _evt({"type": "done", "result": {"response": "".join(full_response)}})
+            return
+
+        # Autonomous goal — emit progress events, then stream the final synthesis
+        yield _evt({"type": "progress", "text": "Planning tasks…"})
+        try:
+            result = await self.run_autonomous(user_input)
+        except Exception as exc:
+            logger.exception("run_autonomous failed during streaming")
+            yield _evt({"type": "error", "text": str(exc)})
+            return
+
+        # Stream the final summary text token-by-token from the result
+        final = result.get("final") or {}
+        summary: str = final.get("summary") or str(result)
+        yield _evt({"type": "progress", "text": "Generating response…"})
+        # chunk the summary so the frontend renders progressively
+        chunk_size = 8
+        for i in range(0, len(summary), chunk_size):
+            yield _evt({"type": "token", "text": summary[i: i + chunk_size]})
+            await asyncio.sleep(0)  # yield to event loop between chunks
+        yield _evt({"type": "done", "result": result})
+
     async def handle_user_input(self, user_input: str) -> Dict[str, Any]:
         """Handle user input asynchronously.
 

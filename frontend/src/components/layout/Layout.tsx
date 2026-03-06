@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import ChatContainer from '../chat/ChatContainer';
 import MediaRenderer from '../media/MediaRenderer';
 import ErrorBanner from '../ui/ErrorBanner';
@@ -35,14 +35,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <header className="app-header">
         <div className="header-inner">
           <div className="brand">
-            <Link to="/">Concierge</Link>
+            <NavLink to="/" end style={{ color: '#c4b8ff', fontWeight: 800, fontSize: 16, letterSpacing: '-0.01em', borderBottom: 'none' }}>Concierge</NavLink>
           </div>
           <nav className="header-nav">
-            <Link to="/">Home</Link>
-            <Link to="/tasks">Tasks</Link>
-            <Link to="/goals">Goals</Link>
-            <Link to="/howto">How‑To</Link>
-            <Link to="/capabilities">Capabilities</Link>
+            <NavLink to="/" end>Home</NavLink>
+            <NavLink to="/goals">Goals</NavLink>
+            <NavLink to="/tasks">Tasks</NavLink>
+            <NavLink to="/workspace">Workspace</NavLink>
+            <NavLink to="/strategy">Strategy</NavLink>
+            <NavLink to="/howto">How&#8209;To</NavLink>
+            <NavLink to="/capabilities">Capabilities</NavLink>
           </nav>
         </div>
       </header>

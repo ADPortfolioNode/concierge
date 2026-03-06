@@ -11,7 +11,7 @@ import json
 import traceback
 from typing import Any, Optional
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from orchestration.sacred_timeline import SacredTimeline
@@ -27,6 +27,12 @@ from integrations.integration_loader import load_default_integrations
 import integrations.integration_registry as _intg_reg
 from tools.tool_registry import list_tools as _list_tool_names, get_tool as _get_tool
 from tools.tool_registry import register_tool as _register_tool
+
+# Phase 14-16: Workstation, Projects, and background Task Queue
+from workstation import upload_router as _upload_router
+from projects import project_router as _project_router
+from tasks import task_router as _task_router, get_queue as _get_task_queue
+from tasks.task_worker import register_default_handlers as _register_task_handlers
 
 # load application version from file
 _VERSION_FILE = Path(__file__).parent / "VERSION"
@@ -140,6 +146,10 @@ async def _startup():
     load_default_plugins()
     load_default_integrations()
 
+    # Wire file-agent handlers and start the background task worker
+    _register_task_handlers()
+    await _get_task_queue().start_worker()
+
 
 # versioned endpoints are used by the frontend; we keep the old
 # `/ask` path as an unversioned alias for compatibility but wrap all
@@ -196,10 +206,50 @@ async def concierge_message(payload: ConciergeMessagePayload):
     return _api_response(data)
 
 
+@app.post('/api/v1/concierge/stream')
+async def concierge_stream(payload: ConciergeMessagePayload):
+    """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.
+
+    Each SSE event carries a JSON-encoded dict.  See
+    ``SacredTimeline.stream_user_input`` for the event shapes.
+
+    The client should open this with ``fetch`` + ``ReadableStream`` (or
+    an ``EventSource`` that supports POST — most libraries do).
+    """
+    msg = payload.message
+
+    async def _event_gen():
+        try:
+            async for evt_json in app.state.timeline.stream_user_input(msg):
+                yield f"data: {evt_json}\n\n"
+        except Exception as exc:
+            logger.exception("SSE stream error")
+            import json as _j
+            yield f"data: {_j.dumps({'type': 'error', 'text': str(exc)})}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        _event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable Nginx proxy buffering
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @app.get('/api/v1/concierge/conversation')
 async def concierge_conversation():
     # no persistent conversation in this simple server; return empty list
     return _api_response([])
+
+
+# Register Phase 14-16 routers
+app.include_router(_upload_router)
+app.include_router(_project_router)
+app.include_router(_task_router)
 
 
 # --- capability endpoints ---------------------------------------------------

@@ -2,87 +2,645 @@
   "info": {
     "name": "Concierge API Tests",
     "_postman_id": "b1a5f6d0-0000-4000-8000-000000000000",
-    "description": "Basic Postman collection to test Concierge endpoints",
+    "description": "Postman collection covering all Concierge API endpoints (Phases 1-16).\nBase URL variable: {{base_url}} = http://localhost:8001",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key",   "value": "X-API-Key",              "type": "string" },
+      { "key": "value", "value": "{{postman_api_key}}",  "type": "string" },
+      { "key": "in",    "value": "header",               "type": "string" }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8001",
+      "type": "string"
+    },
+    {
+      "key": "project_id",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by POST /api/v1/projects test script"
+    },
+    {
+      "key": "upload_id",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by POST /api/v1/workstation/upload test script"
+    },
+    {
+      "key": "task_id",
+      "value": "",
+      "type": "string",
+      "description": "Populated automatically by POST /api/v1/tasks test script"
+    },
+    {
+      "key": "postman_api_key",
+      "value": "",
+      "type": "secret",
+      "description": "Optional API key sent as X-API-Key header on every request (collection-level auth). Set in your Postman environment or here."
+    }
+  ],
   "item": [
     {
-      "name": "POST /api/v1/concierge/message",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"message\": \"hello from Postman\" \n  // you may also send \"input\": \"...\" as an alias for legacy clients\n}"
-        },
-        "url": {
-          "raw": "http://localhost:5173/api/v1/concierge/message",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "5173",
-          "path": [
-            "api", "v1", "concierge", "message"
-          ]
-        }
-      },
-      "response": [],
-      "event": [
+      "name": "Health",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const res = pm.response.json();",
-              "pm.test('HTTP 2xx', () => pm.response.code >= 200 && pm.response.code < 300);",
-              "pm.test('ApiResponse present', () => res && typeof res === 'object' && res.status);",
-              "pm.test('data present', () => res.data !== undefined && res.data !== null);",
-              "// If content is a JSON string, try to parse for additional checks",
-              "if (res.data && res.data.content && typeof res.data.content === 'string') {",
-              "  try {",
-              "    const parsed = JSON.parse(res.data.content);",
-              "    pm.test('content parses as JSON object or array', () => typeof parsed === 'object');",
-              "  } catch (e) {",
-              "    // not JSON - that's acceptable depending on backend",
-              "  }",
-              "}"
-            ],
-            "type": "text/javascript"
-          }
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('status ok', () => pm.expect(res.status).to.eql('ok'));",
+                  "pm.test('version present', () => pm.expect(res.version).to.be.a('string'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/system",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/system",
+              "host": ["{{base_url}}"],
+              "path": ["health", "system"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('api ok', () => pm.expect(res.api).to.eql('ok'));",
+                  "pm.test('uptime present', () => pm.expect(res.uptime_seconds).to.be.a('number'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "GET /api/v1/concierge/conversation",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "http://localhost:5173/api/v1/concierge/conversation",
-          "protocol": "http",
-          "host": ["localhost"],
-          "port": "5173",
-          "path": ["api","v1","concierge","conversation"]
-        }
-      },
-      "response": [],
-      "event": [
+      "name": "Concierge Chat",
+      "item": [
         {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "const res = pm.response.json();",
-              "pm.test('HTTP 2xx', () => pm.response.code >= 200 && pm.response.code < 300);",
-              "pm.test('ApiResponse present', () => res && typeof res === 'object' && res.status);",
-              "pm.test('data is array', () => Array.isArray(res.data));"
-            ],
-            "type": "text/javascript"
-          }
+          "name": "POST /api/v1/concierge/message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"hello from Postman\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/concierge/message",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "concierge", "message"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data present', () => pm.expect(res.data).to.not.be.null);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/concierge/conversation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/concierge/conversation",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "concierge", "conversation"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Capabilities",
+      "item": [
+        {
+          "name": "GET /api/v1/plugins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/plugins",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "plugins"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tools",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tools"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/integrations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/integrations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "integrations"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 14 — Workstation Upload",
+      "item": [
+        {
+          "name": "POST /api/v1/workstation/upload (allowed file)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select any allowed file (.txt .csv .json .pdf .docx .png etc.)"
+                },
+                {
+                  "key": "project_id",
+                  "value": "{{project_id}}",
+                  "type": "text",
+                  "description": "Optional — attach upload to an existing project"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/workstation/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workstation", "upload"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('upload_id present', () => pm.expect(res.data.upload_id).to.be.a('string'));",
+                  "pm.test('filename present', () => pm.expect(res.data.filename).to.be.a('string'));",
+                  "pm.test('mime present', () => pm.expect(res.data.mime).to.be.a('string'));",
+                  "pm.collectionVariables.set('upload_id', res.data.upload_id);",
+                  "console.log('Saved upload_id:', res.data.upload_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/v1/workstation/upload (blocked extension — expect 400)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Attach a .exe or .sh file to verify the block"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/workstation/upload",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "workstation", "upload"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 400 for blocked extension', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 15 — Projects",
+      "item": [
+        {
+          "name": "POST /api/v1/projects (create)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Startup Financial Model\",\n  \"description\": \"Phase 15 test project\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/projects",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "projects"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('id present', () => pm.expect(res.data.id).to.be.a('string'));",
+                  "pm.test('name matches', () => pm.expect(res.data.name).to.eql('Startup Financial Model'));",
+                  "pm.test('files is array', () => pm.expect(res.data.files).to.be.an('array'));",
+                  "pm.collectionVariables.set('project_id', res.data.id);",
+                  "console.log('Saved project_id:', res.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/projects (list)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/projects",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "projects"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/projects/:id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/projects/{{project_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('id matches', () => pm.expect(res.data.id).to.eql(pm.collectionVariables.get('project_id')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/projects/:id (missing — expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/projects/does-not-exist",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "projects", "does-not-exist"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 404 for unknown project', () => pm.response.to.have.status(404));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/v1/projects/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/projects/{{project_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "projects", "{{project_id}}"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Phase 16 — Background Tasks",
+      "item": [
+        {
+          "name": "POST /api/v1/tasks (read_file)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"read_file\",\n  \"payload\": {\n    \"upload_id\": \"{{upload_id}}\",\n    \"filename\": \"sample.txt\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tasks"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('task id present', () => pm.expect(res.data.id).to.be.a('string'));",
+                  "pm.test('status valid', () => pm.expect(['queued','running','completed']).to.include(res.data.status));",
+                  "pm.collectionVariables.set('task_id', res.data.id);",
+                  "console.log('Saved task_id:', res.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/v1/tasks (generate_code)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"generate_code\",\n  \"payload\": {\n    \"context\": \"Analyze revenue growth and create a forecast\",\n    \"language\": \"python\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tasks"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('task id present', () => pm.expect(res.data.id).to.be.a('string'));",
+                  "pm.collectionVariables.set('task_id', res.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/v1/tasks (dataset_analysis)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"dataset_analysis\",\n  \"payload\": {\n    \"upload_id\": \"{{upload_id}}\",\n    \"filename\": \"financials.csv\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tasks"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.collectionVariables.set('task_id', res.data.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/tasks/:id (poll status)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks/{{task_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tasks", "{{task_id}}"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('id matches', () => pm.expect(res.data.id).to.eql(pm.collectionVariables.get('task_id')));",
+                  "pm.test('status is valid', () => pm.expect(['queued','running','completed','failed']).to.include(res.data.status));",
+                  "console.log('Task status:', res.data.status, '| result:', JSON.stringify(res.data.result));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/v1/tasks (list all)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tasks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tasks"]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+                  "const res = pm.response.json();",
+                  "pm.test('ApiResponse envelope', () => pm.expect(res.status).to.eql('success'));",
+                  "pm.test('data is array', () => pm.expect(res.data).to.be.an('array'));",
+                  "console.log('Total tasks in queue:', res.data.length);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         }
       ]
     }

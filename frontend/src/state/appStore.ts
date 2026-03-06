@@ -10,8 +10,11 @@ interface AppState {
   confidence: number;
   priority: number;
   loading: boolean;
+  streamingId: string | null;   // id of the in-flight assistant bubble
+  draftMessage: string;         // prefill value for the chat input
   error: string | null;
   setError: (msg: string | null) => void;
+  setDraft: (text: string) => void;
   setConversation: (msgs: ConversationMessage[]) => void;
   setActiveMedia: (url: string | null) => void;
   appendMessage: (msg: ConversationMessage) => void;
@@ -26,97 +29,93 @@ export const useAppStore = create<AppState>((set, get) => ({
   confidence: 0,
   priority: 0,
   loading: false,
+  streamingId: null,
+  draftMessage: '',
   error: null,
   setError: (msg) => set({ error: msg }),
+  setDraft: (text) => set({ draftMessage: text }),
   setConversation: (msgs) => set({ conversation: msgs }),
   setActiveMedia: (url) => set({ activeMedia: url }),
   appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, msg] })),
+
   sendMessage: async (input: string) => {
-    set({ loading: true, error: null });
+    const userMsgId = String(Date.now());
+    const assistantMsgId = String(Date.now() + 1);
+
+    // Optimistic: show user message immediately
+    const userMsg: ConversationMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: input,
+      timestamp: new Date().toISOString(),
+      media: null,
+      meta: null,
+    };
+    // Placeholder assistant bubble that will be updated token-by-token
+    const placeholderMsg: ConversationMessage = {
+      id: assistantMsgId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toISOString(),
+      media: null,
+      meta: null,
+    };
+
+    set((s) => ({
+      conversation: [...s.conversation, userMsg, placeholderMsg],
+      loading: true,
+      streamingId: assistantMsgId,
+      error: null,
+    }));
+
     try {
-      const resp = await ConciergeAPI.sendMessage(input);
-      // expect the backend to return a message envelope or conversation
-      const payload = resp?.data?.data;
-      if (!payload) {
-        throw new Error('Invalid response');
-      }
+      let accumulated = '';
 
-      // Normalize payload: backend may return structured objects in
-      // `content` (or JSON-stringified objects). Attempt to parse JSON
-      // strings so the UI can render structured fields like `summary`.
-      let parsedPayload: any = payload;
-      try {
-        if (payload && typeof payload === 'object') {
-          const c = payload.content;
-          if (typeof c === 'string') {
-            const t = c.trim();
-            if (t.startsWith('{') || t.startsWith('[')) {
-              try {
-                parsedPayload = { ...payload, content: JSON.parse(c) };
-              } catch (e) {
-                // leave as-is if parse fails
-              }
-            }
-          }
-        } else if (typeof payload === 'string') {
-          const t = payload.trim();
-          if (t.startsWith('{') || t.startsWith('[')) {
-            try {
-              parsedPayload = JSON.parse(payload);
-            } catch (e) {
-              // ignore
-            }
-          }
+      for await (const evt of ConciergeAPI.streamMessage(input)) {
+        if (evt.type === 'token' || evt.type === 'progress') {
+          accumulated += evt.text;
+          // Patch the placeholder bubble with the accumulated text
+          set((s) => ({
+            conversation: s.conversation.map((m) =>
+              m.id === assistantMsgId ? { ...m, content: accumulated } : m,
+            ),
+          }));
+        } else if (evt.type === 'done') {
+          // Finalise: if result has a cleaner summary use it
+          const result = evt.result as Record<string, unknown>;
+          const finalText: string =
+            (result?.final as any)?.summary ||
+            (result?.response as string) ||
+            accumulated;
+          set((s) => ({
+            conversation: s.conversation.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: finalText || accumulated, meta: { raw: result } }
+                : m,
+            ),
+          }));
+        } else if (evt.type === 'error') {
+          set((s) => ({
+            conversation: s.conversation.map((m) =>
+              m.id === assistantMsgId
+                ? { ...m, content: `⚠️ ${evt.text}` }
+                : m,
+            ),
+            error: evt.text,
+          }));
         }
-      } catch (e) {
-        // best-effort; continue with original payload
-        parsedPayload = payload;
-      }
-
-      if (Array.isArray(parsedPayload)) {
-        // replace or append conversation array as provided
-        set({ conversation: parsedPayload });
-        // pick latest media if provided in meta
-        const last = parsedPayload[parsedPayload.length - 1];
-        if (last?.media?.url) set({ activeMedia: last.media.url });
-      } else {
-        // payload is a single message
-        // prefer structured content.summary when available
-        let contentText = '';
-        const cont = parsedPayload.content ?? parsedPayload.text ?? '';
-        if (typeof cont === 'string') {
-          contentText = cont;
-        } else if (cont && typeof cont === 'object') {
-          if (cont.summary) contentText = cont.summary;
-          else contentText = JSON.stringify(cont);
-        } else {
-          contentText = String(cont || '');
-        }
-
-        const msg: ConversationMessage = {
-          id: parsedPayload.id || String(Date.now()),
-          role: parsedPayload.role || 'assistant',
-          content: contentText,
-          timestamp: parsedPayload.timestamp || new Date().toISOString(),
-          media: parsedPayload.media || null,
-          meta: parsedPayload.meta || null,
-        };
-        set((s) => ({ conversation: [...s.conversation, msg] }));
-        if (parsedPayload?.media?.url) set({ activeMedia: parsedPayload.media.url });
       }
     } catch (e) {
-      // report to central logger so that the app can hook in analytics or
-      // display global error notifications
-      try {
-        const { reportApiError } = require('../utils/errorLogger');
-        if (e instanceof Error) reportApiError(e);
-        else reportApiError(new Error(String(e)));
-      } catch {}
-
-      // set error state; UI will render a banner.
-      set({ error: String(e) });
+      const errText = e instanceof Error ? e.message : String(e);
+      // Replace the placeholder with the error
+      set((s) => ({
+        conversation: s.conversation.map((m) =>
+          m.id === assistantMsgId ? { ...m, content: `⚠️ ${errText}` } : m,
+        ),
+        error: errText,
+      }));
     } finally {
-      set({ loading: false });
+      set({ loading: false, streamingId: null });
     }
   },
 }));
