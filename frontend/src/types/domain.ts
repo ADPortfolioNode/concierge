@@ -14,5 +14,6 @@ export interface ConversationMessage {
     critic_score?: number;
     confidence?: number;
     priority?: number;
+    raw?: Record<string, unknown> | null;
   } | null;
 }

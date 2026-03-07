@@ -140,12 +140,77 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   );
 };
 
-const MetaLine: React.FC<{ meta?: ConversationMessage['meta'] }> = ({ meta }) => {
+const MetaPanel: React.FC<{ meta?: ConversationMessage['meta'] }> = ({ meta }) => {
+  const [open, setOpen] = useState(false);
   if (!meta) return null;
-  const parts: string[] = [];
-  if (typeof meta.confidence === 'number') parts.push(`Confidence: ${Math.round(meta.confidence * 100)}%`);
-  if (typeof meta.critic_score === 'number') parts.push(`Critic: ${meta.critic_score}`);
-  return <div style={{ fontSize: '12px', opacity: 0.7, marginTop: 6 }}>{parts.join(' • ')}</div>;
+
+  const hasScores = typeof meta.confidence === 'number' || typeof meta.critic_score === 'number';
+  const raw = meta.raw as any;
+  const structured = raw?.structured ?? raw?.final?.structured;
+  const keyPoints: string[] = structured?.key_points ?? [];
+  const recommendations: string[] = structured?.recommendations ?? [];
+  const risks: string[] = structured?.risks ?? [];
+  const refined: string = structured?.refined_recommendation ?? '';
+  const hasDetails = keyPoints.length > 0 || recommendations.length > 0 || risks.length > 0 || refined;
+
+  if (!hasScores && !hasDetails) return null;
+
+  const scoreParts: string[] = [];
+  if (typeof meta.confidence === 'number') scoreParts.push(`${Math.round(meta.confidence * 100)}% confidence`);
+  if (typeof meta.critic_score === 'number') scoreParts.push(`critic ${meta.critic_score}`);
+  const label = scoreParts.length > 0 ? scoreParts.join(' · ') : 'details';
+
+  return (
+    <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 5 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open ? 'true' : 'false'}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: 'rgba(255,255,255,0.35)', fontSize: 11, padding: '2px 0',
+          display: 'flex', alignItems: 'center', gap: 5,
+        }}
+      >
+        <span style={{ fontSize: 8, lineHeight: 1 }}>{open ? '▾' : '▸'}</span>
+        {label}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 6, padding: '8px 10px',
+          background: 'rgba(0,0,0,0.22)', borderRadius: 6,
+          fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.7,
+        }}>
+          {keyPoints.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginBottom: 2 }}>Key points</div>
+              {keyPoints.map((pt: string, i: number) => (
+                <div key={i} style={{ paddingLeft: 10 }}>{pt}</div>
+              ))}
+            </div>
+          )}
+          {recommendations.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginBottom: 2 }}>Recommendations</div>
+              {recommendations.map((r: string, i: number) => (
+                <div key={i} style={{ paddingLeft: 10 }}>{r}</div>
+              ))}
+            </div>
+          )}
+          {refined && (
+            <div style={{ marginBottom: 6 }}>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Summary: </span>{refined}
+            </div>
+          )}
+          {risks.length > 0 && (
+            <div>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Risks: </span>
+              {risks.join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const MessageBubble: React.FC<Props> = ({ msg }) => {
@@ -189,7 +254,7 @@ const MessageBubble: React.FC<Props> = ({ msg }) => {
             <MediaRenderer media={{ type: msg.media.type, url: msg.media.url }} />
           </div>
         )}
-        {!isSystem && !isStreaming && <MetaLine meta={msg.meta} />}
+        {!isSystem && !isStreaming && <MetaPanel meta={msg.meta} />}
         {msg.timestamp && !isStreaming && (
           <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>{new Date(msg.timestamp).toLocaleString()}</div>
         )}

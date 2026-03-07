@@ -121,21 +121,35 @@ export const useAppStore = create<AppState>((set, get) => ({
             ),
           }));
         } else if (evt.type === 'done') {
-          // Finalise: if result has a cleaner summary use it
+          // Finalise: extract a clean human-readable string from the result
           const result = evt.result as Record<string, unknown>;
-          const finalText: string =
-            (result?.final as any)?.summary ||
-            (result?.response as string) ||
-            accumulated;
           const metaResult = result as Record<string, any>;
           const confidence = metaResult?.final?.confidence ?? metaResult?.confidence ?? undefined;
           const critic_score = metaResult?.final?.critic_score ?? metaResult?.critic_score ?? undefined;
+          const resp = result?.response;
+          const finalText: string = (() => {
+            // 1. Non-empty summary from orchestration final pass
+            const s = (result?.final as any)?.summary || (result?.summary as string);
+            if (typeof s === 'string' && s.trim()) return s.trim();
+            // 2. response field — only if it reads like plain prose, not a raw error/object dump
+            if (typeof resp === 'string' && resp.trim()) {
+              if (resp.startsWith('[LLM-Error]')) {
+                const detail = resp.replace('[LLM-Error]', '').trim().split('\n')[0];
+                return `I wasn't able to complete that request right now.\n\n_${detail}_`;
+              }
+              if (!resp.startsWith("{") && !resp.startsWith("{'" )) return resp.trim();
+            }
+            // 3. Streamed tokens collected so far
+            if (accumulated.trim()) return accumulated.trim();
+            return 'Sorry, I could not generate a response right now.';
+          })();
           set((s) => ({
             conversation: s.conversation.map((m) =>
               m.id === assistantMsgId
-                ? { ...m, content: finalText || accumulated, meta: {
+                ? { ...m, content: finalText, meta: {
                     confidence: typeof confidence === 'number' ? confidence : undefined,
                     critic_score: typeof critic_score === 'number' ? critic_score : undefined,
+                    raw: result,
                   } }
                 : m,
             ),
