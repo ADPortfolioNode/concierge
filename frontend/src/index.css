@@ -90,24 +90,6 @@ main {
   min-height: 0;
   border-top: 1px solid rgba(255,255,255,0.06);
 }
-.media-overlay {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 40%;
-  height: 100%;
-  background: var(--color-bg-secondary);
-  box-shadow: -2px 0 8px rgba(0,0,0,0.5);
-  transform: translateX(100%);
-  transition: transform var(--motion-normal), opacity var(--motion-normal);
-  opacity: 0;
-  z-index: 100;
-}
-.media-overlay.open {
-  transform: translateX(0);
-  opacity: 1;
-}
-
 /* Tablet/Desktop 768 px+: 2-column side-by-side layout */
 @media (min-width: 768px) {
   .app-container {
@@ -140,12 +122,4 @@ main {
 h1, h2, h3, h4, h5, h6 {
   margin: 0 0 8px 0;
   font-weight: 600;
-}
-
-/* spacing token */
-:root {
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 16px;
-  --space-4: 24px;
 }

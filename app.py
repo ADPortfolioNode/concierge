@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import asyncio
 import json
+import time
 import traceback
 from typing import Any, Optional
 from pathlib import Path
@@ -19,6 +20,7 @@ try:
 except ImportError:
     pass  # dotenv not installed; fall back to system environment only
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -47,9 +49,11 @@ try:
     from jobs import job_router as _job_router
     _jobs_available = True
 except Exception as _jobs_import_err:  # noqa: BLE001
-    logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err)
     _job_router = None
     _jobs_available = False
+    _jobs_import_err_msg = str(_jobs_import_err)
+else:
+    _jobs_import_err_msg = None
 
 # load application version from file
 _VERSION_FILE = Path(__file__).parent / "VERSION"
@@ -59,14 +63,45 @@ except Exception:
     VERSION = "unknown"
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI()
 logger = logging.getLogger(__name__)
 # log version on startup
 logger.info(f"Concierge version {VERSION} starting")
+if not _jobs_available and _jobs_import_err_msg:
+    logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
-# record application start for uptime measurements
-import time
-app.state.start_time = time.time()
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI):
+    # ── startup ──────────────────────────────────────────────────────────
+    application.state.start_time = time.time()
+    application.state.conversation = []  # in-memory history; cleared on restart
+    settings = get_settings()
+    application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
+    application.state.memory = MemoryStore(collection_name=settings.memory_collection)
+    application.state.timeline = SacredTimeline(
+        concurrency_manager=application.state.concurrency,
+        memory_store=application.state.memory,
+    )
+    # Register built-in tools so /api/v1/tools can list them
+    from tools.web_search_tool import WebSearchTool
+    from tools.code_execution_tool import CodeExecutionTool
+    from tools.file_memory_tool import FileMemoryTool
+    for tool_cls in (WebSearchTool, CodeExecutionTool, FileMemoryTool):
+        try:
+            _register_tool(tool_cls())
+        except Exception:
+            logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
+    # Load capability layers
+    load_default_plugins()
+    load_default_integrations()
+    # Wire file-agent handlers and start the background task worker
+    _register_task_handlers()
+    await _get_task_queue().start_worker()
+    yield
+    # ── shutdown (nothing to clean up yet) ───────────────────────────────
+
+
+app = FastAPI(lifespan=_lifespan)
 
 
 # Simple request logging middleware to aid debugging
@@ -103,7 +138,7 @@ class AskPayload(BaseModel):
     input: str
 
 
-from pydantic import root_validator
+from pydantic import model_validator
 
 
 class ConciergeMessagePayload(BaseModel):
@@ -112,7 +147,8 @@ class ConciergeMessagePayload(BaseModel):
     message: Optional[str] = None
     input: Optional[str] = None
 
-    @root_validator(pre=True)
+    @model_validator(mode='before')
+    @classmethod
     def require_one_field(cls, values):
         # prefer explicit "message" but fall back to "input" alias
         msg = values.get("message")
@@ -140,32 +176,7 @@ def _api_response(data: any, status: str = 'success'):
     }
 
 
-@app.on_event("startup")
-async def _startup():
-    # record the epoch time so we can report uptime later
-    app.state.start_time = time.time()
-    settings = get_settings()
-    app.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
-    app.state.memory = MemoryStore(collection_name=settings.memory_collection)
-    app.state.timeline = SacredTimeline(concurrency_manager=app.state.concurrency, memory_store=app.state.memory)
-
-    # Register built-in tools so /api/v1/tools can list them
-    from tools.web_search_tool import WebSearchTool
-    from tools.code_execution_tool import CodeExecutionTool
-    from tools.file_memory_tool import FileMemoryTool
-    for tool_cls in (WebSearchTool, CodeExecutionTool, FileMemoryTool):
-        try:
-            _register_tool(tool_cls())
-        except Exception:
-            logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
-
-    # Load capability layers
-    load_default_plugins()
-    load_default_integrations()
-
-    # Wire file-agent handlers and start the background task worker
-    _register_task_handlers()
-    await _get_task_queue().start_worker()
+# startup logic moved to _lifespan context manager above
 
 
 # versioned endpoints are used by the frontend; we keep the old
@@ -209,8 +220,10 @@ async def concierge_message(payload: ConciergeMessagePayload):
     except Exception:
         content_val = str(content_val)
 
+    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    user_entry = {'id': str(int(time.time() * 1000) - 1), 'role': 'user', 'content': msg, 'timestamp': now}
     data = {
-        'id': str(int(__import__('time').time() * 1000)),
+        'id': str(int(time.time() * 1000)),
         'role': 'assistant',
         'content': content_val,
         # store the full timeline result in metadata so the frontend can
@@ -219,7 +232,10 @@ async def concierge_message(payload: ConciergeMessagePayload):
         # `meta` as opaque and display it only when the user explicitly
         # expands or hovers.
         'meta': {'raw': result},
+        'timestamp': now,
     }
+    app.state.conversation.append(user_entry)
+    app.state.conversation.append(data)
     return _api_response(data)
 
 
@@ -259,8 +275,7 @@ async def concierge_stream(payload: ConciergeMessagePayload):
 
 @app.get('/api/v1/concierge/conversation')
 async def concierge_conversation():
-    # no persistent conversation in this simple server; return empty list
-    return _api_response([])
+    return _api_response(list(app.state.conversation))
 
 
 # Register Phase 14-16 routers

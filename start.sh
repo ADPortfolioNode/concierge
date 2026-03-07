@@ -213,6 +213,12 @@ if $TEST; then
     kill $LOGPID 2>/dev/null || true
     echo "Playwright run complete; backend log written to playwright_backend.log"
 fi
+
+if $FRONTEND; then
+    if [ -d "frontend" ]; then
+        if [ -f "frontend/package-lock.json" ]; then
+            npm --prefix frontend ci --no-audit --no-fund || {
+                echo "npm ci failed; falling back to npm install" >&2
                 die "npm install failed"
             }
         else

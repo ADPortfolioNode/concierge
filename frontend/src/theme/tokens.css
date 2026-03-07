@@ -6,8 +6,9 @@
   --color-bg-secondary: #111;
   --color-surface: #1e1e2f;
   --color-border: #2a2a3a;
-  --color-text: #eee;
-  --color-accent: #c0392b;
+  --color-text: #e2e8f0;
+  --color-accent: #7c6af7;
+  --color-accent-light: #c4b8ff;
 
   /* spacing scale */
   --space-1: 4px;

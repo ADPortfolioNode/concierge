@@ -2,6 +2,17 @@ import { create } from 'zustand';
 import { ConversationMessage } from '../types/domain';
 import * as ConciergeAPI from '@/api/conciergeService';
 
+export interface MediaItem {
+  id: string;
+  url: string;
+  timestamp: string;
+}
+
+// Regexes shared with MediaStage for routing responses to the right layer
+const _IMG_RE = /https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*/gi;
+const _VID_RE = /https?:\/\/\S+?\.(?:mp4|webm)(?:[?#]\S*)?/gi;
+const _AUD_RE = /https?:\/\/\S+?\.(?:mp3|wav|m4a)(?:[?#]\S*)?/gi;
+
 interface AppState {
   conversation: ConversationMessage[];
   activeMedia: string | null;
@@ -10,14 +21,25 @@ interface AppState {
   confidence: number;
   priority: number;
   loading: boolean;
-  streamingId: string | null;   // id of the in-flight assistant bubble
-  draftMessage: string;         // prefill value for the chat input
+  streamingId: string | null;
+  draftMessage: string;
   error: string | null;
+  // ── media layer state ──────────────────────────────────────────────────
+  imageLayers: MediaItem[];
+  videoLayers: MediaItem[];
+  audioLayers: MediaItem[];
+  textHighlights: string[];
+  // ── actions ────────────────────────────────────────────────────────────
   setError: (msg: string | null) => void;
   setDraft: (text: string) => void;
   setConversation: (msgs: ConversationMessage[]) => void;
   setActiveMedia: (url: string | null) => void;
   appendMessage: (msg: ConversationMessage) => void;
+  pushImage: (url: string) => void;
+  pushVideo: (url: string) => void;
+  pushAudio: (url: string) => void;
+  pushTextHighlight: (text: string) => void;
+  clearMediaLayers: () => void;
   sendMessage: (input: string) => Promise<void>;
 }
 
@@ -32,11 +54,29 @@ export const useAppStore = create<AppState>((set, get) => ({
   streamingId: null,
   draftMessage: '',
   error: null,
+  imageLayers: [],
+  videoLayers: [],
+  audioLayers: [],
+  textHighlights: [],
   setError: (msg) => set({ error: msg }),
   setDraft: (text) => set({ draftMessage: text }),
   setConversation: (msgs) => set({ conversation: msgs }),
   setActiveMedia: (url) => set({ activeMedia: url }),
   appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, msg] })),
+  pushImage: (url) => set((s) => ({
+    imageLayers: [...s.imageLayers, { id: `img-${Date.now()}`, url, timestamp: new Date().toISOString() }],
+    activeMedia: url,
+  })),
+  pushVideo: (url) => set((s) => ({
+    videoLayers: [...s.videoLayers, { id: `vid-${Date.now()}`, url, timestamp: new Date().toISOString() }],
+  })),
+  pushAudio: (url) => set((s) => ({
+    audioLayers: [...s.audioLayers, { id: `aud-${Date.now()}`, url, timestamp: new Date().toISOString() }],
+  })),
+  pushTextHighlight: (text) => set((s) => ({
+    textHighlights: [...s.textHighlights.slice(-9), text],
+  })),
+  clearMediaLayers: () => set({ imageLayers: [], videoLayers: [], audioLayers: [], textHighlights: [], activeMedia: null }),
 
   sendMessage: async (input: string) => {
     const userMsgId = String(Date.now());
@@ -100,6 +140,18 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : m,
             ),
           }));
+          // ── Auto-route content to media layers ───────────────────────
+          const content = finalText || accumulated;
+          _IMG_RE.lastIndex = 0; _VID_RE.lastIndex = 0; _AUD_RE.lastIndex = 0;
+          const imgM = content.match(_IMG_RE);
+          const vidM = content.match(_VID_RE);
+          const audM = content.match(_AUD_RE);
+          imgM?.forEach((u) => get().pushImage(u.trim()));
+          vidM?.forEach((u) => get().pushVideo(u.trim()));
+          audM?.forEach((u) => get().pushAudio(u.trim()));
+          if (!imgM && !vidM && !audM && content.trim().length > 20) {
+            get().pushTextHighlight(content.trim().slice(0, 500));
+          }
         } else if (evt.type === 'error') {
           set((s) => ({
             conversation: s.conversation.map((m) =>

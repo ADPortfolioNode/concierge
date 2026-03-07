@@ -52,8 +52,7 @@ const SamplePrompt: React.FC<Props> = ({
           transition: 'background 0.15s, border-color 0.15s',
           maxWidth: '100%',
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          minWidth: 0,
         }}
         onMouseEnter={(e) => {
           (e.currentTarget as HTMLButtonElement).style.background = 'rgba(124,106,247,0.25)';
@@ -62,8 +61,8 @@ const SamplePrompt: React.FC<Props> = ({
           (e.currentTarget as HTMLButtonElement).style.background = 'rgba(124,106,247,0.12)';
         }}
       >
-        <span style={{ opacity: 0.7 }}>↗</span>
-        {text}
+        <span style={{ opacity: 0.7, flexShrink: 0 }}>↗</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{text}</span>
       </button>
     );
   }

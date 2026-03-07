@@ -144,7 +144,7 @@ const MessageInput: React.FC = () => {
               setShowUploader(false);
             }
           }}
-          disabled={loading || !value.trim()}
+          disabled={loading || (!value.trim() && !attachment)}
           title="Send message"
           style={{
             background: loading || !value.trim() ? 'rgba(124,106,247,0.2)' : '#7c6af7',
