@@ -32,6 +32,48 @@ from tools.tool_router import ToolRouter
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Conversational message detection
+# ---------------------------------------------------------------------------
+
+_CONVERSATIONAL_STARTS = (
+    "what are", "what is", "what's", "what do you", "what can you",
+    "how are", "how do you", "how does", "who are", "who is",
+    "can you", "could you tell", "do you", "are you",
+    "tell me about yourself", "tell me what", "describe yourself",
+    "why do", "why are", "help me understand", "explain what",
+    "i'm curious", "i am curious",
+)
+_CONVERSATIONAL_KEYWORDS = {
+    "capabilities", "features", "capabilit", "able to", "able to do",
+    "can do", "do you do", "are you able", "what you do", "functionality",
+    "how are you", "how's it going", "how do you feel",
+}
+
+
+def _is_conversational(text: str) -> bool:
+    """Return True if *text* is a conversational question vs. an actionable goal."""
+    lowered = text.strip().lower()
+    # Very short inputs are conversational
+    if len(lowered.split()) <= 3:
+        return True
+    # Starts with a common conversational pattern
+    if any(lowered.startswith(p) for p in _CONVERSATIONAL_STARTS):
+        return True
+    # Contains capability/status keywords
+    if any(k in lowered for k in _CONVERSATIONAL_KEYWORDS):
+        return True
+    # Pure question without action words
+    action_words = {"create", "build", "implement", "generate", "write", "make",
+                    "design", "develop", "fix", "update", "add", "remove", "change",
+                    "deploy", "run", "execute", "analyze", "process", "search",
+                    "fetch", "upload", "download", "convert", "migrate", "refactor"}
+    has_action = any(w in lowered.split() for w in action_words)
+    is_question = lowered.endswith("?") or lowered.startswith(("what ", "how ", "why ", "who ", "when ", "where ", "is ", "are ", "can ", "do "))
+    if is_question and not has_action:
+        return True
+    return False
+
 
 class SacredTimeline:
     def __init__(
@@ -262,9 +304,10 @@ class SacredTimeline:
             text = f"{title} {instr}"
 
             coding_keywords = [
-                "code", "implement", "build", "create", "write",
-                "function", "class", "api", "endpoint", "service",
-                "library", "script", "module",
+                "write code", "generate code", "code snippet", "write a function",
+                "write a class", "write a script", "create a function",
+                "python function", "javascript function", "typescript function",
+                "implement the code", "write the code", "produce code",
             ]
             research_keywords = [
                 "research", "analyze", "investigate", "web", "search",
@@ -393,13 +436,20 @@ class SacredTimeline:
                         t["status"] = "done"
                         out = None
                         if isinstance(res, dict):
-                            # attempt to coerce meaningful output for harness
+                            # Handle multiple agent return shapes:
+                            # BaseAgent subclasses: {"result": {...}, ...} or direct {"output": ..., "summary": ...}
+                            # TaskAgent: {"output": str, "agent_id": ..., "status": ...}
+                            # CodingAgent/ResearchAgent via BaseAgent.execute: wraps in outer {"result": inner}
                             r = res.get("result")
                             if isinstance(r, dict):
-                                # prefer summary or output fields
                                 out = r.get("summary") or r.get("output") or str(r)
-                            else:
+                            elif r is not None:
                                 out = str(r)
+                            else:
+                                # Direct output fields (TaskAgent, CodingAgent when result is not nested)
+                                out = res.get("output") or res.get("summary") or res.get("code")
+                                if out is None:
+                                    out = str(res)
                         elif isinstance(res, str):
                             out = res
                         t["output"] = out
@@ -534,12 +584,24 @@ class SacredTimeline:
                     final_result = await synth.run(goal, approved)
                 except Exception:
                     logger.exception("Synthesizer failed; falling back to deterministic aggregation")
-                    # deterministic fallback
-                    concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
-                    final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+                    # deterministic fallback — preserve URLs, skip noise
+                    parts = []
+                    for k, v in approved.items():
+                        s = str(v).strip()
+                        if not s or s.startswith("[LLM-Error]") or str(k).startswith("auto_refine"):
+                            continue
+                        parts.append(s if s.startswith("http") else f"{k}: {s}")
+                    concat = "\n".join(parts)
+                    final_result = {"summary": concat[:2000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
             else:
-                concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
-                final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+                parts = []
+                for k, v in approved.items():
+                    s = str(v).strip()
+                    if not s or s.startswith("[LLM-Error]") or str(k).startswith("auto_refine"):
+                        continue
+                    parts.append(s if s.startswith("http") else f"{k}: {s}")
+                concat = "\n".join(parts)
+                final_result = {"summary": concat[:2000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
 
         # Persist final synthesis into memory with structured payload for restart-safety
         try:
@@ -570,6 +632,12 @@ class SacredTimeline:
         # attach reflection flag if available
         if 'context' in locals():
             result_out["reflection_reused"] = context.get("reflection_reused", False)
+        # surface the final summary as a top-level "response" field so app.py
+        # and other callers don't need to dig into the nested "final" dict.
+        _final_summary = ""
+        if isinstance(final_result, dict):
+            _final_summary = final_result.get("summary") or ""
+        result_out["response"] = _final_summary or str(final_result)
         # housekeeping: prune low-confidence graph entries after run
         try:
             self._memory.prune_graph()
@@ -603,6 +671,25 @@ class SacredTimeline:
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
             yield _evt({"type": "token", "text": "Hello! I'm Concierge — how can I assist you today?"})
             yield _evt({"type": "done", "result": {"response": "Hello! I'm Concierge — how can I assist you today?"}})
+            return
+
+        # Bypass planner for conversational questions
+        if _is_conversational(user_input):
+            llm = getattr(self, "_chat_llm", None) or self._llm
+            prompt = (
+                "You are a helpful, friendly assistant conversing with a user. "
+                "The user said:\n" + user_input + "\n"
+                "Respond naturally and encourage next steps."
+            )
+            full_response_conv: list[str] = []
+            try:
+                async for token in llm.astream(prompt, context=user_input):
+                    full_response_conv.append(token)
+                    yield _evt({"type": "token", "text": token})
+            except Exception as exc:
+                yield _evt({"type": "error", "text": str(exc)})
+                return
+            yield _evt({"type": "done", "result": {"response": "".join(full_response_conv)}})
             return
 
         # Ask planner: is this conversational or a real goal?
@@ -676,6 +763,11 @@ class SacredTimeline:
         greeting = user_input.strip().lower()
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
             return {"status": "success", "response": "Hello! I'm Concierge — how can I assist you today?"}
+
+        # bypass orchestration for conversational questions
+        if _is_conversational(user_input):
+            reply = await self._generate_chat_reply(user_input)
+            return {"status": "success", "response": reply}
 
         # ask planner to decompose into tasks. planner may return a trivial "echo"
         plan = await self._planner.plan(user_input)

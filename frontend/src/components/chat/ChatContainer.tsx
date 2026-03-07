@@ -5,7 +5,6 @@ import { useAppStore } from '@/state/appStore';
 
 const ChatContainer: React.FC = () => {
   const messages = useAppStore((s) => s.conversation);
-  const activeMedia = useAppStore((s) => s.activeMedia);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

@@ -107,8 +107,16 @@ class SynthesizerAgent:
                 return {"summary": summary, "structured": structured, "confidence": confidence}
 
             # Fallback deterministic synthesis if all LLM attempts fail
-            concat = "\n".join([f"{tid}: {out}" for tid, out in approved_outputs.items()])
-            summary = concat[:1000] if concat else ""
+            # Keep URLs intact; skip auto_refine noise and LLM error entries
+            parts = []
+            for tid, out in approved_outputs.items():
+                s = str(out).strip()
+                if not s or s.startswith("[LLM-Error]") or str(tid).startswith("auto_refine"):
+                    continue
+                entry = s if s.startswith("http") else f"{tid}: {s}"
+                parts.append(entry)
+            concat = "\n".join(parts)
+            summary = concat[:2000] if concat else ""
             # crude key points: first sentence of each output (up to 5)
             key_points = []
             for out in approved_outputs.values():

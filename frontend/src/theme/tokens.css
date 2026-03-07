@@ -2,7 +2,10 @@
 :root {
   /* colors */
   --color-bg: #000;
+  --color-bg-primary: #0b0b0b;
   --color-bg-secondary: #111;
+  --color-surface: #1e1e2f;
+  --color-border: #2a2a3a;
   --color-text: #eee;
   --color-accent: #c0392b;
 

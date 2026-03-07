@@ -503,12 +503,24 @@ class SacredTimeline:
                     final_result = await synth.run(goal, approved)
                 except Exception:
                     logger.exception("Synthesizer failed; falling back to deterministic aggregation")
-                    # deterministic fallback
-                    concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
-                    final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+                    # deterministic fallback — preserve URLs, skip noise
+                    parts = []
+                    for k, v in approved.items():
+                        s = str(v).strip()
+                        if not s or s.startswith("[LLM-Error]") or str(k).startswith("auto_refine"):
+                            continue
+                        parts.append(s if s.startswith("http") else f"{k}: {s}")
+                    concat = "\n".join(parts)
+                    final_result = {"summary": concat[:2000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
             else:
-                concat = "\n".join([f"{k}: {v}" for k, v in approved.items()])
-                final_result = {"summary": concat[:1000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
+                parts = []
+                for k, v in approved.items():
+                    s = str(v).strip()
+                    if not s or s.startswith("[LLM-Error]") or str(k).startswith("auto_refine"):
+                        continue
+                    parts.append(s if s.startswith("http") else f"{k}: {s}")
+                concat = "\n".join(parts)
+                final_result = {"summary": concat[:2000], "structured": {"key_points": [], "risks": [], "recommendations": []}, "confidence": 0.0}
 
         # Persist final synthesis into memory with structured payload for restart-safety
         try:

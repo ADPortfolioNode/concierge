@@ -1,5 +1,14 @@
 services:
 
+  redis:
+    image: redis:7-alpine
+    container_name: quesarc_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
   app:
     build: .
     container_name: quesarc_app
@@ -11,6 +20,7 @@ services:
     depends_on:
       - chroma
       - qdrant
+      - redis
     environment:
       - VECTOR_DB=${VECTOR_DB:-chroma}
       - CHROMA_HOST=chroma
@@ -18,6 +28,35 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - MEMORY_COMPRESS_THRESHOLD=999999
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+
+  quesarc_worker:
+    build: .
+    container_name: quesarc_worker
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+      - app
+    environment:
+      - VECTOR_DB=${VECTOR_DB:-chroma}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+
+  flower:
+    image: mher/flower:2.0
+    container_name: quesarc_flower
+    command: celery flower --broker=redis://redis:6379/0 --port=5555
+    depends_on:
+      - redis
+    ports:
+      - "5555:5555"
 
   chroma:
     image: chromadb/chroma:latest
@@ -65,6 +104,7 @@ services:
 
 volumes:
   qdrant_data:
+  redis_data:
   frontend_node_modules:
 
 networks:

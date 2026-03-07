@@ -50,6 +50,9 @@ const SamplePrompt: React.FC<Props> = ({
           fontSize: 13,
           padding: '4px 14px',
           transition: 'background 0.15s, border-color 0.15s',
+          maxWidth: '100%',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
         }}
         onMouseEnter={(e) => {

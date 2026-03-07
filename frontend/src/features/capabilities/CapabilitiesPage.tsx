@@ -58,11 +58,11 @@ function CapabilityCard({ item }: { item: CapabilityItem }) {
           </span>
         )}
       </div>
-      <div style={{ fontWeight: 600, fontSize: 15 }}>{item.name}</div>
+      <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>{item.name}</div>
       {item.service && (
-        <div style={{ fontSize: 12, color: '#9ca3af' }}>Service: {item.service}</div>
+        <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Service: {item.service}</div>
       )}
-      <div style={{ fontSize: 13, color: '#cbd5e1' }}>{item.description}</div>
+      <div style={{ fontSize: 13, color: '#cbd5e1', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{item.description}</div>
       {item.version && (
         <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>v{item.version}</div>
       )}

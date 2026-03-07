@@ -78,13 +78,11 @@ class CriticAgent(BaseAgent):
             except Exception:
                 logger.warning("Critic retry also failed; refining")
         if parse_failed:
-            # still failed after retry
-            res = {"agent": self.name, "decision": "refine", "score": 0, "comments": "critic parsing failure", "suggestions": []}
-            try:
-                await self.memory.store_summary(task_name=task.get("title") or task.get("task_id", "critic"), summary=str(res), metadata={"agent_type": self.name, "decision": res.get("decision")})
-            except Exception:
-                logger.exception("Failed to store critic feedback in memory")
-            return res
+            # LLM returned non-JSON (e.g. fallback stub or model prose response).
+            # Fail-safe: approve so the output isn't discarded in an endless
+            # refine loop — same behaviour as the LLM-exception path above.
+            logger.warning("Critic parse failed after retry; defaulting to approve")
+            return default
 
         if not isinstance(parsed, dict):
             logger.warning("Critic parsed payload not a dict; approving")

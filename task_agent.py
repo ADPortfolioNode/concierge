@@ -19,6 +19,7 @@ from tools.tool_registry import register_tool, registry
 from tools.web_search_tool import WebSearchTool
 from tools.file_memory_tool import FileMemoryTool
 from tools.code_execution_tool import CodeExecutionTool
+from tools.image_generation_tool import ImageGenerationTool
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,8 @@ class TaskAgent:
             register_tool(FileMemoryTool())
         if "code_exec" not in reg.list_tools():
             register_tool(CodeExecutionTool())
+        if "image_gen" not in reg.list_tools():
+            register_tool(ImageGenerationTool())
 
         # Select a tool for this task via the ToolRouter
         router = ToolRouter(llm=self.llm_tool)
@@ -105,6 +108,25 @@ class TaskAgent:
             instr = str(self.task_input)
             title = self.task_name
             metadata_in = {}
+
+        # Detect image generation tasks and short-circuit directly to the plugin
+        _image_keywords = ("image generation", "generate image", "submit the prompt", "image plugin",
+                           "dall-e", "dall_e", "image of", "picture of", "generate an image")
+        _is_image_task = any(k in instr.lower() for k in _image_keywords) or \
+                         any(k in title.lower() for k in ("generate image", "image gen", "prepare image prompt"))
+
+        if _is_image_task:
+            try:
+                img_tool = ImageGenerationTool()
+                img_url = await img_tool.run(instr)
+                if img_url:
+                    output = img_url
+                    self.status = "complete"
+                    await self.memory.store_summary(task_name=title, summary=f"Image URL: {img_url}", metadata={"agent_id": self.id, **metadata_in})
+                    return {"agent_id": self.id, "status": self.status, "output": output,
+                            "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None)}
+            except Exception:
+                logger.exception("Image task short-circuit failed; falling through to LLM")
 
         # Ask router which tool to use
         selected_tool_name = await router.select_tool(instr, available_tools=reg.list_tools())
@@ -148,12 +170,14 @@ class TaskAgent:
             llm_out = await self.llm_tool.generate(prompt, context=context_text)
 
             self.status = "complete"
-            output = f"Task '{title}' LLM output: {llm_out}"
+            # Use the raw LLM output as the task result; log separately with prefix for memory
+            output = llm_out
+            memory_summary = f"Task '{title}' LLM output: {llm_out}"
 
             # Store result into memory with metadata
             metadata = {"task_name": title, "status": self.status, "agent_id": self.id}
             metadata.update(metadata_in or {})
-            await self.memory.store_summary(task_name=title, summary=output, metadata=metadata)
+            await self.memory.store_summary(task_name=title, summary=memory_summary, metadata=metadata)
 
             logger.info("Agent %s completed (LLM)", self.id)
             return {"agent_id": self.id, "status": self.status, "output": output, "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None)}

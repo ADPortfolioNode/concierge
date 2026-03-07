@@ -87,10 +87,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             (result?.final as any)?.summary ||
             (result?.response as string) ||
             accumulated;
+          const metaResult = result as Record<string, any>;
+          const confidence = metaResult?.final?.confidence ?? metaResult?.confidence ?? undefined;
+          const critic_score = metaResult?.final?.critic_score ?? metaResult?.critic_score ?? undefined;
           set((s) => ({
             conversation: s.conversation.map((m) =>
               m.id === assistantMsgId
-                ? { ...m, content: finalText || accumulated, meta: { raw: result } }
+                ? { ...m, content: finalText || accumulated, meta: {
+                    confidence: typeof confidence === 'number' ? confidence : undefined,
+                    critic_score: typeof critic_score === 'number' ? critic_score : undefined,
+                  } }
                 : m,
             ),
           }));

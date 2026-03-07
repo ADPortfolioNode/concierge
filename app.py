@@ -10,6 +10,15 @@ import asyncio
 import json
 import traceback
 from typing import Any, Optional
+from pathlib import Path
+
+# Load .env before any os.getenv calls so keys are available to all modules
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _load_dotenv(Path(__file__).parent / ".env", override=False)
+except ImportError:
+    pass  # dotenv not installed; fall back to system environment only
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
@@ -18,7 +27,6 @@ from orchestration.sacred_timeline import SacredTimeline
 from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
 from config.settings import get_settings
-from pathlib import Path
 
 # Capability layers — plugins, tools, integrations
 from plugins.plugin_loader import load_default_plugins
@@ -33,6 +41,15 @@ from workstation import upload_router as _upload_router
 from projects import project_router as _project_router
 from tasks import task_router as _task_router, get_queue as _get_task_queue
 from tasks.task_worker import register_default_handlers as _register_task_handlers
+# Distributed job execution layer (Celery + Redis) — optional: degrades
+# gracefully when celery/redis are not installed (e.g. local dev without Docker).
+try:
+    from jobs import job_router as _job_router
+    _jobs_available = True
+except Exception as _jobs_import_err:  # noqa: BLE001
+    logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err)
+    _job_router = None
+    _jobs_available = False
 
 # load application version from file
 _VERSION_FILE = Path(__file__).parent / "VERSION"
@@ -250,6 +267,8 @@ async def concierge_conversation():
 app.include_router(_upload_router)
 app.include_router(_project_router)
 app.include_router(_task_router)
+if _jobs_available and _job_router is not None:
+    app.include_router(_job_router)
 
 
 # --- capability endpoints ---------------------------------------------------

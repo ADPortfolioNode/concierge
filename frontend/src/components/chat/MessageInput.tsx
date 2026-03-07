@@ -113,7 +113,7 @@ const MessageInput: React.FC = () => {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={loading ? 'Sending...' : 'Type your message — Enter to send, Shift+Enter for newline'}
+          placeholder={loading ? 'Sending...' : 'Message — Enter to send, Shift+Enter for newline'}
           disabled={loading}
           rows={1}
           style={{
@@ -121,12 +121,46 @@ const MessageInput: React.FC = () => {
             resize: 'none',
             background: 'transparent',
             color: 'var(--color-text, #e6e6e6)',
-            border: '1px solid rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.1)',
             padding: 10,
             borderRadius: 6,
             fontSize: 14,
           }}
         />
+
+        {/* Send button */}
+        <button
+          onClick={() => {
+            const text = value.trim();
+            let outgoing = text;
+            if (attachment) {
+              const ref = `[file:${attachment.upload_id}/${attachment.filename}]`;
+              outgoing = outgoing ? `${ref}\n${outgoing}` : ref;
+            }
+            if (outgoing && !loading) {
+              sendMessage(outgoing);
+              setValue('');
+              setAttachment(null);
+              setShowUploader(false);
+            }
+          }}
+          disabled={loading || !value.trim()}
+          title="Send message"
+          style={{
+            background: loading || !value.trim() ? 'rgba(124,106,247,0.2)' : '#7c6af7',
+            border: 'none',
+            borderRadius: 6,
+            color: '#fff',
+            cursor: loading || !value.trim() ? 'not-allowed' : 'pointer',
+            fontSize: 16,
+            padding: '6px 12px',
+            lineHeight: 1,
+            flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+        >
+          ↑
+        </button>
       </div>
 
       <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
