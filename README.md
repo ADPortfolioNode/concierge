@@ -9,6 +9,33 @@ Prereqs:
 
 - Python 3.11+
 - Set `OPENAI_API_KEY` in your environment to enable real LLM calls (optional)
+  • You can also specify `OPENAI_API_KEYS` as a comma-separated list of
+    keys; the integration will rotate through them when a rate limit or 429 is
+    received and will fall back to Gemini if configured.
+  • A family of variables lets you choose default models without changing
+    code:
+    `OPENAI_DEFAULT_CHAT_MODEL`, `OPENAI_DEFAULT_EMBED_MODEL`,
+    `OPENAI_DEFAULT_MODERATE_MODEL` (optional).
+  • The built-in LLMTool automatically retries across multiple OpenAI keys and
+    will fall back to the Gemini API if all keys are rate-limited (requires
+    `GEMINI_API_KEY`).
+  • To prevent the backend from being swamped by many simultaneous requests,
+    the SacredTimeline layer throttles incoming user inputs using a semaphore
+    (configurable via `max_concurrent_requests` in `config/settings.py`).
+    The throttle defaults to **2 concurrent requests** but can be lowered.
+    When you submit while the system is busy, you'll receive a clear human
+    notice such as:
+    "OK – still working on the previous request; yours (\"<your text>\") is
+    queued and will run shortly."  The metrics endpoint reports how many
+    requests were queued.
+    additional keys.  When the primary key receives a 429 rate‑limit error the
+    tool will automatically retry with the next key in the list, or fall back to
+    rule-based output if all keys are exhausted.
+  • If you have a `GEMINI_API_KEY` defined, the system will use OpenAI keys
+    first; once those are exhausted it will make a call to Google Gemini
+    (model specified by `GEMINI_MODEL`, default `text-bison-001`) before
+    resorting to the rule-based stub.  This allows you to leverage both
+    providers transparently.
 
 Install:
 

@@ -18,6 +18,8 @@ const MediaRenderer: React.FC<MediaProps> = ({ media }) => {
             borderRadius: 6,
             display: 'block',
             border: '1px solid rgba(255,255,255,0.1)',
+            resize: 'both',
+            overflow: 'auto',
           }}
         />
       );

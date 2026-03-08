@@ -8,6 +8,11 @@ Supports two call patterns:
 
 Backend: OpenAI Chat Completions HTTP API via `httpx` when `OPENAI_API_KEY` is
 set; falls back to an intelligent rule-based responder for local development.
+
+Supports multiple API keys to mitigate rate‑limit errors – set
+`OPENAI_API_KEYS` to a comma-separated list of additional keys (in order of
+preference).  If the primary key returns a 429, the tool automatically retries
+with the next key before falling back to the rule-based stub.
 """
 from __future__ import annotations
 
@@ -407,8 +412,26 @@ class LLMTool:
         # to the total response time for batch calls.  120 s is generous enough
         # for large responses from slow model tiers.
         self.timeout = timeout
+        # primary API key plus optional extras for rate‑limit fallback
         self._api_key = os.getenv("OPENAI_API_KEY")
+        # allow a comma-separated list of additional keys via OPENAI_API_KEYS
+        # e.g. OPENAI_API_KEYS="key2,key3"  (keys are tried in order after the
+        # primary key).  This makes it easy to fail over to a second account
+        # when the first one returns 429.
+        raw_keys = os.getenv("OPENAI_API_KEYS", "")
+        extras = [k.strip() for k in raw_keys.split(",") if k.strip()]
+        self._api_keys: list[str] = []
+        if self._api_key:
+            self._api_keys.append(self._api_key)
+        for k in extras:
+            if k not in self._api_keys:
+                self._api_keys.append(k)
         self._base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+
+        # Gemini (Google) integration
+        self._gemini_key = os.getenv("GEMINI_API_KEY")
+        # optional model name for Gemini-style calls
+        self._gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
 
     def _build_messages(self, prompt: str, context: Optional[str]) -> list:
         if context:
@@ -437,16 +460,13 @@ class LLMTool:
         """
         messages = self._build_messages(prompt, context)
 
-        if not self._api_key:
+        # if we don't have *any* keys, just use the stubbed responder
+        if not self._api_keys:
             logger.debug("LLMTool no API key; using rule-based fallback")
             await asyncio.sleep(0)
             yield _rule_based_response(prompt, context)
             return
 
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
         payload = {
             "model": self.model,
             "messages": messages,
@@ -455,34 +475,109 @@ class LLMTool:
         }
 
         client = _get_client()
-        try:
-            async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=self.timeout,
-            ) as resp:
-                resp.raise_for_status()
-                async for raw_line in resp.aiter_lines():
-                    if not raw_line or not raw_line.startswith("data: "):
+
+        # try each key in turn; on 429 or other rate-limit we move to the next one
+        # clear any old fallback indicator
+        self.last_fallback = None
+        for idx, key in enumerate(self._api_keys):
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            }
+            try:
+                async with client.stream(
+                    "POST",
+                    f"{self._base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=self.timeout,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for raw_line in resp.aiter_lines():
+                        if not raw_line or not raw_line.startswith("data: "):
+                            continue
+                        data_str = raw_line[6:]
+                        if data_str.strip() == "[DONE]":
+                            return
+                        try:
+                            chunk = json.loads(data_str)
+                            token = chunk["choices"][0]["delta"].get("content", "")
+                            if token:
+                                yield token
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            continue
+                    # successful completion, stop iterating keys
+                    return
+            except httpx.HTTPStatusError as exc:
+                # rate limit? try next key if available
+                status = None
+                if exc.response is not None:
+                    status = getattr(exc.response, "status_code", None)
+                if status == 429:
+                    if idx + 1 < len(self._api_keys):
+                        logger.warning(
+                            "LLMTool rate limited on key %s; retrying with fallback key", key
+                        )
                         continue
-                    data_str = raw_line[6:]
-                    if data_str.strip() == "[DONE]":
-                        return
-                    try:
-                        chunk = json.loads(data_str)
-                        token = chunk["choices"][0]["delta"].get("content", "")
-                        if token:
-                            yield token
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
-        except httpx.HTTPError as exc:
-            logger.exception("LLMTool HTTP error: %s", exc)
-            yield f"[LLM-Error] {exc}"
-        except Exception as exc:
-            logger.exception("LLMTool unexpected error: %s", exc)
-            yield f"[LLM-Error] {exc}"
+                    else:
+                        # last key hit a rate limit; break out so we can try Gemini
+                        logger.warning(
+                            "LLMTool last key %s rate limited; falling through to fallback", key
+                        )
+                        break
+                if status == 401:
+                    # unauthorized; no point in trying further OpenAI keys
+                    logger.warning("LLMTool unauthorized on key %s; falling back", key)
+                    break
+                logger.exception("LLMTool HTTP error: %s", exc)
+                yield f"[LLM-Error] {exc}"
+                return
+            except httpx.HTTPError as exc:
+                logger.exception("LLMTool HTTP error: %s", exc)
+                yield f"[LLM-Error] {exc}"
+                return
+            except Exception as exc:
+                logger.exception("LLMTool unexpected error: %s", exc)
+                yield f"[LLM-Error] {exc}"
+                return
+
+        # if we exhausted all OpenAI keys, try Gemini if the key is configured
+        if self._gemini_key:
+            try:
+                gem_resp = await self._call_gemini(prompt, context)
+                self.last_fallback = "switched to Gemini provider"
+                # yield the entire response as one token so callers still get text
+                yield gem_resp
+                return
+            except Exception as exc:
+                logger.warning("Gemini fallback failed: %s", exc)
+                # fall through to rule-based
+        logger.error("All OpenAI API keys exhausted due to rate limits; using rule-based fallback")
+        self.last_fallback = "using local rule-based responder"
+        await asyncio.sleep(0)
+        yield _rule_based_response(prompt, context)
+
+    async def _call_gemini(self, prompt: str, context: Optional[str]) -> str:
+        """Call the Gemini API and return a full string response.
+
+        This is a very lightweight implementation; we don't attempt streaming.  The
+        method mirrors the semantics of :meth:`astream` by returning a plain text
+        string that will later be chunked by the caller.
+        """
+        assert self._gemini_key, "Gemini API key must be configured"
+        url = f"https://generativelanguage.googleapis.com/v1beta2/models/{self._gemini_model}:generate"
+        headers = {"Authorization": f"Bearer {self._gemini_key}"}
+        # Google uses a different payload structure
+        payload = {"prompt": {"text": prompt}, "temperature": 0.7}
+        client = _get_client()
+        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        # navigate typical response path
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise RuntimeError("no output from Gemini")
+        return candidates[0].get("output", "")
 
     # Backwards-compat alias used by some agent subclasses
     async def arun(self, prompt: str, context: Optional[str] = None) -> str:

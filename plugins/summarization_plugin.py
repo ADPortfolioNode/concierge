@@ -68,7 +68,12 @@ def _extractive_summary(text: str, max_sentences: int = 3) -> str:
     if not sentences:
         return text[:300]
     if len(sentences) <= max_sentences:
-        return " ".join(sentences)
+        summary = " ".join(sentences)
+        # if our extractive result is still very long (e.g. a single 300‑char
+        # blob without punctuation), truncate to a sensible length with ellipsis
+        if len(summary) > 200:
+            return summary[:197] + "…"
+        return summary
 
     # Term frequency across entire document
     all_words = _tokenize(text)

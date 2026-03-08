@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
 
 interface Props {
   msg: ConversationMessage;
+  // incrementing value that tells the bubble to close its meta panel when it
+  // changes (e.g. a new message arrived)
+  collapseCounter?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +89,8 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
             opacity: status === 'loading' ? 0.4 : 1,
             transition: 'opacity 0.25s',
             border: '1px solid rgba(255,255,255,0.1)',
+            resize: 'both',
+            overflow: 'auto',
           }}
         />
       ) : (
@@ -140,8 +145,14 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   );
 };
 
-const MetaPanel: React.FC<{ meta?: ConversationMessage['meta'] }> = ({ meta }) => {
+const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?: number }> = ({ meta, collapseCounter }) => {
   const [open, setOpen] = useState(false);
+  // whenever parent indicates a new message batch, collapse the panel
+  useEffect(() => {
+    if (open) {
+      setOpen(false);
+    }
+  }, [collapseCounter]);
   if (!meta) return null;
 
   const hasScores = typeof meta.confidence === 'number' || typeof meta.critic_score === 'number';
@@ -213,7 +224,7 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta'] }> = ({ meta }) =
   );
 };
 
-const MessageBubble: React.FC<Props> = ({ msg }) => {
+const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const streamingId = useAppStore((s) => s.streamingId);

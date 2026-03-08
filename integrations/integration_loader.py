@@ -12,6 +12,7 @@ from typing import List
 from .base_integration import BaseIntegration
 from .integration_registry import register_integration
 from .openai_integration import OpenAIIntegration
+from .gemini_integration import GeminiIntegration
 from .stripe_integration import StripeIntegration
 from .slack_integration import SlackIntegration
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 _BUILTIN_INTEGRATIONS: List[BaseIntegration] = [
     OpenAIIntegration(),
+    GeminiIntegration(),
     StripeIntegration(),
     SlackIntegration(),
 ]

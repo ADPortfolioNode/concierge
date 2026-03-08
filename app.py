@@ -239,6 +239,22 @@ async def concierge_message(payload: ConciergeMessagePayload):
     return _api_response(data)
 
 
+@app.get('/api/v1/concierge/metrics')
+async def concierge_metrics():
+    """Return simple human-readable metrics about request handling and fallbacks."""
+    metrics = getattr(app.state.timeline, 'metrics', None)
+    if metrics is None:
+        return _api_response({'error': 'metrics not available'}, status='error')
+    # Copy values for API
+    m = {
+        'total_requests': metrics.total_requests,
+        'requests_queued': metrics.requests_queued,
+        'failovers': metrics.failovers,
+        'summary': f"{metrics.total_requests} requests processed, {metrics.requests_queued} queued, {metrics.failovers} fallbacks to alternate LLM."
+    }
+    return _api_response(m)
+
+
 @app.post('/api/v1/concierge/stream')
 async def concierge_stream(payload: ConciergeMessagePayload):
     """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.

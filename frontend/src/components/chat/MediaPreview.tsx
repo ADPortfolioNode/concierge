@@ -52,6 +52,8 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
         color: 'rgba(255,255,255,0.8)',
         maxWidth: 360,
         position: 'relative',
+        resize: 'both',
+        overflow: 'auto',
       }}
     >
       {/* Header row */}

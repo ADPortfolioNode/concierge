@@ -24,6 +24,10 @@ class Settings:
     autonomous_task_priority: float = 2.0  # priority assigned to self-generated tasks
     contradiction_risk_threshold: float = 0.5
     low_confidence_threshold: float = 0.3
+    # how many user requests may be processed concurrently by the timeline
+    # default throttle is intentionally low to avoid overload; override
+    # via settings or environment if needed.
+    max_concurrent_requests: int = 2
 
 
 def get_settings() -> Settings:

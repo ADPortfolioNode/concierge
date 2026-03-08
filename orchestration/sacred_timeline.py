@@ -75,6 +75,14 @@ def _is_conversational(text: str) -> bool:
     return False
 
 
+class Metrics:
+    """Very lightweight in-memory metrics for visibility."""
+    def __init__(self) -> None:
+        self.total_requests = 0
+        self.requests_queued = 0
+        self.failovers = 0
+
+
 class SacredTimeline:
     def __init__(
         self,
@@ -85,7 +93,12 @@ class SacredTimeline:
         vector_tool: Optional[VectorSearchTool] = None,
     ) -> None:
         settings = get_settings()
+        self.metrics = Metrics()
         self._concurrency = concurrency_manager or AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
+        # limit the number of simultaneous handle_user_input calls to avoid
+        # flooding the LLM/backend.  Additional requests queue until a slot
+        # frees up, providing a simple back-pressure mechanism.
+        self._request_sem = asyncio.Semaphore(settings.max_concurrent_requests)
         # create a shared LLM instance and pass it into components that can use it
         from tools.llm_tool import LLMTool
 
@@ -632,6 +645,16 @@ class SacredTimeline:
         # attach reflection flag if available
         if 'context' in locals():
             result_out["reflection_reused"] = context.get("reflection_reused", False)
+        # queued notice override if present
+        if queued_notice:
+            result_out.setdefault("notice", queued_notice)
+        # add any user notices collected by the LLM tool
+        if getattr(self._llm, "last_fallback", None):
+            notice = f"Note: {self._llm.last_fallback}."
+            result_out.setdefault("notice", notice)
+            # track that we had to fail over
+            self.metrics.failovers += 1
+
         # surface the final summary as a top-level "response" field so app.py
         # and other callers don't need to dig into the nested "final" dict.
         _final_summary = ""
@@ -670,6 +693,10 @@ class SacredTimeline:
         greeting = user_input.strip().lower()
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
             yield _evt({"type": "token", "text": "Hello! I'm Concierge — how can I assist you today?"})
+            # if fallback occured, send a progress notice
+            if getattr(self._llm, "last_fallback", None):
+                yield _evt({"type": "progress", "text": f"Note: {self._llm.last_fallback}."})
+                self.metrics.failovers += 1
             yield _evt({"type": "done", "result": {"response": "Hello! I'm Concierge — how can I assist you today?"}})
             return
 
@@ -689,6 +716,10 @@ class SacredTimeline:
             except Exception as exc:
                 yield _evt({"type": "error", "text": str(exc)})
                 return
+            # if there was a fallback, notify user
+            if getattr(llm, "last_fallback", None):
+                yield _evt({"type": "progress", "text": f"Note: {llm.last_fallback}."})
+                self.metrics.failovers += 1
             yield _evt({"type": "done", "result": {"response": "".join(full_response_conv)}})
             return
 
@@ -726,6 +757,9 @@ class SacredTimeline:
                 logger.exception("Streaming chat reply failed")
                 yield _evt({"type": "error", "text": str(exc)})
                 return
+            if getattr(llm, "last_fallback", None):
+                yield _evt({"type": "progress", "text": f"Note: {llm.last_fallback}."})
+                self.metrics.failovers += 1
             yield _evt({"type": "done", "result": {"response": "".join(full_response)}})
             return
 
@@ -758,11 +792,32 @@ class SacredTimeline:
           await its completion, summarize and store results in memory, and
           return structured metadata to the caller.
         """
-        logger.info("SacredTimeline handling input")
+        # throttle incoming requests
+        # if the semaphore is already exhausted we mark this request as queued
+        # and remember the raw input so we can notify the user later.
+        queued_notice: str | None = None
+        if self._request_sem._value == 0:
+            self.metrics.requests_queued += 1
+            queued_notice = f"OK - still working on the previous request; yours (\"{user_input}\") is queued and will run shortly."
+        async with self._request_sem:
+            logger.info("SacredTimeline handling input")
+            # metrics: count every incoming call
+            self.metrics.total_requests += 1
+
         # quick replies for simple greetings to avoid unnecessary planning
         greeting = user_input.strip().lower()
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
-            return {"status": "success", "response": "Hello! I'm Concierge — how can I assist you today?"}
+            # if fallback occurred, note it
+            note = None
+            if getattr(self._llm, "last_fallback", None):
+                note = f"Note: {self._llm.last_fallback}."
+                self.metrics.failovers += 1
+            resp = {"status": "success", "response": "Hello! I'm Concierge — how can I assist you today?"}
+            if queued_notice:
+                resp["notice"] = queued_notice
+            elif note:
+                resp["notice"] = note
+            return resp
 
         # bypass orchestration for conversational questions
         if _is_conversational(user_input):
