@@ -103,6 +103,24 @@ async def _lifespan(application: FastAPI):
 
 app = FastAPI(lifespan=_lifespan)
 
+# ----------------------------------------------------------------------
+# CORS setup
+# ----------------------------------------------------------------------
+# The frontend commonly runs on localhost:5173 during development, so allow
+# that origin (or use wildcard for convenience).  Automation tests and
+automated environments may set CORS_ALLOW_ORIGINS env var as a comma
+# separated list.
+from fastapi.middleware.cors import CORSMiddleware
+
+allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # Simple request logging middleware to aid debugging
 @app.middleware("http")

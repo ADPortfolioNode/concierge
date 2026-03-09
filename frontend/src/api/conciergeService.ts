@@ -41,7 +41,7 @@ export type StreamEvent =
  */
 export async function* streamMessage(message: string): AsyncGenerator<StreamEvent> {
   const baseURL =
-    (import.meta as any).env?.VITE_API_URL?.replace(/\/$/, '') ?? '';
+    ((import.meta as any).env?.VITE_API_URL || 'http://localhost:8001').replace(/\/$/, '');
 
   const response = await fetch(`${baseURL}/api/v1/concierge/stream`, {
     method: 'POST',
