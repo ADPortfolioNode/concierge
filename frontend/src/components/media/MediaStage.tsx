@@ -18,6 +18,11 @@ const STAGE_W = 380;
 const STAGE_H = 306;
 const HEADER_H = 40;
 const BODY_H = STAGE_H - HEADER_H;
+// resizing limits
+const MIN_W = 200;
+const MIN_H = 150;
+const MAX_W = 800;
+const MAX_H = 600;
 
 type LayerKey = 'image' | 'video' | 'audio' | 'text';
 
@@ -100,17 +105,21 @@ const MediaStage: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [hiddenLayers, setHiddenLayers] = useState<Set<LayerKey>>(new Set());
+  const [fullWidth, setFullWidth] = useState(false);
+  const prevSize = useRef<{width: number; height: number}>({width: STAGE_W, height: STAGE_H});
 
   // Position: left/top in px; initialised once layout is known
   const [pos, setPos] = useState({ left: 0, top: 0 });
+  // width/height can change when user resizes
+  const [size, setSize] = useState({ width: STAGE_W, height: STAGE_H });
   const posInitialised = useRef(false);
 
   useLayoutEffect(() => {
     if (!posInitialised.current) {
       posInitialised.current = true;
       setPos({
-        left: Math.max(20, window.innerWidth - STAGE_W - 24),
-        top: Math.max(60, window.innerHeight - STAGE_H - 90),
+        left: Math.max(20, window.innerWidth - size.width - 24),
+        top: Math.max(60, window.innerHeight - size.height - 90),
       });
     }
   }, []);
@@ -118,6 +127,19 @@ const MediaStage: React.FC = () => {
   // Auto-show whenever new layers arrive
   const layerCount =
     imageLayers.length + videoLayers.length + audioLayers.length + textHighlights.length;
+  // if we're in fullWidth mode, keep size updated when window resizes
+  useEffect(() => {
+    if (!fullWidth) return;
+    const onResize = () => {
+      setSize((s) => ({
+        ...s,
+        width: Math.min(MAX_W, window.innerWidth - 40),
+      }));
+      setPos((p) => ({ ...p, left: 20 }));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fullWidth]);
   const prevCount = useRef(0);
   useEffect(() => {
     if (layerCount > prevCount.current) {
@@ -143,7 +165,7 @@ const MediaStage: React.FC = () => {
         const dy = ev.clientY - lastMouse.current.y;
         lastMouse.current = { x: ev.clientX, y: ev.clientY };
         setPos((prev) => ({
-          left: Math.max(0, Math.min(window.innerWidth - STAGE_W, prev.left + dx)),
+          left: Math.max(0, Math.min(window.innerWidth - size.width, prev.left + dx)),
           top: Math.max(0, Math.min(window.innerHeight - HEADER_H - 8, prev.top + dy)),
         }));
       };
@@ -185,7 +207,7 @@ const MediaStage: React.FC = () => {
         position: 'fixed',
         left: pos.left,
         top: pos.top,
-        width: STAGE_W,
+        width: size.width,
         zIndex: 300,
         borderRadius: 12,
         overflow: 'hidden',
@@ -224,6 +246,26 @@ const MediaStage: React.FC = () => {
         >
           Media Output
         </span>
+        {/* full width toggle */}
+        <button
+          onClick={() => {
+            if (!fullWidth) {
+              prevSize.current = size;
+              setSize((s) => ({
+                width: Math.min(MAX_W, window.innerWidth - 40),
+                height: s.height,
+              }));
+              setPos((p) => ({ ...p, left: 20 }));
+            } else {
+              setSize(prevSize.current);
+            }
+            setFullWidth((f) => !f);
+          }}
+          title={fullWidth ? 'Restore width' : 'Full width'}
+          style={iconBtn}
+        >
+          ⇔
+        </button>
 
         {/* Layer toggles — only show for layers that have content */}
         {latestImage && (
@@ -264,7 +306,7 @@ const MediaStage: React.FC = () => {
       {!minimized && (
         <div
           style={{
-            height: BODY_H,
+            height: size.height - HEADER_H,
             position: 'relative',
             overflow: 'hidden',
             background: showImage ? 'transparent' : 'rgba(0,0,0,0.4)',
@@ -400,6 +442,39 @@ const MediaStage: React.FC = () => {
             </div>
           )}
 
+          {/* resize handle */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startW = size.width;
+              const startH = size.height;
+              const onMove = (ev: MouseEvent) => {
+                const dw = ev.clientX - startX;
+                const dh = ev.clientY - startY;
+                setSize({
+                  width: Math.min(fullWidth ? window.innerWidth - 40 : MAX_W, Math.max(MIN_W, startW + dw)),
+                  height: Math.min(MAX_H, Math.max(MIN_H, startH + dh)),
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+            style={{
+              position: 'absolute',
+              width: 16,
+              height: 16,
+              bottom: 0,
+              right: 0,
+              cursor: 'nwse-resize',
+              zIndex: 6,
+            }}
+          />
           {/* Layer count badge (bottom-right corner) */}
           {(imageLayers.length > 1 || videoLayers.length > 1 || audioLayers.length > 1) && (
             <div

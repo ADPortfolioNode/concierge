@@ -241,6 +241,8 @@ class SacredTimeline:
         """
         logger.info("Coordinator starting for goal: %s", goal)
         planner = self._planner
+        # placeholder for any queued-notice passed from caller (not used currently)
+        queued_notice: str | None = None
         critic_agent = CriticAgent(self._memory, llm=self._llm)
         settings = get_settings()
 
@@ -645,7 +647,7 @@ class SacredTimeline:
         # attach reflection flag if available
         if 'context' in locals():
             result_out["reflection_reused"] = context.get("reflection_reused", False)
-        # queued notice override if present
+        # queued notice override if present (should generally be None)
         if queued_notice:
             result_out.setdefault("notice", queued_notice)
         # add any user notices collected by the LLM tool
