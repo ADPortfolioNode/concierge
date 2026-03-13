@@ -141,6 +141,8 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
         ),
       )}
       {isStreaming && <StreamingCursor />}
+      {/** show provider badge for LLM if available */}
+      {/** meta is not directly available here so parent will render new badge */}
     </div>
   );
 };
@@ -157,6 +159,8 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
 
   const hasScores = typeof meta.confidence === 'number' || typeof meta.critic_score === 'number';
   const raw = meta.raw as any;
+  const provider = meta.llm?.provider;
+  const errorMsg = meta.llm?.error;
   const structured = raw?.structured ?? raw?.final?.structured;
   const keyPoints: string[] = structured?.key_points ?? [];
   const recommendations: string[] = structured?.recommendations ?? [];
@@ -164,9 +168,10 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
   const refined: string = structured?.refined_recommendation ?? '';
   const hasDetails = keyPoints.length > 0 || recommendations.length > 0 || risks.length > 0 || refined;
 
-  if (!hasScores && !hasDetails) return null;
+  if (!hasScores && !hasDetails && !meta.llm) return null;
 
   const scoreParts: string[] = [];
+  // optionally show provider badge in collapsed header
   if (typeof meta.confidence === 'number') scoreParts.push(`${Math.round(meta.confidence * 100)}% confidence`);
   if (typeof meta.critic_score === 'number') scoreParts.push(`critic ${meta.critic_score}`);
   const label = scoreParts.length > 0 ? scoreParts.join(' · ') : 'details';
@@ -218,6 +223,12 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
               {risks.join(', ')}
             </div>
           )}
+          {provider && (
+            <div style={{ marginTop: 8 }}>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>LLM Provider:</span> {provider}
+              {errorMsg && <div style={{ paddingLeft: 10, color: 'rgba(255,255,255,0.6)' }}>{errorMsg}</div>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -259,6 +270,13 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
     <div style={containerStyle}>
       <div style={bubbleStyle} aria-label={`message-${msg.id}`}>
         <RichContent content={msg.content || (isStreaming ? '' : '…')} isStreaming={isStreaming} />
+        {/* indicate which LLM provider generated this reply */}
+        {msg.meta?.llm?.provider && (
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+            Provider: {msg.meta.llm.provider}
+            {msg.meta.llm.error && ` (${msg.meta.llm.error})`}
+          </div>
+        )}
         {/* Render attached media (image/video/audio) */}
         {msg.media && msg.media.type !== 'none' && msg.media.url && (
           <div style={{ marginTop: 8 }}>

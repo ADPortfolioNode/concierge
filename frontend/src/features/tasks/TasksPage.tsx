@@ -48,6 +48,14 @@ const PROMPT_GROUPS = [
       'How many tasks have failed in the current session?',
     ],
   },
+  {
+    label: '🎥 Multimedia tasks',
+    prompts: [
+      'Describe what is happening in the uploaded video.',
+      'Transcribe the voice memo I attached.',
+      'Create an image summarising the data analysis results.',
+    ],
+  },
 ];
 
 type Task = { id: string; type: string; status: string; created_at?: string };
@@ -66,6 +74,8 @@ const statusColor: Record<string, string> = {
 // Active distributed jobs tracked by this page
 type ActiveJob = { id: string; label: string; statusObj: JobStatus };
 
+import ProcessingBanner from '@/components/ProcessingBanner';
+
 const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +83,8 @@ const TasksPage: React.FC = () => {
 
   // Distributed job form
   const [jobGoal, setJobGoal] = useState('');
+
+  // render live banner above the form
   const [jobContext, setJobContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -144,6 +156,7 @@ const TasksPage: React.FC = () => {
 
   return (
     <div style={{ padding: '28px 28px 60px', maxWidth: 950, margin: '0 auto', color: '#e2e8f0' }}>
+      <ProcessingBanner />
       <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>✅ Tasks</h1>
       <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 28px', lineHeight: 1.7 }}>
         Tasks run in the background — read files, generate code, analyse datasets. Enqueue via chat

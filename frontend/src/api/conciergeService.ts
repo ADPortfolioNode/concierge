@@ -20,6 +20,14 @@ export const fetchConversation = async () => {
   return res;
 };
 
+export const getTimeline = async () => {
+  const res = await apiClient.get<ApiResponse>('/concierge/timeline');
+  if ((res as any).error) {
+    throw new Error((res as any).error);
+  }
+  return res;
+};
+
 // ── SSE streaming ──────────────────────────────────────────────────────────
 // Event shapes emitted by the backend (see SacredTimeline.stream_user_input):
 //   { type: 'token',    text: string }   — single LLM output fragment

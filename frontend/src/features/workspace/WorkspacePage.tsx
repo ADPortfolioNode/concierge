@@ -38,6 +38,15 @@ const PROMPT_GROUPS = [
       'List all files attached to the current project.',
       'What projects exist? Show names and file counts.',
       'Delete the "Sandbox Test" project.',
+      'Generate an image for the project logo.',
+    ],
+  },
+  {
+    label: '📸 Multimedia',
+    prompts: [
+      'Create an image of a friendly robot greeting me.',
+      'Transcribe the audio file I just uploaded.',
+      'Analyse the contents of the uploaded video and describe key scenes.',
     ],
   },
   {

@@ -29,6 +29,9 @@ interface AppState {
   videoLayers: MediaItem[];
   audioLayers: MediaItem[];
   textHighlights: string[];
+  // timeline/header state
+  timelinePlan: any | null;
+  selectedTaskMeta: any | null;
   // ── actions ────────────────────────────────────────────────────────────
   setError: (msg: string | null) => void;
   setDraft: (text: string) => void;
@@ -40,6 +43,11 @@ interface AppState {
   pushAudio: (url: string) => void;
   pushTextHighlight: (text: string) => void;
   clearMediaLayers: () => void;
+  // timeline actions
+  setTimelinePlan: (plan: any) => void;
+  setSelectedTaskMeta: (meta: any) => void;
+  fetchTimeline: () => Promise<void>;
+  selectTimelineTask: (task: any) => void;
   sendMessage: (input: string) => Promise<void>;
 }
 
@@ -63,6 +71,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   setConversation: (msgs) => set({ conversation: msgs }),
   setActiveMedia: (url) => set({ activeMedia: url }),
   appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, msg] })),
+  // timeline actions
+  setTimelinePlan: (plan) => set({ timelinePlan: plan }),
+  setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
+  fetchTimeline: async () => {
+    try {
+      const res = await ConciergeAPI.getTimeline();
+      const plan = res.data;
+      set({ timelinePlan: plan });
+    } catch {
+      // ignore
+    }
+  },
+  selectTimelineTask: (task) => set({ selectedTaskMeta: task }),
   pushImage: (url) => set((s) => ({
     imageLayers: [...s.imageLayers, { id: `img-${Date.now()}`, url, timestamp: new Date().toISOString() }],
     activeMedia: url,
@@ -108,6 +129,47 @@ export const useAppStore = create<AppState>((set, get) => ({
       error: null,
     }));
 
+    // if tests want to bypass SSE they can set window.USE_POST = true
+    const usePost = (window as any).USE_POST;
+    // record that sendMessage was invoked; tests can check this flag
+    if (typeof window !== 'undefined') {
+      (window as any).__LAST_SENDMESSAGE__ = usePost;
+    }
+    console.log('sendMessage called, usePost=', usePost);
+    if (usePost) {
+      try {
+        const res = await ConciergeAPI.sendMessage(input);
+        const result = res.data as any;
+        const finalText = (result.response || '') as string;
+        const confidence = result.confidence;
+        const critic_score = result.critic_score;
+        // update the placeholder message just like in stream event
+        set((s) => ({
+          conversation: s.conversation.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: finalText, meta: {
+                  confidence: typeof confidence === 'number' ? confidence : undefined,
+                  critic_score: typeof critic_score === 'number' ? critic_score : undefined,
+                  raw: result,
+                  llm: { provider: result.meta?.llm?.provider, error: result.meta?.llm?.error },
+                } }
+              : m,
+          ),
+        }));
+      } catch (e) {
+        const errText = e instanceof Error ? e.message : String(e);
+        set((s) => ({
+          conversation: s.conversation.map((m) =>
+            m.id === assistantMsgId ? { ...m, content: `⚠️ ${errText}` } : m,
+          ),
+          error: errText,
+        }));
+      } finally {
+        set({ loading: false, streamingId: null });
+      }
+      return;
+    }
+
     try {
       let accumulated = '';
 
@@ -126,6 +188,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           const metaResult = result as Record<string, any>;
           const confidence = metaResult?.final?.confidence ?? metaResult?.confidence ?? undefined;
           const critic_score = metaResult?.final?.critic_score ?? metaResult?.critic_score ?? undefined;
+          const provider = metaResult?.llm_provider ?? metaResult?.llm?.provider;
+          const errorMsg = metaResult?.llm_error ?? metaResult?.llm?.error;
           const resp = result?.response;
           const finalText: string = (() => {
             // 1. Non-empty summary from orchestration final pass
@@ -150,6 +214,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                     confidence: typeof confidence === 'number' ? confidence : undefined,
                     critic_score: typeof critic_score === 'number' ? critic_score : undefined,
                     raw: result,
+                    llm: { provider, error: errorMsg },
                   } }
                 : m,
             ),
@@ -191,3 +256,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 }));
+
+// expose helper for tests to inspect store state
+if (typeof window !== 'undefined') {
+  // expose utility getters and the hook itself so tests can manipulate
+  // conversation state directly without having to go through the network.
+  (window as any).getAppStore = () => useAppStore.getState();
+  (window as any).__APP_STORE__ = useAppStore.getState();
+  useAppStore.subscribe((s) => {
+    (window as any).__APP_STORE__ = s;
+  });
+  // the hook function allows tests to call actions, e.g. window.__APP_STORE__.appendMessage(...)
+  (window as any).__APP_HOOK__ = useAppStore;
+}

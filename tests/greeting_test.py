@@ -14,12 +14,18 @@ async def test():
     print('response to hi:', res)
     assert isinstance(res, dict) and res.get('status') == 'success'
     assert 'response' in res and 'Hello' in res['response']
+    # should also hint at features like images or goals
+    assert any(k in res['response'].lower() for k in ('image', 'audio', 'goal', 'file'))
 
     # non‑goal small talk should also yield a friendly chat-style reply
     res2 = await st.handle_user_input('how are you?')
     print('response to small talk:', res2)
     assert isinstance(res2, dict) and res2.get('status') == 'success'
     assert 'response' in res2 and isinstance(res2['response'], str)
+    # asking about capabilities triggers hint text via hint logic
+    res_hint = await st.handle_user_input('what can you do?')
+    print('capabilities hint:', res_hint)
+    assert 'response' in res_hint and 'image' in res_hint['response'].lower()
 
     # a longer, goal‑like sentence should not be treated as casual chat;
     # result will typically include a task_map or other metadata instead.

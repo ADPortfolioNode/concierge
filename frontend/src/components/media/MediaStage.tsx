@@ -8,7 +8,10 @@
  *   z-4  Audio   — bar docked to stage bottom
  *
  * Auto-shows when new content is routed from appStore.sendMessage.
- * Draggable via the header handle.  Each layer can be toggled.
+ * If more than one media item (image/video/audio) is pushed, the panel
+ * automatically expands to near full-screen and stays in the upper-left
+ * corner; the user can also toggle a full-screen/full-size mode with the
+ * header button.  Each layer can be toggled individually.
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -105,6 +108,8 @@ const MediaStage: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [hiddenLayers, setHiddenLayers] = useState<Set<LayerKey>>(new Set());
+  // when true the stage stretches to fill most of the viewport
+  // (used both for the "full width" toggle button and auto‑expansion)
   const [fullWidth, setFullWidth] = useState(false);
   const prevSize = useRef<{width: number; height: number}>({width: STAGE_W, height: STAGE_H});
 
@@ -134,8 +139,9 @@ const MediaStage: React.FC = () => {
       setSize((s) => ({
         ...s,
         width: Math.min(MAX_W, window.innerWidth - 40),
+        height: Math.min(MAX_H, window.innerHeight - HEADER_H - 8),
       }));
-      setPos((p) => ({ ...p, left: 20 }));
+      setPos((p) => ({ ...p, left: 20, top: Math.max(60, window.innerHeight - s.height - 90) }));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -144,13 +150,33 @@ const MediaStage: React.FC = () => {
   useEffect(() => {
     if (layerCount > prevCount.current) {
       setDismissed(false);
-      // Auto-expand if we get image/video/audio (media worth seeing)
+
+      // Auto-unminimise when any media arrives
       if (imageLayers.length > 0 || videoLayers.length > 0 || audioLayers.length > 0) {
         setMinimized(false);
       }
+
+      // if more than one piece of media is present, expand the stage
+      const mediaCount = imageLayers.length + videoLayers.length + audioLayers.length;
+      if (mediaCount > 1 && !fullWidth) {
+        prevSize.current = size;
+        setSize({
+          width: Math.min(MAX_W, window.innerWidth - 40),
+          height: Math.min(MAX_H, window.innerHeight - HEADER_H - 8),
+        });
+        setPos({ left: 20, top: Math.max(60, window.innerHeight - size.height - 90) });
+        setFullWidth(true);
+      }
     }
     prevCount.current = layerCount;
-  }, [layerCount, imageLayers.length, videoLayers.length, audioLayers.length]);
+  }, [
+    layerCount,
+    imageLayers.length,
+    videoLayers.length,
+    audioLayers.length,
+    fullWidth,
+    size,
+  ]);
 
   // ── drag ──────────────────────────────────────────────────────────────────
   const lastMouse = useRef({ x: 0, y: 0 });
@@ -250,18 +276,19 @@ const MediaStage: React.FC = () => {
         <button
           onClick={() => {
             if (!fullWidth) {
+              // going into expanded mode: remember previous dimensions
               prevSize.current = size;
               setSize((s) => ({
                 width: Math.min(MAX_W, window.innerWidth - 40),
-                height: s.height,
+                height: Math.min(MAX_H, window.innerHeight - HEADER_H - 8),
               }));
-              setPos((p) => ({ ...p, left: 20 }));
+              setPos((p) => ({ ...p, left: 20, top: Math.max(60, window.innerHeight - size.height - 90) }));
             } else {
               setSize(prevSize.current);
             }
             setFullWidth((f) => !f);
           }}
-          title={fullWidth ? 'Restore width' : 'Full width'}
+          title={fullWidth ? 'Restore size' : 'Full screen'}
           style={iconBtn}
         >
           ⇔

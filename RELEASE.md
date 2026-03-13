@@ -41,7 +41,9 @@ Concierge.
    - `pytest` for Python tests
    - `npm run test` or `npx playwright test` for front-end e2e checks
 5. Build Docker images and run `docker-compose up --build` to verify the
-   containerized stack starts correctly.
+   containerized stack starts correctly.  The `start.sh` helper now supports
+   `--log` to capture both backend and frontend output to `start.log` and will
+   warn if either container exits during startup.
 6. Audit the changelog and update `README.md` with any new runtime
    requirements or environment variables (e.g. `BACKEND_TIMEOUT`,
    `API_KEY_HEADER`).
@@ -52,8 +54,38 @@ Concierge.
 
 ## Post-release
 
-- Monitor `/health/system` for uptime, thread count, memory status, and
-  vector store connectivity.
+- Monitor `/health/system` for uptime, thread count, memory status, recent
+  log buffer size and vector store connectivity.  A companion
+  `/health/logs?limit=N` endpoint returns the last N log lines held in an
+  in-memory ring buffer.
+- When running in Docker, ensure the `OPENAI_API_KEY` (and optionally
+  `GEMINI_API_KEY`) environment variables are exported or present in `.env`.
+  The compose file now includes these keys in the `app` service's
+  `environment` section; without them the container will not see the key and
+  will fall back to rule-based behaviour and placeholder images.
+- The image-generation plugin now uses the updated OpenAI model name
+  `gpt-image-1` instead of the deprecated `dall-e-3`.  This resolves 400
+  errors where the API rejected requests with the old model identifier.
+- When OpenAI image requests fail due to rate limit or billing errors, the
+  plugin will automatically fall back to a Gemini image API call if
+  `GEMINI_API_KEY` is present.  This keeps pictures flowing even when your
+  primary provider is exhausted, and the returned metadata indicates the
+  source (`"gemini"`) for clarity.
+- UI enhancements: both **Tasks** and **Goals** pages now show an active-job
+  banner in the header with a progress bar and expandable details.  This
+  provides immediate visibility into background processing without scrolling.
+- Sample prompts throughout the application (home, workspace, tasks, goals,
+  strategy, how-to) include multimedia examples such as image generation,
+  audio transcription, and video analysis.  The chat greeting and responses to
+  capability questions now proactively mention these features to help onboard
+  new users.
+- Chat replies now look for keywords like "image", "audio", "video", "file" or
+  "goal" in your messages and automatically suggest the corresponding feature.
+  This makes it easier to discover capabilities without memorising commands.
+- Added a first‑class web‑search trigger: phrases such as "search for X" will
+  launch a `ResearchAgent` job that runs in the background, with progress
+  streamed back and a summarized result delivered when ready.  Conversations
+  continue uninterrupted while external information is being gathered.
 - Review usage logs for API key activity and enforce rate limits as
   required by the SaaS plan.
 - Document any hotfix procedure in this file.

@@ -30,6 +30,9 @@ services:
       - MEMORY_COMPRESS_THRESHOLD=999999
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      # forward AI service keys from host .env or environment
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
 
   quesarc_worker:
     build: .

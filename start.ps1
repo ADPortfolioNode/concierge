@@ -63,15 +63,21 @@ if ($clear) {
 if ($log) {
     Write-Host "Writing service logs to start.log"
     "--- compose logs (snapshot) ---" | Out-File -FilePath start.log -Encoding utf8 -Append
-    docker compose logs --no-color --timestamps | Out-File -FilePath start.log -Encoding utf8 -Append
+    # include both backend and frontend services
+    docker compose logs --no-color --timestamps app frontend | Out-File -FilePath start.log -Encoding utf8 -Append
 }
 
 if ($frontend) {
     Write-Host "Starting frontend container"
     Compose 'up -d frontend' | Out-Null
     if ($log) {
-        Write-Host "Appending frontend logs to start.log"
-        docker compose logs --no-color frontend | Out-File -FilePath start.log -Encoding utf8 -Append
+        Write-Host "Appending backend+frontend logs to start.log"
+        docker compose logs --no-color app frontend | Out-File -FilePath start.log -Encoding utf8 -Append
+    }
+    # check for unexpected exits
+    $ps = docker compose ps | Select-String -Pattern 'quesarc_app.*Exited','quesarc_frontend.*Exited'
+    if ($ps) {
+        Write-Host "One or more containers exited unexpectedly; see logs above" -ForegroundColor Yellow
     }
 }
 

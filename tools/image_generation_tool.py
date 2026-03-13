@@ -12,7 +12,7 @@ from .base_tool import BaseTool
 
 class ImageGenerationTool(BaseTool):
     name = "image_gen"
-    description = "Generate an image from a text prompt using DALL-E 3 (or a picsum placeholder)."
+    description = "Generate an image from a text prompt using the OpenAI image API (or a picsum placeholder)."
 
     async def run(self, input_data: str) -> str:
         """Run image generation and return the image URL."""

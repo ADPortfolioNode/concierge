@@ -14,6 +14,11 @@ export interface ApiResponse<T = any> {
     confidence: number;
     priority: number;
     media: MediaMeta;
+    // llm provider info for debugging/fallback diagnostics
+    llm: {
+      provider: string | null;
+      error: string | null;
+    };
   };
   errors: null | any[];
 }

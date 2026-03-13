@@ -12,7 +12,12 @@ const MessageList: React.FC<Props> = ({ messages }) => {
   const streamingId = useAppStore((s) => s.streamingId);
   const [collapseCounter, setCollapseCounter] = React.useState(0);
 
-  // Scroll to bottom whenever messages are added OR the streaming bubble grows
+  // Scroll to bottom whenever new messages arrive or streaming state changes.
+  // The `messages` prop may be a new array reference even when its contents
+  // haven’t changed, so we track the previous length and only update the
+  // collapse counter when the length actually increases (or streamingId
+  // toggles) to avoid an effect loop.
+  const prevLen = useRef(messages.length);
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
@@ -20,9 +25,15 @@ const MessageList: React.FC<Props> = ({ messages }) => {
     if (atBottom || streamingId) {
       el.scrollTop = el.scrollHeight;
     }
-    // bump counter to tell bubbles to collapse their meta panels
-    setCollapseCounter((c) => c + 1);
-  }, [messages, streamingId]);
+    // only bump when messages array got longer or streamingId changed
+    if (messages.length !== prevLen.current) {
+      prevLen.current = messages.length;
+      setCollapseCounter((c) => c + 1);
+    } else if (streamingId) {
+      // if no new message but streaming started/continues we still collapse
+      setCollapseCounter((c) => c + 1);
+    }
+  }, [messages.length, streamingId]);
 
   if (!messages || messages.length === 0) {
     // first-load system prompt

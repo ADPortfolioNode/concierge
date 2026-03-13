@@ -23,6 +23,14 @@ import os
 import re
 from typing import AsyncIterator, Optional
 
+# ensure environment variables from .env are available even if the
+# module is imported before the application entrypoint executes
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -230,7 +238,7 @@ def _task_execution_reply(prompt: str) -> str:
             seed = abs(hash(subject)) % 10000
             return (
                 f"Image generation initiated for '{subject}'. "
-                "To produce the image, set OPENAI_API_KEY to enable DALL-E 3. "
+                "To produce the image, set OPENAI_API_KEY to enable the OpenAI image API. "
                 f"Placeholder preview: https://picsum.photos/seed/{seed}/800/600"
             )
 
@@ -348,7 +356,7 @@ def _conversational_reply(user_msg: str) -> str:
 
     if any(k in msg for k in ("image", "picture", "photo", "generate an image", "draw", "create an image", "flaming", "teddy bear", "dall")):
         return (
-            "I'd love to generate that image for you! Image generation uses OpenAI's DALL-E API. "
+            "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
             "Once `OPENAI_API_KEY` is set, I can create detailed images from any text description. "
             "To set it up: add `OPENAI_API_KEY=<your-key>` to your environment and restart the server. "
             "Is there anything else I can help with in the meantime?"
@@ -477,8 +485,9 @@ class LLMTool:
         client = _get_client()
 
         # try each key in turn; on 429 or other rate-limit we move to the next one
-        # clear any old fallback indicator
+        # clear any old fallback indicator and record the current provider
         self.last_fallback = None
+        self.last_provider = "openai"  # default assumption
         for idx, key in enumerate(self._api_keys):
             headers = {
                 "Authorization": f"Bearer {key}",
@@ -509,7 +518,8 @@ class LLMTool:
                     # successful completion, stop iterating keys
                     return
             except httpx.HTTPStatusError as exc:
-                # rate limit? try next key if available
+                # attempt to fall back to another key or Gemini rather than
+                # immediately terminating with an error message.
                 status = None
                 if exc.response is not None:
                     status = getattr(exc.response, "status_code", None)
@@ -520,18 +530,24 @@ class LLMTool:
                         )
                         continue
                     else:
-                        # last key hit a rate limit; break out so we can try Gemini
                         logger.warning(
-                            "LLMTool last key %s rate limited; falling through to fallback", key
+                            "LLMTool last key %s rate limited; will try Gemini or rule-based", key
                         )
                         break
                 if status == 401:
-                    # unauthorized; no point in trying further OpenAI keys
-                    logger.warning("LLMTool unauthorized on key %s; falling back", key)
+                    logger.warning("LLMTool unauthorized on key %s; will try Gemini or rule-based", key)
                     break
-                logger.exception("LLMTool HTTP error: %s", exc)
-                yield f"[LLM-Error] {exc}"
-                return
+                # other non-2xx codes: log and break so fallback logic runs
+                logger.warning("LLMTool HTTP status %s on key %s; falling back", status, key)
+                break
+            except httpx.HTTPError as exc:
+                # network or other error – fall back to Gemini instead of
+                # returning a raw error string
+                logger.warning("LLMTool HTTP error on key %s: %s; falling back", key, exc)
+                break
+            except Exception as exc:
+                logger.warning("LLMTool unexpected error on key %s: %s; falling back", key, exc)
+                break
             except httpx.HTTPError as exc:
                 logger.exception("LLMTool HTTP error: %s", exc)
                 yield f"[LLM-Error] {exc}"
@@ -544,15 +560,16 @@ class LLMTool:
         # if we exhausted all OpenAI keys, try Gemini if the key is configured
         if self._gemini_key:
             try:
+                self.last_provider = "gemini"
                 gem_resp = await self._call_gemini(prompt, context)
                 self.last_fallback = "switched to Gemini provider"
-                # yield the entire response as one token so callers still get text
                 yield gem_resp
                 return
             except Exception as exc:
                 logger.warning("Gemini fallback failed: %s", exc)
-                # fall through to rule-based
-        logger.error("All OpenAI API keys exhausted due to rate limits; using rule-based fallback")
+                # if Gemini fails, we'll fall through to the rule-based stub
+        logger.error("Falling back to local rule-based responder")
+        self.last_provider = "rule-based"
         self.last_fallback = "using local rule-based responder"
         await asyncio.sleep(0)
         yield _rule_based_response(prompt, context)

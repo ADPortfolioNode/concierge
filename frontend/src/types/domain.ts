@@ -15,5 +15,10 @@ export interface ConversationMessage {
     confidence?: number;
     priority?: number;
     raw?: Record<string, unknown> | null;
+    // provider used and any fallback/error message from the LLM
+    llm?: {
+      provider?: string | null;
+      error?: string | null;
+    };
   } | null;
 }

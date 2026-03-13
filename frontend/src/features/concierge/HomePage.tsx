@@ -27,6 +27,7 @@ const CAPABILITIES = [
       'Create a 4-week goal to migrate our REST API to GraphQL.',
       'I want to reduce page load time by 40% — plan it out.',
       'Set weekly goals for improving test coverage from 60% to 90%.',
+      'Design a banner image for the goal.',
     ],
   },
   {
@@ -40,6 +41,7 @@ const CAPABILITIES = [
       'Analyse the CSV I just uploaded and summarise the key trends.',
       'Generate a Python script to parse JSON logs and extract error counts.',
       'Read my uploaded spec and list all the missing edge cases.',
+      'Create an image illustrating the analysis results.',
     ],
   },
   {
@@ -53,6 +55,8 @@ const CAPABILITIES = [
       'I\'ve uploaded a PDF spec — summarise the authentication requirements.',
       'Attach the financial model CSV to the Q2 Planning project.',
       'Extract all the TODO comments from the uploaded source file.',
+      'Show me the image I just uploaded.',
+      'Transcribe the audio file I uploaded and summarise it.',
     ],
   },
   {

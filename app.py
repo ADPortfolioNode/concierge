@@ -8,10 +8,12 @@ from __future__ import annotations
 import logging
 import asyncio
 import json
+import os
 import time
 import traceback
-from typing import Any, Optional
+from typing import Any, Optional, Deque
 from pathlib import Path
+import collections
 
 # Load .env before any os.getenv calls so keys are available to all modules
 try:
@@ -63,6 +65,22 @@ except Exception:
     VERSION = "unknown"
 
 logging.basicConfig(level=logging.INFO)
+# --- recent-log handler ----------------------------------------------------
+class _RecentLogHandler(logging.Handler):
+    """Keep the last *n* formatted log lines in memory for monitoring endpoints."""
+    def __init__(self, capacity: int = 500):
+        super().__init__()
+        self.deque: Deque[str] = collections.deque(maxlen=capacity)
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            self.deque.append(self.format(record))
+        except Exception:
+            pass
+
+_recent_logs = _RecentLogHandler(capacity=int(os.getenv("RECENT_LOG_CAP", "500")))
+_recent_logs.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+logging.getLogger().addHandler(_recent_logs)
+
 logger = logging.getLogger(__name__)
 # log version on startup
 logger.info(f"Concierge version {VERSION} starting")
@@ -108,7 +126,7 @@ app = FastAPI(lifespan=_lifespan)
 # ----------------------------------------------------------------------
 # The frontend commonly runs on localhost:5173 during development, so allow
 # that origin (or use wildcard for convenience).  Automation tests and
-automated environments may set CORS_ALLOW_ORIGINS env var as a comma
+# automated environments may set CORS_ALLOW_ORIGINS env var as a comma
 # separated list.
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -189,6 +207,10 @@ def _api_response(data: any, status: str = 'success'):
             'confidence': None,
             'priority': None,
             'media': None,
+            # information about the LLM provider used for this response, if
+            # applicable.  ``provider`` can be ``openai``, ``gemini`` or
+            # ``rule-based``, and ``error`` carries any fallback message.
+            'llm': {'provider': None, 'error': None},
         },
         'errors': None,
     }
@@ -252,9 +274,18 @@ async def concierge_message(payload: ConciergeMessagePayload):
         'meta': {'raw': result},
         'timestamp': now,
     }
+
+    # append entries to conversation state (used by /conversation endpoint)
     app.state.conversation.append(user_entry)
     app.state.conversation.append(data)
-    return _api_response(data)
+
+    # build the API response envelope and copy provider/error info into meta
+    resp = _api_response(data)
+    llm_meta = resp['meta'].get('llm')
+    if llm_meta is not None and isinstance(result, dict):
+        llm_meta['provider'] = result.get('llm_provider')
+        llm_meta['error'] = result.get('llm_error')
+    return resp
 
 
 @app.get('/api/v1/concierge/metrics')
@@ -271,6 +302,18 @@ async def concierge_metrics():
         'summary': f"{metrics.total_requests} requests processed, {metrics.requests_queued} queued, {metrics.failovers} fallbacks to alternate LLM."
     }
     return _api_response(m)
+
+
+# timeline introspection endpoints
+@app.get('/api/v1/concierge/timeline')
+async def concierge_timeline():
+    plan = app.state.timeline.get_last_plan()
+    return _api_response(plan or {})
+
+@app.get('/api/v1/concierge/timeline/graph')
+async def concierge_timeline_graph():
+    png = app.state.timeline.get_plan_graph_png()
+    return Response(content=png, media_type='image/png')
 
 
 @app.post('/api/v1/concierge/stream')
@@ -370,6 +413,11 @@ async def health_system():
         info['threads'] = threading.active_count()
     except Exception:
         info['threads'] = None
+    # recent log buffer size (for monitoring)
+    try:
+        info['recent_log_lines'] = len(_recent_logs.deque)
+    except Exception:
+        info['recent_log_lines'] = None
     # memory subsystem
     try:
         info['memory_graph'] = 'ok' if hasattr(app.state, 'memory') else 'unavailable'
@@ -404,6 +452,21 @@ async def health_system():
         info['chroma'] = 'error'
         info['qdrant'] = 'error'
     return JSONResponse(content=info)
+
+
+# expose recent log lines for monitoring purposes
+@app.get('/health/logs')
+async def health_logs(limit: int = 100):
+    """Return the most recent log messages (plain text strings).
+
+    The query parameter `limit` controls how many lines to retrieve (max
+    capacity of the ring buffer).
+    """
+    try:
+        lines = list(_recent_logs.deque)[-limit:]
+    except Exception:
+        lines = []
+    return JSONResponse(content={'lines': lines})
 
 
 if __name__ == "__main__":

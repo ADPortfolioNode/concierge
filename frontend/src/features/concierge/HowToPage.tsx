@@ -69,6 +69,8 @@ const HowToPage: React.FC = () => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[
           'Hello — what can you help me with today?',
+      'Generate an image of a smiling cat.',
+      'Transcribe audio or describe a video clip.',
           'Give me pros and cons of GraphQL vs REST for a mobile app.',
           'Write a haiku about async programming.',
           'What was the last goal we worked on?',

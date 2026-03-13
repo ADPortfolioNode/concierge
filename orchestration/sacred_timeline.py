@@ -106,12 +106,20 @@ class SacredTimeline:
         self._memory = memory_store or MemoryStore(collection_name=settings.memory_collection, llm_tool=self._llm)
         self._planner = planner or Planner(llm=self._llm)
         self._summarizer = summarizer or Summarizer()
+        # compile the regex once for detecting explicit web-search commands
+        import re
+        self._SEARCH_PATTERN = re.compile(r"\b(?:search for|look up|web search for|find)\b\s+(.+)", re.I)
         # agent registry for specialized terminal agents (not used in routing)
         self._agents: Dict[str, Any] = {}
         try:
             self._agents["synthesizer"] = SynthesizerAgent(self._llm)
         except Exception:
             logger.exception("Failed to initialize SynthesizerAgent")
+        try:
+            from agents.research_agent import ResearchAgent
+            self._agents["research"] = ResearchAgent(self._memory, llm=self._llm)
+        except Exception:
+            logger.exception("Failed to initialize ResearchAgent")
         self._vector_tool = vector_tool or VectorSearchTool(self._memory)
         # Register default tools so specialized agents can find them
         try:
@@ -126,14 +134,39 @@ class SacredTimeline:
 
         This helper uses the shared LLM instance (`self._llm`). Tests may
         override `self._chat_llm` if they need a dummy implementation.
+
+        When the user directly asks what the system can do or about its
+        capabilities we add an extra hint so the reply can point them at
+        multimedia/image/audio/file features, helping to "sell" the app.
         """
         # prefer injected chat-specific LLM for tests or customization
         llm = getattr(self, "_chat_llm", None) or self._llm
+        hint = ""
+        lower = user_input.strip().lower()
+        # generic capability prompt question
+        if any(k in lower for k in ("what can you", "what do you", "capabilit", "features")):
+            hint = (
+                " You might mention that I can generate images, transcribe audio or "
+                "video, analyse uploaded files, plan projects, and much more. "
+                "Describe your goal and I’ll suggest a starting prompt."
+            )
+        # keywords signalling features we support
+        cap_keywords = {
+            "image": "You can generate or analyse images using the 📷 button.",
+            "audio": "Try uploading an audio clip for transcription.",
+            "video": "I can analyse videos and describe them.",
+            "file": "Attach a file and ask me to read or summarise it.",
+            "goal": "Describe a goal and I'll decompose it into tasks.",
+        }
+        for kw, tip in cap_keywords.items():
+            if kw in lower and tip not in hint:
+                hint += " " + tip
         prompt = (
             "You are a helpful, friendly assistant conversing with a user. "
             "The user said:\n" + user_input + "\n"
             "Respond naturally and encourage next steps, but do not attempt to "
             "break the input into tasks unless the user explicitly asks you to."
+            + hint
         )
         try:
             return (await llm.generate(prompt, context=user_input)).strip()
@@ -625,6 +658,30 @@ class SacredTimeline:
             logger.exception("Failed to persist final synthesis into memory")
 
         # Make task_map JSON-serializable (convert sets to lists)
+
+    async def _perform_web_search(self, query: str) -> str:
+        """Fetch a simple search results page for *query* and return main text.
+
+        We use DuckDuckGo's HTML interface to avoid JS.  This is a very
+        lightweight helper intended to give users a rough answer rather than a
+        comprehensive report.  Errors are surfaced as plain text.
+        """
+        import httpx
+        import urllib.parse
+
+        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.get(url)
+            r.raise_for_status()
+            text = r.text
+            # strip tags naively for brevity
+            import re
+            text = re.sub(r"<[^>]+>", "", text)
+            # limit length so we don't flood the chat
+            return text.strip()[:2000] or "(no text found)"
+        except Exception as exc:
+            return f"[web search failed: {exc}]"
         serializable_map = {}
         for tid, info in task_map.items():
             entry = dict(info)
@@ -638,12 +695,55 @@ class SacredTimeline:
 
         # make sure evaluation field is always a dict for downstream consumers
         eval_out = {}
+
+    def get_last_plan(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent plan produced by the planner (or None)."""
+        return getattr(self, '_last_plan', None)
+
+    def get_plan_graph_png(self) -> bytes:
+        """Generate a simple PNG rendering of the last plan using matplotlib.
+
+        Returns raw PNG bytes; caller should set content-type accordingly.
+        """
+        import matplotlib.pyplot as plt
+        import io
+        plan = self.get_last_plan()
+        if not plan or not plan.get('tasks'):
+            # empty placeholder
+            fig = plt.figure(figsize=(4, 1))
+            fig.text(0.5, 0.5, 'no plan', ha='center', va='center')
+        else:
+            tasks = plan['tasks']
+            fig, ax = plt.subplots(figsize=(max(4, len(tasks)*1.2), 2))
+            ax.axis('off')
+            for i, task in enumerate(tasks):
+                rect = plt.Rectangle((i, 0.5), 0.9, 0.8, fill=True, color='#7c6af7', alpha=0.3)
+                ax.add_patch(rect)
+                ax.text(i+0.45, 0.9, task.get('title', '')[:20] or task.get('instructions','')[:20],
+                        ha='center', va='center', fontsize=8, wrap=True)
+            ax.set_xlim(0, len(tasks))
+            ax.set_ylim(0, 2)
+        buf = io.BytesIO()
+        fig.tight_layout()
+        fig.savefig(buf, format='png')
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
         if 'last_evaluation' in locals() and last_evaluation is not None:
             if isinstance(last_evaluation, dict):
                 eval_out = last_evaluation
             else:
                 eval_out = {"decision": last_evaluation}
         result_out: Dict[str, Any] = {"status": status_out if 'status_out' in locals() else "success", "goal": goal, "task_map": serializable_map, "final": final_result, "evaluation": eval_out}
+        # append any information about the LLM provider that was used, as well
+        # as any fallback notice (error message).  This makes it easy for
+        # callers (and the frontend) to display which service generated the
+        # text and whether a failover occurred.
+        llm_provider = getattr(self._llm, "last_provider", None)
+        if llm_provider:
+            result_out["llm_provider"] = llm_provider
+        if getattr(self._llm, "last_fallback", None):
+            result_out["llm_error"] = self._llm.last_fallback
         # attach reflection flag if available
         if 'context' in locals():
             result_out["reflection_reused"] = context.get("reflection_reused", False)
@@ -694,21 +794,73 @@ class SacredTimeline:
 
         greeting = user_input.strip().lower()
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
-            yield _evt({"type": "token", "text": "Hello! I'm Concierge — how can I assist you today?"})
+            # include some handy starting suggestions so the user knows what’s possible
+            hello_msg = (
+                "Hello! I'm Concierge — how can I assist you today?\n\n"
+                "You can ask for an image, upload a file for analysis, or set a goal. "
+                "For example: 'Generate an image of a sunset.' or "
+                "'Create a 4-week goal to improve test coverage.'"
+            )
+            yield _evt({"type": "token", "text": hello_msg})
             # if fallback occured, send a progress notice
             if getattr(self._llm, "last_fallback", None):
                 yield _evt({"type": "progress", "text": f"Note: {self._llm.last_fallback}."})
                 self.metrics.failovers += 1
-            yield _evt({"type": "done", "result": {"response": "Hello! I'm Concierge — how can I assist you today?"}})
+            yield _evt({"type": "done", "result": {"response": hello_msg}})
             return
+
+        # detect explicit web-search requests and satisfy them before any
+        # usual planning or chat behaviour.  This keeps the assistant from
+        # ignoring phrases such as "search for LLM benchmarks 2026".
+        m = _SEARCH_PATTERN.search(user_input)
+        if m:
+            query = m.group(2).strip()
+            # spawn a ResearchAgent so the planner/agents machinery can run it
+            agent = self._agents.get("research")
+            if agent:
+                yield _evt({"type": "progress", "text": f"Searching the web for '{query}'…"})
+                manager_id, fut = await self._concurrency.register(agent.execute({"query": query}))
+                try:
+                    result = await fut
+                    summary = result.get("summary") or ""
+                except Exception as exc:
+                    summary = f"[search failed: {exc}]"
+                yield _evt({"type": "token", "text": summary})
+                yield _evt({"type": "done", "result": {"response": summary}})
+                return
+            else:
+                # fallback to simple helper if agent unavailable
+                search_text = await self._perform_web_search(query)
+                yield _evt({"type": "token", "text": search_text})
+                yield _evt({"type": "done", "result": {"response": search_text}})
+                return
 
         # Bypass planner for conversational questions
         if _is_conversational(user_input):
             llm = getattr(self, "_chat_llm", None) or self._llm
+            # hint for promotional questions and capability keywords
+            hint = ""
+            lower = user_input.strip().lower()
+            if any(k in lower for k in ("what can you", "what do you", "capabilit", "features")):
+                hint = (
+                    " You might mention that I can generate images, transcribe audio or "
+                    "video, analyse uploaded files, plan projects, and much more. "
+                    "Describe your goal and I’ll suggest a starting prompt."
+                )
+            cap_keywords = {
+                "image": "You can generate or analyse images using the 📷 button.",
+                "audio": "Try uploading an audio clip for transcription.",
+                "video": "I can analyse videos and describe them.",
+                "file": "Attach a file and ask me to read or summarise it.",
+                "goal": "Describe a goal and I'll decompose it into tasks.",
+            }
+            for kw, tip in cap_keywords.items():
+                if kw in lower and tip not in hint:
+                    hint += " " + tip
             prompt = (
                 "You are a helpful, friendly assistant conversing with a user. "
                 "The user said:\n" + user_input + "\n"
-                "Respond naturally and encourage next steps."
+                "Respond naturally and encourage next steps." + hint
             )
             full_response_conv: list[str] = []
             try:
@@ -828,6 +980,8 @@ class SacredTimeline:
 
         # ask planner to decompose into tasks. planner may return a trivial "echo"
         plan = await self._planner.plan(user_input)
+        # persist the last plan so UI can query thread state
+        self._last_plan = plan
         tasks = plan.get("tasks") or []
 
         # if the planner produced a single task that simply repeats the user_input,

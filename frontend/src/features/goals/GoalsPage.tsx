@@ -36,12 +36,23 @@ const PROMPT_GROUPS = [
       'Plan a 2-week sprint to reduce the backlog of bug reports by 50%.',
       'Outline a knowledge-transfer plan for the outgoing lead engineer.',
       'Set team objectives for improving code review turnaround to under 24 hours.',
+      'Design a promotional banner image for the goal.',
+    ],
+  },
+  {
+    label: '🖼️ Multimedia goals',
+    prompts: [
+      'Generate a logo for this goal/project.',
+      'What multimedia assets would support this objective?',
     ],
   },
 ];
 
+import ProcessingBanner from '@/components/ProcessingBanner';
+
 const GoalsPage: React.FC = () => (
   <div style={{ padding: '28px 28px 60px', maxWidth: 900, margin: '0 auto', color: '#e2e8f0' }}>
+    <ProcessingBanner />
     {/* header */}
     <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>
       🎯 Goals

@@ -54,6 +54,14 @@ const PROMPT_GROUPS = [
       'Identify the top 5 risks of entering the enterprise data-platform market in 2026.',
     ],
   },
+  {
+    label: '🎨 Multimedia prompts',
+    prompts: [
+      'Generate a concept sketch for a new app icon.',
+      'Produce a short video storyboard describing the product.',
+      'Design an infographic to visualise our strategic roadmap.',
+    ],
+  },
 ];
 
 const StrategyPage: React.FC = () => (

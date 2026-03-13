@@ -110,6 +110,81 @@ def test_image_generation_plugin_returns_dict():
     assert "prompt" in result
 
 
+def test_image_generation_plugin_handles_errors(monkeypatch):
+    """When the OpenAI API returns an error we fall back to a placeholder.
+
+    We patch ``httpx.AsyncClient`` to avoid performing a real network call and
+    to simulate a 400 response which triggers the error handling path.
+    """
+    class FakeResponse:
+        def __init__(self):
+            self.status_code = 400
+            self.text = "{\"error\":\"invalid model\"}"
+
+        def raise_for_status(self):
+            from httpx import HTTPStatusError
+
+            raise HTTPStatusError(
+                "Client error '400 Bad Request' for url 'https://api.openai.com/v1/images/generations'",
+                request=None,
+                response=self,
+            )
+
+        def json(self):
+            return {"error": "invalid model"}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    # Patch AsyncClient in the plugin module by importing it directly
+    import plugins.image_generation_plugin as imgmod
+    monkeypatch.setattr(imgmod.httpx, "AsyncClient", FakeClient)
+
+    plugin = ImageGenerationPlugin()
+    result = asyncio.get_event_loop().run_until_complete(plugin.run("test"))
+    assert result["source"] == "placeholder"
+    assert "error" in result
+    assert "invalid model" in result["error"]
+    # the user-facing note should mention the error so operators can debug
+    assert "invalid model" in result.get("note", "")
+
+
+def test_image_generation_plugin_gemini_fallback(monkeypatch):
+    """If the OpenAI call fails with a billing/rate-limit error we try Gemini.
+
+    We stub both methods so no real HTTP calls are performed.
+    """
+    class FakePlugin(ImageGenerationPlugin):
+        async def _dalle(self, prompt, api_key):
+            raise Exception("billing hard limit reached")
+
+        async def _gemini_image(self, prompt, api_key):
+            return {
+                "prompt": prompt,
+                "url": "https://example.com/gemini.png",
+                "mime_type": "image/png",
+                "source": "gemini",
+            }
+
+    # make sure the code believes a Gemini key exists so fallback logic
+    # is executed.
+    monkeypatch.setenv("GEMINI_API_KEY", "dummy")
+    plugin = FakePlugin()
+    result = asyncio.get_event_loop().run_until_complete(plugin.run("something"))
+    assert result["source"] == "gemini"
+    assert "gemini.png" in result["url"]
+
+
 def test_plugin_to_dict():
     plugin = SummarizationPlugin()
     d = plugin.to_dict()
@@ -442,7 +517,9 @@ def test_load_default_integrations():
 
 
 def test_llmtool_fallback_to_gemini(monkeypatch):
-    """LLMTool should call Gemini if all OpenAI keys rate-limit or are unauthorized."""
+    """LLMTool should call Gemini if all OpenAI keys rate-limit, are unauthorized,
+    or any HTTP error occurs.
+    """
     import httpx, types
 
     # simulate a client that always throws 429 on stream()
@@ -464,6 +541,29 @@ def test_llmtool_fallback_to_gemini(monkeypatch):
     # override gemini call to return a known string
     async def fake_call(self, p, c):
         return "gemresponse"
+
+
+def test_llmtool_http_error_triggers_gemini(monkeypatch):
+    # if the OpenAI request returns a 500 we still switch to Gemini
+    import httpx, types
+
+    class DummyClient:
+        def __init__(self, timeout=None):
+            pass
+        def stream(self, method, url, json, headers, timeout):
+            class CM:
+                async def __aenter__(self_inner):
+                    raise httpx.HTTPStatusError("500", request=None, response=types.SimpleNamespace(status_code=500))
+                async def __aexit__(self_inner, exc_type, exc, tb):
+                    return False
+            return CM()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "key")
+    monkeypatch.setenv("OPENAI_API_KEYS", "other")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemkey")
+    monkeypatch.setattr("tools.llm_tool._get_client", lambda: DummyClient())
+    async def fake_call(self, p, c):
+        return "gemresponse"
     from tools.llm_tool import LLMTool
     monkeypatch.setattr(LLMTool, "_call_gemini", fake_call)
     async def _noop_sleep(s):
@@ -474,6 +574,34 @@ def test_llmtool_fallback_to_gemini(monkeypatch):
     tool = LLMTool()
     resp = asyncio.get_event_loop().run_until_complete(tool.generate("hello"))
     assert resp == "gemresponse"
+    from tools.llm_tool import LLMTool
+    monkeypatch.setattr(LLMTool, "_call_gemini", fake_call)
+    async def _noop_sleep(s):
+        pass
+    monkeypatch.setattr("asyncio.sleep", _noop_sleep)
+
+    from tools.llm_tool import LLMTool
+    tool = LLMTool()
+    resp = asyncio.get_event_loop().run_until_complete(tool.generate("hello"))
+    assert resp == "gemresponse"
+
+
+def test_openai_integration_import_failure_uses_gemini(monkeypatch):
+    # if the openai package cannot be imported, Gemini should be used
+    import sys
+    sys.modules.pop("openai", None)
+    monkeypatch.setenv("OPENAI_API_KEY", "primary")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemkey")
+    async def fake_gemini(self, prompt_or_payload, model, action):
+        return {"integration": self.name, "action": action, "status": "ok", "content": "gemout", "model": model}
+    monkeypatch.setattr(OpenAIIntegration, "_gemini_chat", fake_gemini)
+
+    intg = OpenAIIntegration()
+    resp = asyncio.get_event_loop().run_until_complete(
+        intg.call("chat", {"messages": [{"role": "user", "content": "hey"}]} )
+    )
+    assert resp["status"] == "ok"
+    assert resp["content"] == "gemout"
 
 
 def test_openai_integration_unauthorized_fallback(monkeypatch):

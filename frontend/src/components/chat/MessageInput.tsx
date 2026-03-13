@@ -16,6 +16,18 @@ const MessageInput: React.FC = () => {
   const draftMessage = useAppStore((s) => s.draftMessage);
   const setDraft = useAppStore((s) => s.setDraft);
 
+  // expose store helpers so tests can manipulate conversation state.
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__APP_HOOK__ = useAppStore;
+      (window as any).__APP_STORE__ = useAppStore.getState();
+      useAppStore.subscribe((s) => {
+        (window as any).__APP_STORE__ = s;
+      });
+      console.log('MessageInput effect bound store helpers');
+    }
+  }, []);
+
   // When a sample prompt is clicked from any page, it sets draftMessage in the
   // store.  We mirror it into local state and focus the textarea.
   useEffect(() => {

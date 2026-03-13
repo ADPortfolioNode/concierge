@@ -199,6 +199,14 @@ else
     fi
     echo "Starting services with compose up -d"
     compose up -d || die "compose up failed"
+    # if user requested logging, capture an initial snapshot of backend output
+    if $LOGS; then
+        # give containers a moment to emit startup messages
+        sleep 1
+        echo "-- initial backend log snapshot --" >> start.log
+        compose logs --no-color app --tail=50 >> start.log || true
+        echo "-- end snapshot --" >> start.log
+    fi
 fi
 
 # if --test was requested, kick off Playwright and tail backend logs
@@ -233,14 +241,16 @@ if $FRONTEND; then
     echo "Starting frontend container via docker-compose"
     compose up -d frontend || die "failed to start frontend container"
     if $LOGS; then
-        echo "Appending frontend logs to start.log"
-        compose logs --no-color frontend | tee -a start.log
+        echo "Appending backend+frontend logs to start.log"
+        compose logs --no-color app frontend | tee -a start.log
     fi
-    # check status and show logs if it exited
-    if compose ps | grep -q "quesarc_frontend.*Exited"; then
-        echo "Frontend container exited; here are the last 20 lines of its log:"
-        compose logs frontend --tail=20 >&2
-    fi
+    # check status and show logs if any container exited unexpectedly
+    for svc in app frontend; do
+        if compose ps | grep -q "quesarc_${svc}.*Exited"; then
+            echo "${svc^} container exited; here are the last 20 lines of its log:" >&2
+            compose logs $svc --tail=20 >&2
+        fi
+    done
 fi
 
 echo "start.sh complete."

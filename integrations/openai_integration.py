@@ -50,84 +50,88 @@ class OpenAIIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "unconfigured",
                     "message": "Set OPENAI_API_KEY or GEMINI_API_KEY to enable integration."}
 
+        # attempt to use OpenAI SDK; fall back to Gemini on ANY failure
         try:
             import openai
-            # try OpenAI keys sequentially until one succeeds or we run out
-            last_exc: Exception | None = None
-            # default models controlled by environment variables for easy switching
-            default_chat = os.getenv("OPENAI_DEFAULT_CHAT_MODEL", "gpt-4o-mini")
-            default_embed = os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
-            default_moderate = os.getenv("OPENAI_DEFAULT_MODERATE_MODEL")
-
-            for idx, api_key in enumerate(keys):
-                client = openai.AsyncOpenAI(api_key=api_key)
-                try:
-                    if action == "chat":
-                        p = payload or {}
-                        messages = p.get("messages") or [{"role": "user", "content": str(p.get("prompt", ""))}]
-                        model = p.get("model") or default_chat
-                        resp = await client.chat.completions.create(model=model, messages=messages)
-                        return {"integration": self.name, "action": action, "status": "ok",
-                                "content": resp.choices[0].message.content,
-                                "model": resp.model, "usage": dict(resp.usage)}
-
-                    if action == "embed":
-                        p = payload or {}
-                        inp = p.get("input", "")
-                        model = p.get("model") or default_embed
-                        resp = await client.embeddings.create(model=model, input=inp)
-                        vectors = [d.embedding for d in resp.data]
-                        return {"integration": self.name, "action": action, "status": "ok",
-                                "embeddings": vectors, "model": resp.model}
-
-                    if action == "moderate":
-                        p = payload or {}
-                        model = p.get("model") or default_moderate
-                        # most moderation endpoints ignore model but include if given
-                        args = {"input": p.get("input", "")}
-                        if model:
-                            args["model"] = model
-                        resp = await client.moderations.create(**args)
-                        result = resp.results[0]
-                        return {"integration": self.name, "action": action, "status": "ok",
-                                "flagged": result.flagged, "categories": dict(result.categories)}
-
-                    return {"integration": self.name, "action": action, "status": "error",
-                            "message": f"Unknown action '{action}'. Supported: chat, embed, moderate."}
-                except Exception as exc:  # catch rate-limit or other errors
-                    last_exc = exc
-                    retryable = False
-                    # common patterns indicating a rate limit; some SDK errors
-                    # expose a code or HTTP response, others are generic.
-                    if hasattr(exc, 'code') and str(getattr(exc, 'code')).startswith('rate_limit'):
-                        retryable = True
-                    elif getattr(exc, 'response', None) is not None and getattr(exc.response, 'status_code', None) == 429:
-                        retryable = True
-                    elif getattr(exc, 'response', None) is not None and getattr(exc.response, 'status_code', None) == 401:
-                        # unauthorized; stop trying future keys and fall back
-                        logger.warning("OpenAIIntegration key %s unauthorized, breaking to fallback", idx)
-                        break
-                    elif "rate limit" in str(exc).lower():
-                        retryable = True
-
-                    if retryable:
-                        # exponential back‑off before trying next key/fallback
-                        delay = min(8, 2 ** idx)
-                        logger.warning(
-                            "OpenAIIntegration key %s hit rate limit (or 429); sleeping %.1fs before next attempt",
-                            idx, delay)
-                        await asyncio.sleep(delay)
-                        continue
-                    raise
-            # if we get here and gemini is available, call it as a final fallback
+        except Exception as import_exc:  # SDK not present or import failed
+            logger.warning("OpenAI SDK import failed: %s; will try Gemini if available", import_exc)
             if gemini_key:
                 return await self._gemini_chat(prompt_or_payload=payload or {},
                                                model=gemini_model,
                                                action=action)
-            raise last_exc if last_exc else RuntimeError("OpenAI integration failed")
-        except Exception as exc:
-            logger.exception("OpenAI integration error for action '%s'", action)
-            return {"integration": self.name, "action": action, "status": "error", "message": str(exc)}
+            return {"integration": self.name, "action": action, "status": "error", "message": str(import_exc)}
+
+        last_exc: Exception | None = None
+        # default models controlled by environment variables for easy switching
+        default_chat = os.getenv("OPENAI_DEFAULT_CHAT_MODEL", "gpt-4o-mini")
+        default_embed = os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
+        default_moderate = os.getenv("OPENAI_DEFAULT_MODERATE_MODEL")
+
+        for idx, api_key in enumerate(keys):
+            client = openai.AsyncOpenAI(api_key=api_key)
+            try:
+                if action == "chat":
+                    p = payload or {}
+                    messages = p.get("messages") or [{"role": "user", "content": str(p.get("prompt", ""))}]
+                    model = p.get("model") or default_chat
+                    resp = await client.chat.completions.create(model=model, messages=messages)
+                    return {"integration": self.name, "action": action, "status": "ok",
+                            "content": resp.choices[0].message.content,
+                            "model": resp.model, "usage": dict(resp.usage)}
+
+                if action == "embed":
+                    p = payload or {}
+                    inp = p.get("input", "")
+                    model = p.get("model") or default_embed
+                    resp = await client.embeddings.create(model=model, input=inp)
+                    vectors = [d.embedding for d in resp.data]
+                    return {"integration": self.name, "action": action, "status": "ok",
+                            "embeddings": vectors, "model": resp.model}
+
+                if action == "moderate":
+                    p = payload or {}
+                    model = p.get("model") or default_moderate
+                    args = {"input": p.get("input", "")}
+                    if model:
+                        args["model"] = model
+                    resp = await client.moderations.create(**args)
+                    result = resp.results[0]
+                    return {"integration": self.name, "action": action, "status": "ok",
+                            "flagged": result.flagged, "categories": dict(result.categories)}
+
+                return {"integration": self.name, "action": action, "status": "error",
+                        "message": f"Unknown action '{action}'. Supported: chat, embed, moderate."}
+            except Exception as exc:  # catch rate-limit or other errors
+                last_exc = exc
+                retryable = False
+                if hasattr(exc, 'code') and str(getattr(exc, 'code')).startswith('rate_limit'):
+                    retryable = True
+                elif getattr(exc, 'response', None) is not None and getattr(exc.response, 'status_code', None) == 429:
+                    retryable = True
+                elif getattr(exc, 'response', None) is not None and getattr(exc.response, 'status_code', None) == 401:
+                    logger.warning("OpenAIIntegration key %s unauthorized, breaking to fallback", idx)
+                    break
+                elif "rate limit" in str(exc).lower():
+                    retryable = True
+
+                if retryable:
+                    delay = min(8, 2 ** idx)
+                    logger.warning(
+                        "OpenAIIntegration key %s hit rate limit; sleeping %.1fs before next attempt",
+                        idx, delay)
+                    await asyncio.sleep(delay)
+                    continue
+                # non-retryable error, break to Gemini if available
+                logger.warning("OpenAIIntegration error on key %s: %s; will try Gemini", idx, exc)
+                break
+        # if we get here and gemini is available, call it as a final fallback
+        if gemini_key:
+            return await self._gemini_chat(prompt_or_payload=payload or {},
+                                           model=gemini_model,
+                                           action=action)
+        if last_exc:
+            raise last_exc
+        return {"integration": self.name, "action": action, "status": "error", "message": "OpenAI integration failed"}
 
     async def _gemini_chat(self, prompt_or_payload: dict, model: str, action: str) -> dict:
         """Simple Gemini chat helper; only used as fallback in this integration."""
