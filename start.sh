@@ -54,12 +54,18 @@ clear_ports() {
                 echo "killing process $pid listening on port $p"
                 kill -9 $pid || true
             fi
-        elif command -v netstat >/dev/null 2>&1; then
-            # awk/cut pipeline extracts PID from the -p column (Linux)
-            pid=$(netstat -tulpn 2>/dev/null | grep ":$p " | awk '{print $7}' | cut -d/ -f1 || true)
+        elif command -v netstat >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; then
+            # Try several netstat/ss/awk combinations to locate PID (Linux/macOS)
+            pid=$(netstat -tulpn 2>/dev/null | grep -E ":$p( |$)" | awk '{print $7}' | cut -d/ -f1 2>/dev/null || true)
+            if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
+                pid=$(ss -ltnp 2>/dev/null | grep -E ":$p( |$)" | awk -F',' '{print $2}' | awk '{print $2}' | cut -d/ -f1 2>/dev/null || true)
+            fi
             if [ -n "$pid" ]; then
-                echo "killing process $pid listening on port $p"
-                kill -9 $pid || true
+                # ensure pid is numeric before attempting kill
+                if echo "$pid" | grep -qE '^[0-9]+$'; then
+                    echo "killing process $pid listening on port $p"
+                    kill -9 $pid || true
+                fi
             fi
         else
             echo "cannot check port $p (no lsof or netstat available)" >&2
@@ -172,7 +178,7 @@ if $DIAG; then
         docker version || true
         echo
         echo "--- docker-compose version ---"
-        docker-compose version || true
+        compose version || true
         echo
         echo "--- docker ps -a ---"
         docker ps -a || true
@@ -225,15 +231,14 @@ fi
 if $FRONTEND; then
     if [ -d "frontend" ]; then
         if [ -f "frontend/package-lock.json" ]; then
-            npm --prefix frontend ci --no-audit --no-fund || {
-                echo "npm ci failed; falling back to npm install" >&2
-                die "npm install failed"
-            }
+            if ! npm --prefix frontend ci --no-audit --no-fund; then
+                echo "npm ci failed; attempting npm install fallback" >&2
+                if ! npm --prefix frontend install --no-audit --no-fund; then
+                    die "npm install failed"
+                fi
+            fi
         else
-            npm --prefix frontend install || {
-                echo "npm install failed; check frontend/package.json for invalid version ranges (e.g. zustand)" >&2
-                die "npm install failed"
-            }
+            npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
         fi
     else
         echo "Warning: frontend directory not found, skipping install." >&2
@@ -246,7 +251,8 @@ if $FRONTEND; then
     fi
     # check status and show logs if any container exited unexpectedly
     for svc in app frontend; do
-        if compose ps | grep -q "quesarc_${svc}.*Exited"; then
+        # use docker ps filter to reliably detect exited containers by name
+        if docker ps -a --filter "name=quesarc_${svc}" --filter "status=exited" --format '{{.Names}}' | grep -q .; then
             echo "${svc^} container exited; here are the last 20 lines of its log:" >&2
             compose logs $svc --tail=20 >&2
         fi

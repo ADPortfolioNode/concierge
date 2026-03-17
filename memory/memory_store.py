@@ -422,27 +422,24 @@ class MemoryStore:
         def _sanitize_for_chroma(m: Dict[str, Any]) -> Dict[str, Any]:
             out: Dict[str, Any] = {}
             for k, v in (m or {}).items():
-                # allowed primitive types by chroma: str, int, float, bool, list, None
+                key = str(k)
+                # allow simple primitives unchanged
                 if v is None or isinstance(v, (str, int, float, bool)):
-                    out[k] = v
-                elif isinstance(v, list):
-                    # ensure list elements are primitives; serialize non-primitives
-                    new_list = []
-                    for item in v:
-                        if item is None or isinstance(item, (str, int, float, bool)):
-                            new_list.append(item)
-                        else:
-                            try:
-                                new_list.append(json.dumps(item))
-                            except Exception:
-                                new_list.append(str(item))
-                    out[k] = new_list
-                else:
-                    # for dicts or other complex objects serialize to JSON string
+                    out[key] = v
+                    continue
+                # for lists, dicts, sets, or any complex object stringify to JSON
+                try:
+                    # sets aren't JSON serializable; convert to list first
+                    if isinstance(v, set):
+                        v_conv = list(v)
+                    else:
+                        v_conv = v
+                    out[key] = json.dumps(v_conv, default=str, ensure_ascii=False)
+                except Exception:
                     try:
-                        out[k] = json.dumps(v)
+                        out[key] = str(v)
                     except Exception:
-                        out[k] = str(v)
+                        out[key] = None
             return out
 
         # Chroma path

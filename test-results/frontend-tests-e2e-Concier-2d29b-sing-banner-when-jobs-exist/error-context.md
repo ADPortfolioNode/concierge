@@ -1,0 +1,148 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Concierge" [ref=e7] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e8]:
+        - link "Home" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - link "Goals" [ref=e10] [cursor=pointer]:
+          - /url: /goals
+        - link "Tasks" [ref=e11] [cursor=pointer]:
+          - /url: /tasks
+        - link "Workspace" [ref=e12] [cursor=pointer]:
+          - /url: /workspace
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+        - link "How‑To" [ref=e14] [cursor=pointer]:
+          - /url: /howto
+        - link "Capabilities" [ref=e15] [cursor=pointer]:
+          - /url: /capabilities
+  - complementary [ref=e16]:
+    - generic [ref=e17]:
+      - generic "message-welcome" [ref=e21]:
+        - generic [ref=e22]: Welcome. I'm ready when you are. What would you like to work on today?
+        - generic [ref=e23]: 3/17/2026, 1:59:13 PM
+      - generic [ref=e26]:
+        - button "📎" [ref=e27] [cursor=pointer]
+        - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e28]
+        - button "↑" [disabled] [ref=e29]
+  - main [ref=e30]:
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]: Example job
+            - generic [ref=e36]: 1 processing task · 0m2s elapsed
+          - button "hide details" [active] [ref=e37] [cursor=pointer]
+        - generic [ref=e40]: Example job – running
+      - heading "✅ Tasks" [level=1] [ref=e41]
+      - paragraph [ref=e42]: Tasks run in the background — read files, generate code, analyse datasets. Enqueue via chat or the Postman collection, then poll for results. Click any prompt to try one now.
+      - generic [ref=e43]:
+        - heading "🚀 Distributed Agent Job" [level=2] [ref=e44]
+        - paragraph [ref=e45]:
+          - text: Jobs are queued via Celery + Redis and executed in a background worker. Results are polled every 3 seconds. Monitor the Flower dashboard at
+          - code [ref=e46]: localhost:5555
+          - text: .
+        - generic [ref=e47]:
+          - textbox "Goal — what should the agent do?" [ref=e48]
+          - textbox "Context (optional background information)" [ref=e49]
+          - button "Submit Job" [disabled] [ref=e50]
+      - generic [ref=e51]:
+        - heading "Recent tasks" [level=2] [ref=e52]
+        - generic [ref=e54]:
+          - generic [ref=e55]: running
+          - generic [ref=e56]: job1…
+      - generic [ref=e57]:
+        - heading "Available task types" [level=2] [ref=e58]
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - generic [ref=e62]: read_file
+            - generic [ref=e63]: Read text from an uploaded file.
+            - code [ref=e64]: "payload: { \"upload_id\": \"<id>\", \"filename\": \"notes.txt\" }"
+          - generic [ref=e65]:
+            - generic [ref=e67]: write_file
+            - generic [ref=e68]: Write / overwrite a sandbox file.
+            - code [ref=e69]: "payload: { \"upload_id\": \"<id>\", \"filename\": \"out.txt\", \"content\": \"Hello\" }"
+          - generic [ref=e70]:
+            - generic [ref=e72]: append_file
+            - generic [ref=e73]: Append text to a sandbox file.
+            - code [ref=e74]: "payload: { \"upload_id\": \"<id>\", \"filename\": \"log.txt\", \"content\": \"new line\" }"
+          - generic [ref=e75]:
+            - generic [ref=e77]: generate_code
+            - generic [ref=e78]: Generate code from a natural-language context.
+            - code [ref=e79]: "payload: { \"context\": \"parse CSV and plot bar chart\", \"language\": \"python\" }"
+          - generic [ref=e80]:
+            - generic [ref=e82]: dataset_analysis
+            - generic [ref=e83]: Statistical analysis of a CSV file.
+            - code [ref=e84]: "payload: { \"upload_id\": \"<id>\", \"filename\": \"sales.csv\" }"
+      - generic [ref=e85]:
+        - heading "📄 File operations" [level=2] [ref=e86]
+        - generic [ref=e87]:
+          - button "\"Read the spec I uploaded and list every functional requirement.\" Click to use →" [ref=e88] [cursor=pointer]:
+            - generic [ref=e89]: "\"Read the spec I uploaded and list every functional requirement.\""
+            - generic [ref=e90]: Click to use →
+          - button "\"Read my uploaded README and suggest improvements to the Getting Started section.\" Click to use →" [ref=e91] [cursor=pointer]:
+            - generic [ref=e92]: "\"Read my uploaded README and suggest improvements to the Getting Started section.\""
+            - generic [ref=e93]: Click to use →
+          - button "\"Append a timestamp and \"task complete\" to the log file in the current upload.\" Click to use →" [ref=e94] [cursor=pointer]:
+            - generic [ref=e95]: "\"Append a timestamp and \"task complete\" to the log file in the current upload.\""
+            - generic [ref=e96]: Click to use →
+      - generic [ref=e97]:
+        - heading "💻 Code generation" [level=2] [ref=e98]
+        - generic [ref=e99]:
+          - button "\"Generate a Python script that reads a CSV and outputs a bar chart with matplotlib.\" Click to use →" [ref=e100] [cursor=pointer]:
+            - generic [ref=e101]: "\"Generate a Python script that reads a CSV and outputs a bar chart with matplotlib.\""
+            - generic [ref=e102]: Click to use →
+          - button "\"Write a TypeScript utility function that deep-merges two objects.\" Click to use →" [ref=e103] [cursor=pointer]:
+            - generic [ref=e104]: "\"Write a TypeScript utility function that deep-merges two objects.\""
+            - generic [ref=e105]: Click to use →
+          - button "\"Generate a Bash script to tail all *.log files in /var/log and grep for ERROR.\" Click to use →" [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]: "\"Generate a Bash script to tail all *.log files in /var/log and grep for ERROR.\""
+            - generic [ref=e108]: Click to use →
+          - button "\"Create a SQL migration that adds a soft-delete column to a users table.\" Click to use →" [ref=e109] [cursor=pointer]:
+            - generic [ref=e110]: "\"Create a SQL migration that adds a soft-delete column to a users table.\""
+            - generic [ref=e111]: Click to use →
+      - generic [ref=e112]:
+        - heading "📊 Dataset analysis" [level=2] [ref=e113]
+        - generic [ref=e114]:
+          - button "\"Analyse sales.csv — what are the top 5 product categories by revenue?\" Click to use →" [ref=e115] [cursor=pointer]:
+            - generic [ref=e116]: "\"Analyse sales.csv — what are the top 5 product categories by revenue?\""
+            - generic [ref=e117]: Click to use →
+          - button "\"Run a full statistical analysis on the uploaded CSV and highlight any anomalies.\" Click to use →" [ref=e118] [cursor=pointer]:
+            - generic [ref=e119]: "\"Run a full statistical analysis on the uploaded CSV and highlight any anomalies.\""
+            - generic [ref=e120]: Click to use →
+          - button "\"What is the column distribution in my uploaded dataset? Show numeric stats.\" Click to use →" [ref=e121] [cursor=pointer]:
+            - generic [ref=e122]: "\"What is the column distribution in my uploaded dataset? Show numeric stats.\""
+            - generic [ref=e123]: Click to use →
+          - button "\"Analyse financials.csv and identify the quarters with the highest variance.\" Click to use →" [ref=e124] [cursor=pointer]:
+            - generic [ref=e125]: "\"Analyse financials.csv and identify the quarters with the highest variance.\""
+            - generic [ref=e126]: Click to use →
+      - generic [ref=e127]:
+        - heading "🔍 Status & management" [level=2] [ref=e128]
+        - generic [ref=e129]:
+          - button "\"What tasks are currently queued or running?\" Click to use →" [ref=e130] [cursor=pointer]:
+            - generic [ref=e131]: "\"What tasks are currently queued or running?\""
+            - generic [ref=e132]: Click to use →
+          - button "\"Show me the result of the last completed task.\" Click to use →" [ref=e133] [cursor=pointer]:
+            - generic [ref=e134]: "\"Show me the result of the last completed task.\""
+            - generic [ref=e135]: Click to use →
+          - button "\"How many tasks have failed in the current session?\" Click to use →" [ref=e136] [cursor=pointer]:
+            - generic [ref=e137]: "\"How many tasks have failed in the current session?\""
+            - generic [ref=e138]: Click to use →
+      - generic [ref=e139]:
+        - heading "🎥 Multimedia tasks" [level=2] [ref=e140]
+        - generic [ref=e141]:
+          - button "\"Describe what is happening in the uploaded video.\" Click to use →" [ref=e142] [cursor=pointer]:
+            - generic [ref=e143]: "\"Describe what is happening in the uploaded video.\""
+            - generic [ref=e144]: Click to use →
+          - button "\"Transcribe the voice memo I attached.\" Click to use →" [ref=e145] [cursor=pointer]:
+            - generic [ref=e146]: "\"Transcribe the voice memo I attached.\""
+            - generic [ref=e147]: Click to use →
+          - button "\"Create an image summarising the data analysis results.\" Click to use →" [ref=e148] [cursor=pointer]:
+            - generic [ref=e149]: "\"Create an image summarising the data analysis results.\""
+            - generic [ref=e150]: Click to use →
+```

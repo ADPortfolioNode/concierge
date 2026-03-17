@@ -331,6 +331,32 @@ def _task_execution_reply(prompt: str) -> str:
     )
 
 
+async def _stream_text_as_tokens(text: str, delay: float = 0.01) -> AsyncIterator[str]:
+    """Yield small, joinable token-like chunks from *text* to emulate streaming.
+
+    This preserves whitespace after tokens so joining the yielded pieces
+    reconstructs the original text. The optional *delay* introduces a small
+    pause between tokens to give consumers a streaming cadence during local
+    development and tests.
+    """
+    if not text:
+        return
+    # Match a non-whitespace run plus any trailing whitespace so joining
+    # the pieces restores the original string exactly.
+    for m in re.finditer(r"\S+\s*", text):
+        chunk = m.group(0)
+        # allow the event loop to proceed; test harnesses can set the
+        # environment variable LLM_FALLBACK_DELAY to 0 for faster tests.
+        env_delay = os.getenv("LLM_FALLBACK_DELAY")
+        try:
+            cur_delay = float(env_delay) if env_delay is not None else delay
+        except Exception:
+            cur_delay = delay
+        if cur_delay > 0:
+            await asyncio.sleep(cur_delay)
+        yield chunk
+
+
 def _conversational_reply(user_msg: str) -> str:
     """Return a natural reply for a conversational user message."""
     msg = user_msg.lower().strip()
@@ -468,11 +494,12 @@ class LLMTool:
         """
         messages = self._build_messages(prompt, context)
 
-        # if we don't have *any* keys, just use the stubbed responder
+        # if we don't have *any* keys, stream the rule-based responder
         if not self._api_keys:
-            logger.debug("LLMTool no API key; using rule-based fallback")
-            await asyncio.sleep(0)
-            yield _rule_based_response(prompt, context)
+            logger.debug("LLMTool no API key; using rule-based fallback (streaming)")
+            resp = _rule_based_response(prompt, context)
+            async for tok in _stream_text_as_tokens(resp):
+                yield tok
             return
 
         payload = {
@@ -563,16 +590,18 @@ class LLMTool:
                 self.last_provider = "gemini"
                 gem_resp = await self._call_gemini(prompt, context)
                 self.last_fallback = "switched to Gemini provider"
-                yield gem_resp
+                async for tok in _stream_text_as_tokens(gem_resp):
+                    yield tok
                 return
             except Exception as exc:
                 logger.warning("Gemini fallback failed: %s", exc)
                 # if Gemini fails, we'll fall through to the rule-based stub
-        logger.error("Falling back to local rule-based responder")
+        logger.error("Falling back to local rule-based responder (streaming)")
         self.last_provider = "rule-based"
         self.last_fallback = "using local rule-based responder"
-        await asyncio.sleep(0)
-        yield _rule_based_response(prompt, context)
+        resp = _rule_based_response(prompt, context)
+        async for tok in _stream_text_as_tokens(resp):
+            yield tok
 
     async def _call_gemini(self, prompt: str, context: Optional[str]) -> str:
         """Call the Gemini API and return a full string response.

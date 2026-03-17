@@ -1,0 +1,199 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Concierge" [ref=e7] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e8]:
+        - link "Home" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - link "Goals" [ref=e10] [cursor=pointer]:
+          - /url: /goals
+        - link "Tasks" [ref=e11] [cursor=pointer]:
+          - /url: /tasks
+        - link "Workspace" [ref=e12] [cursor=pointer]:
+          - /url: /workspace
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+        - link "How‑To" [active] [ref=e14] [cursor=pointer]:
+          - /url: /howto
+        - link "Capabilities" [ref=e15] [cursor=pointer]:
+          - /url: /capabilities
+  - complementary [ref=e16]:
+    - generic [ref=e17]:
+      - generic "message-welcome" [ref=e21]:
+        - generic [ref=e22]: Welcome. I'm ready when you are. What would you like to work on today?
+        - generic [ref=e23]: 3/17/2026, 1:58:56 PM
+      - generic [ref=e26]:
+        - button "📎" [ref=e27] [cursor=pointer]
+        - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e28]
+        - button "↑" [disabled] [ref=e29]
+  - main [ref=e30]:
+    - generic [ref=e31]:
+      - heading "📖 How to Use Concierge" [level=1] [ref=e32]
+      - paragraph [ref=e33]: "This guide walks you through the core workflows: chatting, setting Goals, running Tasks, and organising your Workspace."
+      - generic [ref=e34]:
+        - button "💬 Chat — Getting answers instantly ▲" [ref=e35] [cursor=pointer]:
+          - text: 💬 Chat — Getting answers instantly
+          - generic [ref=e36]: ▲
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: The chat panel (always visible on the left) is your primary interface. Type freely — Concierge decides whether to answer directly or kick off an autonomous agent run.
+          - heading "How it works" [level=3] [ref=e39]
+          - generic [ref=e40]:
+            - generic [ref=e41]: "1"
+            - generic [ref=e42]:
+              - generic [ref=e43]: Type a message and press Enter
+              - paragraph [ref=e44]: Simple questions and conversational input return immediately. The response streams token-by-token so you see it as it's generated.
+          - generic [ref=e45]:
+            - generic [ref=e46]: "2"
+            - generic [ref=e47]:
+              - generic [ref=e48]: Complex goals trigger the orchestrator
+              - paragraph [ref=e49]: When the planner detects something multi-step (e.g. "plan a migration"), it spins up specialist agents (Research, Coding, Critic, Synthesizer) in parallel and streams progress back.
+          - generic [ref=e50]:
+            - generic [ref=e51]: "3"
+            - generic [ref=e52]:
+              - generic [ref=e53]: Attach a file to give the AI context
+              - paragraph [ref=e54]: Click the 📎 button to upload a document, CSV, image, or PDF. A file reference is automatically prepended to your message.
+          - generic [ref=e55]: 💡 All sample prompts on every page are clickable — they prefill the chat input so you can edit before sending.
+          - heading "Sample prompts" [level=3] [ref=e56]
+          - generic [ref=e57]:
+            - button "\"Hello — what can you help me with today?\" Click to use →" [ref=e58] [cursor=pointer]:
+              - generic [ref=e59]: "\"Hello — what can you help me with today?\""
+              - generic [ref=e60]: Click to use →
+            - button "\"Generate an image of a smiling cat.\" Click to use →" [ref=e61] [cursor=pointer]:
+              - generic [ref=e62]: "\"Generate an image of a smiling cat.\""
+              - generic [ref=e63]: Click to use →
+            - button "\"Transcribe audio or describe a video clip.\" Click to use →" [ref=e64] [cursor=pointer]:
+              - generic [ref=e65]: "\"Transcribe audio or describe a video clip.\""
+              - generic [ref=e66]: Click to use →
+            - button "\"Give me pros and cons of GraphQL vs REST for a mobile app.\" Click to use →" [ref=e67] [cursor=pointer]:
+              - generic [ref=e68]: "\"Give me pros and cons of GraphQL vs REST for a mobile app.\""
+              - generic [ref=e69]: Click to use →
+            - button "\"Write a haiku about async programming.\" Click to use →" [ref=e70] [cursor=pointer]:
+              - generic [ref=e71]: "\"Write a haiku about async programming.\""
+              - generic [ref=e72]: Click to use →
+            - button "\"What was the last goal we worked on?\" Click to use →" [ref=e73] [cursor=pointer]:
+              - generic [ref=e74]: "\"What was the last goal we worked on?\""
+              - generic [ref=e75]: Click to use →
+            - button "\"Explain what a vector database is in one paragraph.\" Click to use →" [ref=e76] [cursor=pointer]:
+              - generic [ref=e77]: "\"Explain what a vector database is in one paragraph.\""
+              - generic [ref=e78]: Click to use →
+      - generic [ref=e79]:
+        - button "🎯 Goals — Planning outcomes ▲" [ref=e80] [cursor=pointer]:
+          - text: 🎯 Goals — Planning outcomes
+          - generic [ref=e81]: ▲
+        - generic [ref=e82]:
+          - paragraph [ref=e83]: Goals represent high-level outcomes you want to achieve. Concierge decomposes a goal into a task tree, estimates priorities, and tracks completion.
+          - heading "Lifecycle of a goal" [level=2] [ref=e84]
+          - generic [ref=e85]:
+            - generic [ref=e86]: "1"
+            - generic [ref=e87]:
+              - generic [ref=e88]: Describe the outcome (not the steps)
+              - paragraph [ref=e89]:
+                - text: Be specific about the
+                - emphasis [ref=e90]: what
+                - text: ", not the"
+                - emphasis [ref=e91]: how
+                - text: . "Reduce API latency by 40% in 3 weeks" beats "optimise the backend".
+          - generic [ref=e92]:
+            - generic [ref=e93]: "2"
+            - generic [ref=e94]:
+              - generic [ref=e95]: Concierge plans it
+              - paragraph [ref=e96]: The Planner agent breaks your goal into prioritised tasks, assigns each one a depth level, and detects dependencies.
+          - generic [ref=e97]:
+            - generic [ref=e98]: "3"
+            - generic [ref=e99]:
+              - generic [ref=e100]: Agents run in parallel
+              - paragraph [ref=e101]: Research and Coding agents execute their tasks under the concurrency manager. The Critic reviews each output and requests refinements when needed.
+          - generic [ref=e102]:
+            - generic [ref=e103]: "4"
+            - generic [ref=e104]:
+              - generic [ref=e105]: Synthesizer produces a final report
+              - paragraph [ref=e106]: Once all tasks are approved, the Synthesizer compiles key points, risks, and recommendations into a structured summary stored in memory.
+          - generic [ref=e107]:
+            - text: 📌 Go to the
+            - strong [ref=e108]: Goals page
+            - text: for goal-specific sample prompts and a live task tree view.
+          - heading "Sample goal prompts" [level=3] [ref=e109]
+          - generic [ref=e110]:
+            - button "\"Create a 6-week goal to launch a public REST API for our product.\" Click to use →" [ref=e111] [cursor=pointer]:
+              - generic [ref=e112]: "\"Create a 6-week goal to launch a public REST API for our product.\""
+              - generic [ref=e113]: Click to use →
+            - button "\"I want to reduce bundle size by 30% — plan it out.\" Click to use →" [ref=e114] [cursor=pointer]:
+              - generic [ref=e115]: "\"I want to reduce bundle size by 30% — plan it out.\""
+              - generic [ref=e116]: Click to use →
+            - button "\"Set a goal to improve test coverage from 55% to 85% across core modules.\" Click to use →" [ref=e117] [cursor=pointer]:
+              - generic [ref=e118]: "\"Set a goal to improve test coverage from 55% to 85% across core modules.\""
+              - generic [ref=e119]: Click to use →
+            - button "\"Plan a goal to migrate our PostgreSQL schema to a multi-tenant model.\" Click to use →" [ref=e120] [cursor=pointer]:
+              - generic [ref=e121]: "\"Plan a goal to migrate our PostgreSQL schema to a multi-tenant model.\""
+              - generic [ref=e122]: Click to use →
+      - generic [ref=e123]:
+        - button "✅ Tasks — Running background operations ▲" [ref=e124] [cursor=pointer]:
+          - text: ✅ Tasks — Running background operations
+          - generic [ref=e125]: ▲
+        - generic [ref=e126]:
+          - paragraph [ref=e127]: "Tasks are discrete, queued operations: read a file, generate code, analyse a dataset. They run asynchronously so the UI stays responsive."
+          - heading "Task types" [level=2] [ref=e128]
+          - generic [ref=e129]:
+            - generic [ref=e130]:
+              - generic [ref=e131]: read_file
+              - generic [ref=e132]: Read text content from an uploaded file.
+            - generic [ref=e133]:
+              - generic [ref=e134]: write_file
+              - generic [ref=e135]: Write or overwrite a file in your upload sandbox.
+            - generic [ref=e136]:
+              - generic [ref=e137]: append_file
+              - generic [ref=e138]: Append text to an existing sandbox file.
+            - generic [ref=e139]:
+              - generic [ref=e140]: generate_code
+              - generic [ref=e141]: Generate code via LLM for a given context and language.
+            - generic [ref=e142]:
+              - generic [ref=e143]: dataset_analysis
+              - generic [ref=e144]: "Run statistical analysis on a CSV: row count, column types, top values."
+          - heading "Polling pattern" [level=3] [ref=e145]
+          - generic [ref=e146]:
+            - generic [ref=e147]: "1"
+            - generic [ref=e148]:
+              - generic [ref=e149]: POST /api/v1/tasks — enqueue
+              - paragraph [ref=e150]:
+                - text: Send
+                - code [ref=e151]: "{ \"type\": \"...\", \"payload\": {...} }"
+                - text: . You get back a task ID immediately.
+          - generic [ref=e152]:
+            - generic [ref=e153]: "2"
+            - generic [ref=e154]:
+              - generic [ref=e155]: GET /api/v1/tasks/:id — poll
+              - paragraph [ref=e156]:
+                - text: Poll every few seconds until
+                - code [ref=e157]: status
+                - text: is
+                - strong [ref=e158]: completed
+                - text: or
+                - strong [ref=e159]: failed
+                - text: . The result is in the
+                - code [ref=e160]: result
+                - text: field.
+          - heading "Sample task prompts" [level=3] [ref=e161]
+          - generic [ref=e162]:
+            - button "\"Read the file I just uploaded and give me a summary.\" Click to use →" [ref=e163] [cursor=pointer]:
+              - generic [ref=e164]: "\"Read the file I just uploaded and give me a summary.\""
+              - generic [ref=e165]: Click to use →
+            - button "\"Analyse my sales.csv — what are the top 5 revenue categories?\" Click to use →" [ref=e166] [cursor=pointer]:
+              - generic [ref=e167]: "\"Analyse my sales.csv — what are the top 5 revenue categories?\""
+              - generic [ref=e168]: Click to use →
+            - button "\"Generate a TypeScript interface from the JSON schema I uploaded.\" Click to use →" [ref=e169] [cursor=pointer]:
+              - generic [ref=e170]: "\"Generate a TypeScript interface from the JSON schema I uploaded.\""
+              - generic [ref=e171]: Click to use →
+            - button "\"What tasks are currently queued or running?\" Click to use →" [ref=e172] [cursor=pointer]:
+              - generic [ref=e173]: "\"What tasks are currently queued or running?\""
+              - generic [ref=e174]: Click to use →
+      - button "📁 Workspace — Files & Projects ▼" [ref=e176] [cursor=pointer]:
+        - text: 📁 Workspace — Files & Projects
+        - generic [ref=e177]: ▼
+      - button "⚡ Tips & Best Practices ▼" [ref=e179] [cursor=pointer]:
+        - text: ⚡ Tips & Best Practices
+        - generic [ref=e180]: ▼
+```

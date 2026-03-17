@@ -314,7 +314,9 @@ class SacredTimeline:
                     context["prior_recommendations"].append(recs)
 
         plan = await planner.plan(goal)
-        tasks = plan.get("tasks", [])
+        plan = plan or {}
+        # normalize tasks from planner to avoid None entries
+        tasks = [t for t in (plan.get("tasks") or []) if isinstance(t, dict)]
 
         # initialize task_map with dedup fields and deterministic state
         import hashlib
@@ -657,7 +659,56 @@ class SacredTimeline:
         except Exception:
             logger.exception("Failed to persist final synthesis into memory")
 
-        # Make task_map JSON-serializable (convert sets to lists)
+        # Make task_map JSON-serializable (convert sets to lists) and return
+        serializable_map = {}
+        for tid, info in task_map.items():
+            entry = dict(info)
+            if isinstance(entry.get("seen_hashes"), set):
+                entry["seen_hashes"] = list(entry["seen_hashes"])
+            if isinstance(entry.get("last_evaluated_hash"), set):
+                entry["last_evaluated_hash"] = list(entry["last_evaluated_hash"])
+            serializable_map[tid] = entry
+
+        # make sure evaluation field is always a dict for downstream consumers
+        eval_out = {}
+        if 'last_evaluation' in locals() and last_evaluation is not None:
+            if isinstance(last_evaluation, dict):
+                eval_out = last_evaluation
+            else:
+                eval_out = {"decision": last_evaluation}
+
+        result_out = {
+            "status": status_out if 'status_out' in locals() else "success",
+            "goal": goal,
+            "task_map": serializable_map,
+            "final": final_result,
+            "evaluation": eval_out,
+        }
+        llm_provider = getattr(self._llm, "last_provider", None)
+        if llm_provider:
+            result_out["llm_provider"] = llm_provider
+        if getattr(self._llm, "last_fallback", None):
+            result_out["llm_error"] = self._llm.last_fallback
+        if 'context' in locals():
+            result_out["reflection_reused"] = context.get("reflection_reused", False)
+        if queued_notice:
+            result_out.setdefault("notice", queued_notice)
+        if getattr(self._llm, "last_fallback", None):
+            notice = f"Note: {self._llm.last_fallback}."
+            result_out.setdefault("notice", notice)
+            self.metrics.failovers += 1
+
+        _final_summary = ""
+        if isinstance(final_result, dict):
+            _final_summary = final_result.get("summary") or ""
+        result_out["response"] = _final_summary or str(final_result)
+        # housekeeping: prune low-confidence graph entries after run
+        try:
+            self._memory.prune_graph()
+        except Exception:
+            logger.exception("Pruning graph failed")
+
+        return result_out
 
     async def _perform_web_search(self, query: str) -> str:
         """Fetch a simple search results page for *query* and return main text.
@@ -682,19 +733,7 @@ class SacredTimeline:
             return text.strip()[:2000] or "(no text found)"
         except Exception as exc:
             return f"[web search failed: {exc}]"
-        serializable_map = {}
-        for tid, info in task_map.items():
-            entry = dict(info)
-            # convert any set values to lists (seen_hashes)
-            if isinstance(entry.get("seen_hashes"), set):
-                entry["seen_hashes"] = list(entry["seen_hashes"])
-            # ensure last_evaluated_hash is JSON-friendly
-            if isinstance(entry.get("last_evaluated_hash"), set):
-                entry["last_evaluated_hash"] = list(entry["last_evaluated_hash"])
-            serializable_map[tid] = entry
-
-        # make sure evaluation field is always a dict for downstream consumers
-        eval_out = {}
+        
 
     def get_last_plan(self) -> Optional[Dict[str, Any]]:
         """Return the most recent plan produced by the planner (or None)."""
@@ -812,9 +851,9 @@ class SacredTimeline:
         # detect explicit web-search requests and satisfy them before any
         # usual planning or chat behaviour.  This keeps the assistant from
         # ignoring phrases such as "search for LLM benchmarks 2026".
-        m = _SEARCH_PATTERN.search(user_input)
+        m = self._SEARCH_PATTERN.search(user_input)
         if m:
-            query = m.group(2).strip()
+            query = m.group(1).strip()
             # spawn a ResearchAgent so the planner/agents machinery can run it
             agent = self._agents.get("research")
             if agent:
@@ -880,15 +919,18 @@ class SacredTimeline:
         # Ask planner: is this conversational or a real goal?
         try:
             plan = await self._planner.plan(user_input)
+            plan = plan or {}
         except Exception as exc:
             yield _evt({"type": "error", "text": f"Planner error: {exc}"})
             return
 
-        tasks = plan.get("tasks") or []
+        # normalize tasks: planner may return None entries, ensure list of dicts
+        tasks = [t for t in (plan.get("tasks") or []) if isinstance(t, dict)]
         is_conversational = (
             not tasks
             or (
                 len(tasks) == 1
+                and isinstance(tasks[0], dict)
                 and tasks[0].get("instructions", "").strip().lower() == user_input.strip().lower()
                 and len(user_input.strip().split()) <= 5
             )
@@ -920,7 +962,38 @@ class SacredTimeline:
         # Autonomous goal — emit progress events, then stream the final synthesis
         yield _evt({"type": "progress", "text": "Planning tasks…"})
         try:
-            result = await self.run_autonomous(user_input)
+            # Run the autonomous coordinator in a background task and emit
+            # periodic progress events so clients see liveness during long
+            # running plans (prevents silent timeouts in the browser).
+            try:
+                run_task = asyncio.create_task(self.run_autonomous(user_input))
+            except Exception as exc:
+                logger.exception("Failed to start run_autonomous task")
+                yield _evt({"type": "error", "text": str(exc)})
+                return
+
+            # initial small delay to let planner start
+            await asyncio.sleep(0.1)
+            progress_count = 0
+            while True:
+                if run_task.done():
+                    break
+                progress_count += 1
+                # emit a lightweight progress heartbeat every 3 seconds
+                yield _evt({"type": "progress", "text": f"Working on plan (step {progress_count})..."})
+                await asyncio.sleep(3)
+            try:
+                result = await run_task
+            except Exception as exc:
+                logger.exception("run_autonomous raised during execution")
+                result = {"final": {"summary": ""}, "response": "", "status": "error", "error": str(exc)}
+            if result is None:
+                logger.warning("run_autonomous returned None; substituting empty result")
+                result = {"final": {"summary": ""}, "response": ""}
+            # ensure result is a dict so downstream .get() calls are safe
+            if not isinstance(result, dict):
+                logger.warning("run_autonomous returned non-dict result; coercing to dict")
+                result = {"final": {"summary": str(result)}, "response": str(result)}
         except Exception as exc:
             logger.exception("run_autonomous failed during streaming")
             yield _evt({"type": "error", "text": str(exc)})
