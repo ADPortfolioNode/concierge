@@ -655,7 +655,13 @@ class SacredTimeline:
 
         # Persist final synthesis into memory with structured payload for restart-safety
         try:
-            await self._memory.store_summary(task_name="final_synthesis", summary=final_result.get("summary", ""), metadata={"type": "final_summary", "structured": final_result.get("structured", {}), "agent_type": "SynthesizerAgent"})
+            if isinstance(final_result, dict):
+                summary_text = final_result.get("summary", "")
+                structured_meta = final_result.get("structured", {})
+            else:
+                summary_text = str(final_result)
+                structured_meta = {}
+            await self._memory.store_summary(task_name="final_synthesis", summary=summary_text, metadata={"type": "final_summary", "structured": structured_meta, "agent_type": "SynthesizerAgent"})
         except Exception:
             logger.exception("Failed to persist final synthesis into memory")
 
@@ -861,7 +867,10 @@ class SacredTimeline:
                 manager_id, fut = await self._concurrency.register(agent.execute({"query": query}))
                 try:
                     result = await fut
-                    summary = result.get("summary") or ""
+                    if isinstance(result, dict):
+                        summary = result.get("summary") or ""
+                    else:
+                        summary = str(result)
                 except Exception as exc:
                     summary = f"[search failed: {exc}]"
                 yield _evt({"type": "token", "text": summary})

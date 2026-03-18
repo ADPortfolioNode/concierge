@@ -10,8 +10,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="app-container" style={{ height: '100vh' }}>
       <header className="app-header">
         <div className="header-inner">
-          <div className="brand">
-            <NavLink to="/" end style={{ color: '#c4b8ff', fontWeight: 800, fontSize: 16, letterSpacing: '-0.01em', borderBottom: 'none' }}>Concierge</NavLink>
+          <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <NavLink to="/" end style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+              <img src="/logo-optimized.svg" alt="Concierge" className="brand-logo" style={{ height: 28 }} />
+              <span style={{ color: '#c4b8ff', fontWeight: 800, fontSize: 16, letterSpacing: '-0.01em' }}>Concierge</span>
+            </NavLink>
           </div>
           <nav className="header-nav">
             <NavLink to="/" end>Home</NavLink>
