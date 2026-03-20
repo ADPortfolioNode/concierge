@@ -75,6 +75,8 @@ const statusColor: Record<string, string> = {
 type ActiveJob = { id: string; label: string; statusObj: JobStatus };
 
 import ProcessingBanner from '@/components/ProcessingBanner';
+import { useAppStore } from '@/state/appStore';
+import TimelineHero from '@/components/TimelineHero';
 
 const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -162,6 +164,9 @@ const TasksPage: React.FC = () => {
         Tasks run in the background — read files, generate code, analyse datasets. Enqueue via chat
         or the Postman collection, then poll for results. Click any prompt to try one now.
       </p>
+
+      {/* Timeline hero area */}
+      <TimelineHero />
 
       {/* backend offline notice */}
       {!loading && offline && (

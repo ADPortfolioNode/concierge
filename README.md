@@ -398,6 +398,23 @@ global concurrency enforcement. The capability harness includes a
 
 ### Running the Distributed Tests
 
+## Concierge install marker & runtime config
+
+This repository includes a lightweight install/config marker: `install_config.json`.
+It is intended to provide a machine-readable hint for tooling and CI, and to
+document runtime flags that affect developer-only features.
+
+- **File:** `install_config.json` — contains `allow_file_edits` (default `false`),
+  `start_commands` and a short note about enabling file edits.
+- **Enable file edits (dev only):** to permit agent-driven file edits set the
+  environment variable `ALLOW_FILE_EDITS=1` before launching the backend. Do
+  not enable this in production.
+
+If you want the app to be explicitly "self-aware" during local development,
+set `ALLOW_FILE_EDITS=1` and the agent will allow code/file modification tasks.
+This guard prevents accidental repository changes when running in staging or
+production environments.
+
 ```bash
 python tests/phase11_tests.py  # distributed and consistency checks
 ```

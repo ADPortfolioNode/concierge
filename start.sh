@@ -16,10 +16,36 @@ and run:
 
     ./start.sh [options]
 
-If you are on Windows and bash is available (e.g. Git Bash/WSL) you can also
-invoke the script explicitly via:
+If you are on Windows and have a Bash-compatible environment (Git Bash or
+WSL) you can invoke the script explicitly via:
 
     bash ./start.sh [options]
+
+If you are running plain PowerShell or Command Prompt, this script will not
+work because those shells do not provide the Unix utilities and shell
+features used here.  Instead, either run the script from Git Bash/WSL or use
+the equivalent PowerShell commands shown below.
+
+Quick PowerShell equivalents (examples) -- run these from an elevated
+PowerShell session in the repository root:
+
+# 1) Free a port (example: 8001)
+netstat -ano | findstr :8001
+# if a PID is listed, stop it:
+Stop-Process -Id <PID> -Force
+
+# 2) Ensure Docker is running and start compose services
+docker compose up -d
+
+# 3) Install and start the frontend dev server (optional local dev)
+cd frontend
+npm install --no-audit --no-fund
+npm run dev
+
+If you want a full, identical run of this helper on Windows, open Git Bash or
+WSL and run the script there.  Example (Git Bash):
+
+    ./start.sh --prune --yes --build --log
 
 Direct execution from PowerShell or Command Prompt will not work because they
 ignore the shebang and lack the Unix utilities used below.

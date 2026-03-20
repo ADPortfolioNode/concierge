@@ -93,6 +93,8 @@ const LayerToggle: React.FC<LayerToggleProps> = ({ label, active, onClick, title
 // ── main component ───────────────────────────────────────────────────────────
 
 const MediaStage: React.FC = () => {
+  // Use an array selector with shallow equality to avoid creating a new
+  // object each render (prevents getSnapshot caching/infinite loop warnings)
   const imageLayers = useAppStore((s) => s.imageLayers);
   const videoLayers = useAppStore((s) => s.videoLayers);
   const audioLayers = useAppStore((s) => s.audioLayers);
@@ -177,6 +179,18 @@ const MediaStage: React.FC = () => {
     fullWidth,
     size,
   ]);
+  
+  // Ensure we sync with the backend media store on mount when empty
+  useEffect(() => {
+    if (imageLayers.length === 0) {
+      try {
+        const f = useAppStore.getState().fetchMedia;
+        f && f();
+      } catch {
+        // ignore
+      }
+    }
+  }, [imageLayers.length]);
 
   // ── drag ──────────────────────────────────────────────────────────────────
   const lastMouse = useRef({ x: 0, y: 0 });
@@ -202,7 +216,7 @@ const MediaStage: React.FC = () => {
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [],
+    [size],
   );
 
   // ── layer helpers ─────────────────────────────────────────────────────────
@@ -224,6 +238,8 @@ const MediaStage: React.FC = () => {
   const showText = !!latestText && !hiddenLayers.has('text');
 
   if (!hasContent || dismissed) return null;
+
+
 
   return (
     <div
@@ -321,7 +337,20 @@ const MediaStage: React.FC = () => {
 
         {/* Close */}
         <button
-          onClick={() => { clearMediaLayers(); setDismissed(true); }}
+          onClick={() => {
+            try {
+              // call both the reactive selector and the direct getter to
+              // ensure the clear action runs even if a stale closure exists.
+              clearMediaLayers && clearMediaLayers();
+              try {
+                useAppStore.getState().clearMediaLayers && useAppStore.getState().clearMediaLayers();
+              } catch {}
+            } catch (e) {}
+            // also reset local UI state to guarantee the panel is hidden
+            setHiddenLayers(new Set());
+            setMinimized(false);
+            setDismissed(true);
+          }}
           title="Close and clear media"
           style={{ ...iconBtn, color: 'rgba(255,255,255,0.3)' }}
         >
@@ -348,8 +377,43 @@ const MediaStage: React.FC = () => {
               <img
                 src={latestImage.url}
                 alt="AI-generated output"
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                loading="lazy"
+                style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
               />
+              {/* Save / Download button */}
+              <button
+                onClick={() => {
+                  (async () => {
+                    try {
+                      const url = latestImage.url;
+                      const filename = (latestImage.id || 'concierge-image') + '.jpg';
+                      const resp = await fetch(url);
+                      const blob = await resp.blob();
+                      const u = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = u;
+                      a.download = filename;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      window.URL.revokeObjectURL(u);
+                      setTimeout(() => {
+                        if (confirm('Did the image download correctly? Click OK to keep it open, Cancel to clear media.')) {
+                          // keep
+                        } else {
+                          clearMediaLayers();
+                        }
+                      }, 200);
+                    } catch (e) {
+                      // ignore download errors
+                    }
+                  })();
+                }}
+                title="Save image"
+                style={{ position: 'absolute', right: 10, top: 10, zIndex: 6, background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', padding: '6px 8px', borderRadius: 6 }}
+              >
+                Save
+              </button>
               {/* readability gradient */}
               <div
                 style={{

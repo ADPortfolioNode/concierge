@@ -446,6 +446,19 @@ class LLMTool:
         # to the total response time for batch calls.  120 s is generous enough
         # for large responses from slow model tiers.
         self.timeout = timeout
+        # Ensure .env is loaded at initialization time in case the module was
+        # imported before the application's entrypoint or dotenv wasn't
+        # previously invoked. This helps avoid "no OPENAI_API_KEY" issues.
+        try:
+            from dotenv import load_dotenv as _load_dotenv
+            from pathlib import Path as _P
+            _env_path = _P(__file__).resolve().parents[1] / ".env"
+            # do not override existing env vars
+            _load_dotenv(_env_path, override=False)
+        except Exception:
+            # dotenv not installed or file missing — fall back to whatever's in os.environ
+            pass
+
         # primary API key plus optional extras for rate‑limit fallback
         self._api_key = os.getenv("OPENAI_API_KEY")
         # allow a comma-separated list of additional keys via OPENAI_API_KEYS
@@ -466,13 +479,59 @@ class LLMTool:
         self._gemini_key = os.getenv("GEMINI_API_KEY")
         # optional model name for Gemini-style calls
         self._gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
+        # allow a prioritized comma-separated list of Gemini models via GEMINI_MODELS
+        # e.g. GEMINI_MODELS="text-bison-001,chat-bison-001"
+        raw_gm = os.getenv("GEMINI_MODELS", "").strip()
+        if raw_gm:
+            self._gemini_models = [m.strip() for m in raw_gm.split(",") if m.strip()]
+        else:
+            self._gemini_models = [self._gemini_model]
+
+        # Snapshot key environment variables on init so the LLM has access
+        # even if the process environment is modified later. Tests or other
+        # components can still inspect os.environ directly when needed.
+        self._env_snapshot = {
+            "OPENAI_API_KEY": self._api_key,
+            "OPENAI_API_KEYS": os.getenv("OPENAI_API_KEYS", ""),
+            "OPENAI_API_BASE": self._base_url,
+            "GEMINI_API_KEY": self._gemini_key,
+            "GEMINI_MODEL": self._gemini_model,
+            "GEMINI_MODELS": os.getenv("GEMINI_MODELS", ""),
+        }
 
     def _build_messages(self, prompt: str, context: Optional[str]) -> list:
+        # Build a short system prompt that anchors the LLM to this repository
+        try:
+            from pathlib import Path as _P
+            repo_root = _P(__file__).resolve().parents[1]
+            version_file = repo_root / 'VERSION'
+            version = version_file.read_text().strip() if version_file.exists() else 'unknown'
+            readme = repo_root / 'README.md'
+            readme_snippet = ''
+            if readme.exists():
+                txt = readme.read_text(encoding='utf-8')
+                # take the first paragraph or first 300 chars
+                readme_snippet = (' '.join(txt.splitlines()[:8])).strip()[:300]
+        except Exception:
+            repo_root = None
+            version = 'unknown'
+            readme_snippet = ''
+
+        system_msg = (
+            "You are Concierge, the assistant for the local codebase. "
+            "When the user refers to 'this project' or 'concierge', they mean the repository located at the current workspace. "
+            "You may reason about, inspect, and suggest edits to files in this repository when asked. "
+            f"Repository version: {version}. "
+        )
+        if readme_snippet:
+            system_msg += "Project summary: " + readme_snippet
+
         if context:
             full_prompt = f"Context:\n{context}\n\nPrompt:\n{prompt}"
         else:
             full_prompt = prompt
-        return [{"role": "user", "content": full_prompt}]
+
+        return [{"role": "system", "content": system_msg}, {"role": "user", "content": full_prompt}]
 
     async def generate(self, prompt: str, context: Optional[str] = None) -> str:
         """Generate complete response for *prompt* (batch mode).
@@ -611,19 +670,30 @@ class LLMTool:
         string that will later be chunked by the caller.
         """
         assert self._gemini_key, "Gemini API key must be configured"
-        url = f"https://generativelanguage.googleapis.com/v1beta2/models/{self._gemini_model}:generate"
-        headers = {"Authorization": f"Bearer {self._gemini_key}"}
-        # Google uses a different payload structure
-        payload = {"prompt": {"text": prompt}, "temperature": 0.7}
+        # try models in priority order
         client = _get_client()
-        resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        # navigate typical response path
-        candidates = data.get("candidates") or []
-        if not candidates:
-            raise RuntimeError("no output from Gemini")
-        return candidates[0].get("output", "")
+        payload = {"prompt": {"text": prompt}, "temperature": 0.7}
+        last_exc: Optional[Exception] = None
+        for model in self._gemini_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
+            headers = {"Authorization": f"Bearer {self._gemini_key}"}
+            try:
+                resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                candidates = data.get("candidates") or []
+                if not candidates:
+                    raise RuntimeError("no output from Gemini for model %s" % model)
+                return candidates[0].get("output", "")
+            except Exception as exc:
+                logger.warning("Gemini model %s failed: %s", model, exc)
+                last_exc = exc
+                # try next model in list
+                continue
+        # if all models failed, raise the last exception
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("Gemini call failed: no models configured")
 
     # Backwards-compat alias used by some agent subclasses
     async def arun(self, prompt: str, context: Optional[str] = None) -> str:

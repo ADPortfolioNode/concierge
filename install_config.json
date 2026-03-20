@@ -1,0 +1,9 @@
+{
+  "app_marker": "concierge",
+  "allow_file_edits": false,
+  "start_commands": [
+    "python -m uvicorn app:app --host 0.0.0.0 --port 8001",
+    "cd frontend && npm run dev"
+  ],
+  "notes": "Set ALLOW_FILE_EDITS=1 in your environment to enable agent file-editing features in development only. Do NOT enable in production."
+}

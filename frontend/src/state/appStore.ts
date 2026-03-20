@@ -13,6 +13,40 @@ const _IMG_RE = /https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|h
 const _VID_RE = /https?:\/\/\S+?\.(?:mp4|webm)(?:[?#]\S*)?/gi;
 const _AUD_RE = /https?:\/\/\S+?\.(?:mp3|wav|m4a)(?:[?#]\S*)?/gi;
 
+// Base API host for resolving local media paths (set via VITE_API_URL)
+const API_BASE = ((import.meta as any).env?.VITE_API_URL || '').replace(/\/$/, '');
+
+function _normalizeMediaUrl(url: string) {
+  if (!url) return url;
+  try {
+    if (url.startsWith('/media')) {
+      if (API_BASE) return API_BASE + url;
+      if (typeof window !== 'undefined' && window.location && window.location.origin) {
+        return window.location.origin.replace(/\/$/, '') + url;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return url;
+}
+
+function _normalizeUrlsInObject(obj: any) {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map((v) => _normalizeUrlsInObject(v));
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === 'string' && v.startsWith('/media')) {
+      out[k] = _normalizeMediaUrl(v);
+    } else if (typeof v === 'object' && v !== null) {
+      out[k] = _normalizeUrlsInObject(v);
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 interface AppState {
   conversation: ConversationMessage[];
   activeMedia: string | null;
@@ -47,6 +81,7 @@ interface AppState {
   setTimelinePlan: (plan: any) => void;
   setSelectedTaskMeta: (meta: any) => void;
   fetchTimeline: () => Promise<void>;
+  fetchMedia: () => Promise<void>;
   selectTimelineTask: (task: any) => void;
   sendMessage: (input: string) => Promise<void>;
 }
@@ -68,9 +103,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   textHighlights: [],
   setError: (msg) => set({ error: msg }),
   setDraft: (text) => set({ draftMessage: text }),
-  setConversation: (msgs) => set({ conversation: msgs }),
+  setConversation: (msgs) => set({ conversation: Array.isArray(msgs) ? msgs.map((m) => _normalizeUrlsInObject(m)) : [] }),
   setActiveMedia: (url) => set({ activeMedia: url }),
-  appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, msg] })),
+  appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, _normalizeUrlsInObject(msg)] })),
   // timeline actions
   setTimelinePlan: (plan) => set({ timelinePlan: plan }),
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
@@ -83,16 +118,76 @@ export const useAppStore = create<AppState>((set, get) => ({
       // ignore
     }
   },
+  fetchMedia: async () => {
+    try {
+      const res = await ConciergeAPI.getMedia();
+      const list = res.data?.data || [];
+      // normalize and push as imageLayers (preserve existing order)
+      const imgs = Array.isArray(list) ? list.filter((m: any) => m.url && m.metadata?.mime_type?.startsWith('image') || m.url?.match(/\.(png|jpg|jpeg|gif|webp)$/i)).map((m: any) => ({ id: m.filename || `img-${Date.now()}`, url: _normalizeMediaUrl(m.url), timestamp: m.metadata?.created_at || m.mtime || new Date().toISOString() })) : [];
+      if (imgs.length) {
+        set((s) => ({ imageLayers: [...s.imageLayers, ...imgs].slice(-50) }));
+      }
+    } catch (e) {
+      // ignore errors
+    }
+  },
+  startTimelineStream: () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const es = new EventSource('/api/v1/concierge/timeline/stream');
+      (window as any).__TIMELINE_ES__ = es;
+      es.onmessage = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data);
+          if (parsed.type === 'plan') {
+            const plan = parsed.plan || { tasks: [] };
+            set({ timelinePlan: { ...plan, updated_at: new Date().toISOString() } });
+          } else if (parsed.type === 'task_update') {
+            const upd: any = parsed;
+            set((s) => {
+              const plan = s.timelinePlan || { tasks: [] } as any;
+              const tasks = Array.isArray(plan.tasks) ? [...plan.tasks] : [];
+              const idx = tasks.findIndex((t: any) => (t && t.task_id) === upd.task_id);
+              if (idx >= 0) {
+                tasks[idx] = { ...tasks[idx], ...(upd.task_name ? { title: upd.task_name } : {}), ...(upd.status ? { status: upd.status } : {}), ...(upd.summary ? { summary: upd.summary } : {}), manager_agent_id: upd.manager_agent_id || tasks[idx].manager_agent_id };
+              } else {
+                // add a minimal task record if not present
+                tasks.push({ task_id: upd.task_id, title: upd.task_name || upd.task_id, status: upd.status, summary: upd.summary });
+              }
+              const newPlan = { ...plan, tasks, updated_at: new Date().toISOString() };
+              const selected = s.selectedTaskMeta && s.selectedTaskMeta.task_id === upd.task_id ? { ...s.selectedTaskMeta, ...(upd.summary ? { summary: upd.summary } : {}), ...(upd.status ? { status: upd.status } : {}) } : s.selectedTaskMeta;
+              return { timelinePlan: newPlan, selectedTaskMeta: selected } as any;
+            });
+          }
+        } catch (e) {
+          // ignore bad event
+        }
+      };
+      es.onerror = () => {
+        try { es.close(); } catch (e) {}
+      };
+    } catch (e) {
+      // ignore in non-browser env
+    }
+  },
+  stopTimelineStream: () => {
+    if (typeof window === 'undefined') return;
+    const es = (window as any).__TIMELINE_ES__;
+    if (es) {
+      try { es.close(); } catch (e) {}
+      (window as any).__TIMELINE_ES__ = null;
+    }
+  },
   selectTimelineTask: (task) => set({ selectedTaskMeta: task }),
   pushImage: (url) => set((s) => ({
-    imageLayers: [...s.imageLayers, { id: `img-${Date.now()}`, url, timestamp: new Date().toISOString() }],
-    activeMedia: url,
+    imageLayers: [...s.imageLayers, { id: `img-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
+    activeMedia: _normalizeMediaUrl(url),
   })),
   pushVideo: (url) => set((s) => ({
-    videoLayers: [...s.videoLayers, { id: `vid-${Date.now()}`, url, timestamp: new Date().toISOString() }],
+    videoLayers: [...s.videoLayers, { id: `vid-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
   })),
   pushAudio: (url) => set((s) => ({
-    audioLayers: [...s.audioLayers, { id: `aud-${Date.now()}`, url, timestamp: new Date().toISOString() }],
+    audioLayers: [...s.audioLayers, { id: `aud-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
   })),
   pushTextHighlight: (text) => set((s) => ({
     textHighlights: [...s.textHighlights.slice(-9), text],
@@ -150,7 +245,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               ? { ...m, content: finalText, meta: {
                   confidence: typeof confidence === 'number' ? confidence : undefined,
                   critic_score: typeof critic_score === 'number' ? critic_score : undefined,
-                  raw: result,
+                  raw: _normalizeUrlsInObject(result),
                   llm: { provider: result.meta?.llm?.provider, error: result.meta?.llm?.error },
                 } }
               : m,
@@ -213,7 +308,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 ? { ...m, content: finalText, meta: {
                     confidence: typeof confidence === 'number' ? confidence : undefined,
                     critic_score: typeof critic_score === 'number' ? critic_score : undefined,
-                    raw: result,
+                    raw: _normalizeUrlsInObject(result),
                     llm: { provider, error: errorMsg },
                   } }
                 : m,

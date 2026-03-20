@@ -2,35 +2,125 @@ name: CI
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services: {}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend deps & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Start Chroma (best-effort)
+      - name: Run linter (flake8)
         run: |
-          docker-compose up -d chroma || echo "docker-compose not available or failed; integration test will skip"
+          python -m pip install --upgrade pip
+          pip install flake8
+          flake8 --max-line-length=120 .
 
-      - name: Wait for services
-        run: sleep 8
+      - name: Run unit tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: pytest -q
 
-      - name: Run unit-style tests
+      - name: Start backend (uvicorn)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
-          python tests/test_tools_unit.py
+          nohup python -m uvicorn app:app --host 0.0.0.0 --port 8001 &> uvicorn.log &
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8001/health; then
+              echo "backend healthy"; break
+            fi
+            sleep 1
+          done
 
-      - name: Run integration test (Chroma)
+      - name: Run smoke endpoint checks
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python scripts/check_endpoints.py
+
+      - name: Install Playwright browsers
+        working-directory: frontend
         run: |
-          python tests/test_integration_chroma.py
+          npx playwright install --with-deps
+
+      - name: Start frontend preview
+        working-directory: frontend
+        run: |
+          nohup npm run preview -- --port 5173 &> preview.log &
+          for i in {1..20}; do
+            if curl -sSf http://localhost:5173/; then
+              echo "frontend preview up"; break
+            fi
+            sleep 1
+          done
+
+      - name: Run Playwright E2E
+        working-directory: frontend
+        env:
+          BASE_URL: http://localhost:5173
+        run: |
+          npm ci
+          npm run test:e2e
+
+  docker_integration:
+    needs: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t concierge:test .
+
+      - name: Run container
+        run: |
+          docker run -d --name concierge_test -p 8002:8001 concierge:test
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8002/health; then
+              echo "container healthy"; break
+            fi
+            sleep 1
+          done
+
+      - name: Run container smoke checks
+        run: |
+          # Run the same endpoint checker against container port 8002
+          python3 scripts/check_endpoints.py --base-url http://localhost:8002
+
+      - name: Stop and remove container
+        if: always()
+        run: |
+          docker rm -f concierge_test || true

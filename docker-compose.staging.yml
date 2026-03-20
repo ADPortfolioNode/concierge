@@ -1,0 +1,23 @@
+version: '3.8'
+services:
+  concierge_staging:
+    image: concierge:staging
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - ENV=staging
+    restart: unless-stopped
+
+  concierge_canary:
+    image: concierge:canary
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8001"
+    environment:
+      - ENV=canary
+    restart: unless-stopped

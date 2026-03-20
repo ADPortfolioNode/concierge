@@ -11,6 +11,12 @@ import hashlib
 import logging
 import os
 import urllib.parse
+import base64
+import json
+import time
+from pathlib import Path
+from typing import Optional
+import httpx
 
 from plugins.base_plugin import BasePlugin
 
@@ -76,18 +82,36 @@ class ImageGenerationPlugin(BasePlugin):
                 data = resp.json()
             item = data["data"][0]
             # Modern API returns base64-encoded JSON under ``b64_json``; older
-            # versions returned a direct ``url``.  Handle both so our
-            # placeholder unit tests remain valid.
+            # versions returned a direct ``url``.  Persist the image locally
+            # under the project's media directory so the frontend can load it
+            # from a stable endpoint.
             if "url" in item:
-                url = item["url"]
-                mime = "image/png"
+                remote = item["url"]
+                # download the remote URL and save locally
+                try:
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        resp = await client.get(remote)
+                        resp.raise_for_status()
+                        content = resp.content
+                except Exception:
+                    content = b""
+                mime = resp.headers.get("content-type", "image/jpeg") if 'resp' in locals() else "image/jpeg"
             else:
-                # convert base64 blob to a data URI so the front end can render it
                 blob = item.get("b64_json")
-                url = f"data:image/png;base64,{blob}" if blob else ""
-                mime = "image/png"
+                content = base64.b64decode(blob) if blob else b""
+                mime = "image/jpeg"
+
+            # save bytes to media/images and return local URL + sidecar metadata
             revised = item.get("revised_prompt", prompt)
-            return {"prompt": prompt, "revised_prompt": revised, "url": url, "mime_type": mime, "source": "gpt-image-1"}
+            metadata = {
+                "prompt": prompt,
+                "revised_prompt": revised,
+                "source": "gpt-image-1",
+                "remote_url": item.get("url") if "url" in item else None,
+                "mime_type": mime,
+            }
+            filename = self._save_bytes_to_media(content, prompt, metadata=metadata)
+            return {"prompt": prompt, "revised_prompt": revised, "url": f"/media/images/{filename}", "mime_type": mime, "source": "gpt-image-1"}
         except Exception as exc:
             # exc may be an HTTPStatusError; include any response text if
             # available to help troubleshooting.
@@ -126,23 +150,110 @@ class ImageGenerationPlugin(BasePlugin):
             data = resp.json()
         item = data.get("data", [{}])[0]
         if "url" in item:
-            url = item["url"]
-            mime = "image/png"
+            remote = item["url"]
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.get(remote)
+                    resp.raise_for_status()
+                    content = resp.content
+            except Exception:
+                content = b""
+            mime = resp.headers.get("content-type", "image/jpeg") if 'resp' in locals() else "image/jpeg"
         else:
             blob = item.get("b64_json")
-            url = f"data:image/png;base64,{blob}" if blob else ""
-            mime = "image/png"
+            content = base64.b64decode(blob) if blob else b""
+            mime = "image/jpeg"
         revised = item.get("revised_prompt", prompt)
+        metadata = {
+            "prompt": prompt,
+            "revised_prompt": revised,
+            "source": "gemini",
+            "remote_url": item.get("url") if "url" in item else None,
+            "mime_type": mime,
+        }
+        filename = self._save_bytes_to_media(content, prompt, metadata=metadata)
         # mark the source so callers know which provider produced it
-        return {"prompt": prompt, "revised_prompt": revised, "url": url, "mime_type": mime, "source": "gemini"}
+        return {"prompt": prompt, "revised_prompt": revised, "url": f"/media/images/{filename}", "mime_type": mime, "source": "gemini"}
 
     @staticmethod
     def _placeholder(prompt: str, error: str | None = None) -> dict:
         """Return a deterministic placeholder image using picsum.photos."""
         # Use a hash of the prompt to always return the same image for the same prompt
         seed = int(hashlib.md5(prompt.encode()).hexdigest()[:8], 16) % 1000
-        url = f"https://picsum.photos/seed/{seed}/1024/1024"
-        result: dict = {"prompt": prompt, "url": url, "mime_type": "image/jpeg", "source": "placeholder"}
+        remote = f"https://picsum.photos/seed/{seed}/1024/1024"
+        # attempt to download the placeholder and persist locally
+        try:
+            resp = httpx.get(remote, timeout=20)
+            resp.raise_for_status()
+            content = resp.content
+            # save to media
+            img_path = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
+                "prompt": prompt,
+                "source": "placeholder",
+                "remote_url": remote,
+                "mime_type": resp.headers.get("content-type", "image/jpeg"),
+            })
+            url = f"/media/images/{img_path}"
+            mime = resp.headers.get("content-type", "image/jpeg")
+            source = "placeholder"
+        except Exception:
+            # fallback: create a simple local PNG placeholder if network
+            # download fails or httpx is unavailable. This guarantees we
+            # always return a local `/media/images/...` URL.
+            try:
+                from PIL import Image, ImageDraw, ImageFont
+                from io import BytesIO
+
+                # create a simple square image with a background color
+                bg = (int(seed * 137) % 256, int(seed * 61) % 256, int(seed * 199) % 256)
+                img = Image.new('RGB', (1024, 1024), color=bg)
+                draw = ImageDraw.Draw(img)
+                # draw the prompt text in the center (fallback font)
+                try:
+                    font = ImageFont.truetype('arial.ttf', 28)
+                except Exception:
+                    font = ImageFont.load_default()
+                text = (prompt[:120] + '...') if len(prompt) > 120 else prompt
+                w, h = draw.textsize(text, font=font)
+                draw.text(((1024 - w) / 2, (1024 - h) / 2), text, fill=(255, 255, 255), font=font)
+                buf = BytesIO()
+                img.save(buf, format='JPEG', quality=90)
+                content = buf.getvalue()
+                fname = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
+                    "prompt": prompt,
+                    "source": "placeholder-local",
+                    "mime_type": "image/jpeg",
+                })
+                url = f"/media/images/{fname}"
+                mime = "image/jpeg"
+                source = "placeholder-local"
+            except Exception:
+                # last-resort fallback: write a tiny embedded PNG to disk
+                try:
+                    tiny_png_b64 = (
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQImWNgYAAAAAMA"
+                        "ASsJTYQAAAAASUVORK5CYII="
+                    )
+                    content = base64.b64decode(tiny_png_b64)
+                    fname = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
+                        "prompt": prompt,
+                        "source": "placeholder-embedded",
+                        "mime_type": "image/png",
+                    })
+                    if fname:
+                        url = f"/media/images/{fname}"
+                        mime = "image/png"
+                        source = "placeholder-embedded"
+                    else:
+                        url = remote
+                        mime = "image/jpeg"
+                        source = "placeholder-remote"
+                except Exception:
+                    url = remote
+                    mime = "image/jpeg"
+                    source = "placeholder-remote"
+
+        result: dict = {"prompt": prompt, "url": url, "mime_type": mime, "source": source}
         if error:
             result["error"] = error
             # If we got an error from the OpenAI API it will often contain a
@@ -157,3 +268,70 @@ class ImageGenerationPlugin(BasePlugin):
         else:
             result["note"] = "Set OPENAI_API_KEY to enable real image generation via OpenAI."
         return result
+
+    # ----------------- helpers -------------------------------------------
+    def _save_bytes_to_media(self, content: bytes, prompt: str, metadata: Optional[dict] = None) -> str:
+        """Save bytes into project media/images and return filename. Also writes a .json sidecar."""
+        try:
+            root = Path(__file__).resolve().parent.parent
+            media_dir = (root / "media" / "images")
+            media_dir.mkdir(parents=True, exist_ok=True)
+            # create filename from prompt hash + short ts
+            h = hashlib.md5(prompt.encode()).hexdigest()[:10]
+            fname = f"img_{h}_{int(__import__('time').time())}.jpg"
+            dest = media_dir / fname
+            dest.write_bytes(content)
+            # write sidecar metadata file (JSON) next to the image
+            try:
+                meta = metadata or {}
+                meta.setdefault("filename", fname)
+                meta.setdefault("created_at", time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
+                try:
+                    meta.setdefault("size", dest.stat().st_size)
+                except Exception:
+                    meta.setdefault("size", len(content))
+                meta_path = media_dir / (fname + ".json")
+                meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+            except Exception:
+                logger.exception("Failed to write sidecar metadata for %s", fname)
+            try:
+                # increment media saved metric if available
+                from core.observability import MEDIA_SAVED
+                try:
+                    MEDIA_SAVED.inc()
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return fname
+        except Exception:
+            # as a best-effort fallback return an empty name
+            return ""
+
+    @staticmethod
+    def _save_bytes_to_media_static(content: bytes, prompt: str, metadata: Optional[dict] = None) -> str:
+        """Static helper usable from staticmethods to persist bytes. Also writes a .json sidecar."""
+        try:
+            root = Path(__file__).resolve().parent.parent
+            media_dir = (root / "media" / "images")
+            media_dir.mkdir(parents=True, exist_ok=True)
+            h = hashlib.md5(prompt.encode()).hexdigest()[:10]
+            fname = f"img_{h}_{int(__import__('time').time())}.jpg"
+            dest = media_dir / fname
+            dest.write_bytes(content)
+            # write sidecar metadata
+            try:
+                meta = metadata or {}
+                meta.setdefault("filename", fname)
+                meta.setdefault("created_at", time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
+                try:
+                    meta.setdefault("size", dest.stat().st_size)
+                except Exception:
+                    meta.setdefault("size", len(content))
+                meta_path = media_dir / (fname + ".json")
+                meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+            except Exception:
+                logger.exception("Failed to write static sidecar metadata for %s", fname)
+            return fname
+        except Exception:
+            return ""

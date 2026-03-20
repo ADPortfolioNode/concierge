@@ -51,6 +51,22 @@ class Planner:
             parsed = json.loads(raw)
             if isinstance(parsed, list):
                 for i, t in enumerate(parsed[:max_tasks]):
+                    # tolerate LLMs that return a list of strings instead of
+                    # structured dicts. Coerce string items into a simple
+                    # task dict so downstream code can safely call .get().
+                    if isinstance(t, str):
+                        tasks.append({
+                            "task_id": f"t{i+1}",
+                            "title": t,
+                            "instructions": t,
+                            "depends_on": [],
+                        })
+                        continue
+                    # coerce unexpected types to dict with a string title
+                    if not isinstance(t, dict):
+                        t = {"title": str(t)}
+
+                    # safe extraction using dict.get
                     task = {
                         "task_id": t.get("task_id") or f"t{i+1}",
                         "title": t.get("title") or t.get("task") or f"Step {i+1}",

@@ -52,9 +52,36 @@ const MessageList: React.FC<Props> = ({ messages }) => {
     );
   }
 
+  // Aggregate consecutive assistant messages into a single bubble so the
+  // Concierge appears as a single conversant reply (magazine-style summary).
+  const displayMessages: typeof messages = [] as any;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    // start a new aggregate for assistant messages
+    if (m.role === 'assistant') {
+      let agg = { ...m } as any;
+      // merge following assistant messages
+      let j = i + 1;
+      while (j < messages.length && messages[j].role === 'assistant') {
+        const nxt = messages[j];
+        // concatenate content with separation
+        agg.content = `${agg.content}\n\n${nxt.content}`;
+        // prefer the later meta (assume final summary at the end)
+        agg.meta = nxt.meta || agg.meta;
+        // if media exists in later messages, keep the latest media
+        agg.media = nxt.media || agg.media;
+        j++;
+      }
+      displayMessages.push(agg);
+      i = j - 1;
+    } else {
+      displayMessages.push(m);
+    }
+  }
+
   return (
     <div ref={listRef} style={{ padding: 16, overflow: 'auto', height: '100%' }}>
-      {messages.map((m) => (
+      {displayMessages.map((m) => (
         <MessageBubble key={m.id} msg={m} collapseCounter={collapseCounter} />
       ))}
     </div>

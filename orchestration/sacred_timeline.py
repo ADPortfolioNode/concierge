@@ -121,6 +121,8 @@ class SacredTimeline:
         except Exception:
             logger.exception("Failed to initialize ResearchAgent")
         self._vector_tool = vector_tool or VectorSearchTool(self._memory)
+        # timeline subscription queues for SSE/live updates
+        self._timeline_subscribers: set[asyncio.Queue] = set()
         # Register default tools so specialized agents can find them
         try:
             register_tool(WebSearchTool())
@@ -219,6 +221,27 @@ class SacredTimeline:
             if pids:
                 metadata["parent_ids"] = pids
         summary_id = await self._memory.store_summary(task_name=metadata.get("task_name", "task"), summary=summary, metadata=metadata)
+
+        # publish a timeline update for subscribers (task-level update)
+        try:
+            update = {
+                "type": "task_update",
+                "task_id": metadata.get("task_id"),
+                "task_name": metadata.get("task_name"),
+                "manager_agent_id": manager_agent_id,
+                "agent_id": metadata.get("agent_id"),
+                "status": metadata.get("status"),
+                "summary_id": summary_id,
+                "summary": summary,
+            }
+            for q in list(self._timeline_subscribers):
+                try:
+                    q.put_nowait(update)
+                except Exception:
+                    # subscriber queue may be full or closed; ignore
+                    continue
+        except Exception:
+            logger.exception("Failed to publish timeline task_update")
 
         return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
 
@@ -745,32 +768,164 @@ class SacredTimeline:
         """Return the most recent plan produced by the planner (or None)."""
         return getattr(self, '_last_plan', None)
 
+    def subscribe_timeline(self) -> "asyncio.Queue":
+        """Create and return a subscriber queue which will receive timeline update dicts.
+
+        Caller is responsible for removing the queue when done; prefer using
+        it with an async-iterator pattern and cancelling the task on disconnect.
+        """
+        q: asyncio.Queue = asyncio.Queue()
+        self._timeline_subscribers.add(q)
+        # immediately send a snapshot of the current plan
+        try:
+            plan = self.get_last_plan()
+            if plan:
+                q.put_nowait({"type": "plan", "plan": plan})
+        except Exception:
+            pass
+        return q
+
+    def unsubscribe_timeline(self, q: "asyncio.Queue") -> None:
+        try:
+            self._timeline_subscribers.discard(q)
+        except Exception:
+            pass
+
     def get_plan_graph_png(self) -> bytes:
         """Generate a simple PNG rendering of the last plan using matplotlib.
 
         Returns raw PNG bytes; caller should set content-type accordingly.
         """
-        import matplotlib.pyplot as plt
         import io
+        import math
+        import textwrap
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+
         plan = self.get_last_plan()
-        if not plan or not plan.get('tasks'):
-            # empty placeholder
+        tasks = (plan.get('tasks') if plan and plan.get('tasks') else []) or []
+
+        if not tasks:
             fig = plt.figure(figsize=(4, 1))
             fig.text(0.5, 0.5, 'no plan', ha='center', va='center')
-        else:
-            tasks = plan['tasks']
-            fig, ax = plt.subplots(figsize=(max(4, len(tasks)*1.2), 2))
-            ax.axis('off')
-            for i, task in enumerate(tasks):
-                rect = plt.Rectangle((i, 0.5), 0.9, 0.8, fill=True, color='#7c6af7', alpha=0.3)
-                ax.add_patch(rect)
-                ax.text(i+0.45, 0.9, task.get('title', '')[:20] or task.get('instructions','')[:20],
-                        ha='center', va='center', fontsize=8, wrap=True)
-            ax.set_xlim(0, len(tasks))
-            ax.set_ylim(0, 2)
-        buf = io.BytesIO()
+            buf = io.BytesIO()
+            fig.tight_layout()
+            fig.savefig(buf, format='png')
+            plt.close(fig)
+            buf.seek(0)
+            return buf.read()
+
+        # Index tasks by id for easy lookup
+        tasks_by_id = {t.get('task_id') or f"t{i}": t for i, t in enumerate(tasks)}
+        # Ensure each task has an id and normalized depends_on
+        for i, t in enumerate(tasks):
+            if not t.get('task_id'):
+                t['task_id'] = f"t{i}"
+            deps = t.get('depends_on') or []
+            t['depends_on'] = deps
+
+        # Compute depth (level) for each task: 0 for roots
+        depths: dict = {}
+
+        def compute_depth(tid, seen=None):
+            if seen is None:
+                seen = set()
+            if tid in depths:
+                return depths[tid]
+            if tid in seen:
+                return 0
+            seen.add(tid)
+            t = tasks_by_id.get(tid)
+            if not t:
+                depths[tid] = 0
+                return 0
+            parents = t.get('depends_on') or []
+            if not parents:
+                depths[tid] = 0
+                return 0
+            d = max((compute_depth(p, seen) for p in parents), default=0) + 1
+            depths[tid] = d
+            return d
+
+        for tid in list(tasks_by_id.keys()):
+            compute_depth(tid)
+
+        # Group tasks by depth
+        levels: dict = {}
+        for tid, d in depths.items():
+            levels.setdefault(d, []).append(tasks_by_id.get(tid))
+
+        max_level = max(levels.keys()) if levels else 0
+        max_width = max(len(v) for v in levels.values())
+
+        # Layout parameters
+        node_w = 2.2
+        node_h = 0.9
+        x_gap = 0.8
+        y_gap = 1.2
+
+        fig_w = max(4, max_width * (node_w + x_gap) / 1.8)
+        fig_h = max(2, (max_level + 1) * (node_h + y_gap) / 1.6)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.set_xlim(0, max_width * (node_w + x_gap))
+        ax.set_ylim(-0.5, (max_level + 1) * (node_h + y_gap))
+        ax.axis('off')
+
+        # Compute node positions: centered within their level
+        positions: dict = {}
+        for d in range(0, max_level + 1):
+            row = levels.get(d, [])
+            n = len(row)
+            if n == 0:
+                continue
+            total_w = n * node_w + (n - 1) * x_gap
+            start_x = 0.5 * (max_width * (node_w + x_gap) - total_w)
+            y = (max_level - d) * (node_h + y_gap) + 0.5
+            for i, t in enumerate(row):
+                x = start_x + i * (node_w + x_gap)
+                positions[t['task_id']] = (x, y)
+
+        # Color palette
+        colors = ["#7c6af7", "#4fb0c6", "#f7a35c", "#90ed7d", "#f15c80"]
+
+        # Draw nodes
+        for idx, t in enumerate(tasks):
+            tid = t['task_id']
+            x, y = positions.get(tid, (0, 0.5))
+            rect = mpatches.FancyBboxPatch((x, y), node_w, node_h,
+                                           boxstyle="round,pad=0.1",
+                                           linewidth=1, edgecolor="#333333",
+                                           facecolor=colors[idx % len(colors)], alpha=0.25)
+            ax.add_patch(rect)
+            # Title + instructions (wrapped)
+            title = t.get('title') or ''
+            instr = t.get('instructions') or ''
+            label = title if title.strip() else instr
+            wrapped = textwrap.fill(label, width=24)
+            ax.text(x + node_w / 2, y + node_h / 2, wrapped, ha='center', va='center', fontsize=8)
+
+        # Draw arrows for dependencies (from parent -> child)
+        for t in tasks:
+            tid = t['task_id']
+            child_pos = positions.get(tid)
+            if not child_pos:
+                continue
+            cx, cy = child_pos
+            for parent_id in (t.get('depends_on') or []):
+                ppos = positions.get(parent_id)
+                if not ppos:
+                    continue
+                px, py = ppos
+                # start at parent's center right, end at child's center left
+                start = (px + node_w, py + node_h / 2)
+                end = (cx, cy + node_h / 2)
+                ax.annotate('', xy=end, xytext=start,
+                            arrowprops=dict(arrowstyle='->', color='#444444', lw=1.0,
+                                            shrinkA=2, shrinkB=2))
+
         fig.tight_layout()
-        fig.savefig(buf, format='png')
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150)
         plt.close(fig)
         buf.seek(0)
         return buf.read()
@@ -1064,6 +1219,16 @@ class SacredTimeline:
         plan = await self._planner.plan(user_input)
         # persist the last plan so UI can query thread state
         self._last_plan = plan
+        # publish plan to timeline subscribers
+        try:
+            update = {"type": "plan", "plan": plan}
+            for q in list(self._timeline_subscribers):
+                try:
+                    q.put_nowait(update)
+                except Exception:
+                    continue
+        except Exception:
+            logger.exception("Failed to publish timeline plan update")
         tasks = plan.get("tasks") or []
 
         # if the planner produced a single task that simply repeats the user_input,

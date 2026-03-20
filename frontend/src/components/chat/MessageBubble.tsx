@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
@@ -121,6 +121,9 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
 const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
   const segments = splitContentIntoSegments(content);
   const hasImages = segments.some((s) => s.kind === 'image');
+  const pushImage = useAppStore((s) => s.pushImage);
+  const pushedRef = useRef<Record<string, boolean>>({});
+
   if (!hasImages) {
     return (
       <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
@@ -131,15 +134,39 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   }
   return (
     <div>
-      {segments.map((seg, i) =>
-        seg.kind === 'image' ? (
-          <InlineImage key={i} src={seg.value} />
-        ) : (
+      {segments.map((seg, i) => {
+        if (seg.kind === 'image') {
+          const src = seg.value;
+          // If the image is a locally persisted media image, do NOT render
+          // it inline. Instead, push it into the MediaStage store so it is
+          // shown in the media player only. Recognize local media by the
+          // `/media/images/` path which is used by backend.
+          if (src.includes('/media/images/')) {
+            if (!pushedRef.current[src]) {
+              try {
+                pushImage && pushImage(src);
+                pushedRef.current[src] = true;
+              } catch (e) {}
+            }
+            return (
+              <div key={i} style={{ margin: '8px 0' }}>
+                <button
+                  onClick={() => pushImage && pushImage(src)}
+                  style={{ background: 'rgba(17,24,39,0.9)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.04)', padding: '8px 10px', borderRadius: 6, cursor: 'pointer' }}
+                >
+                  Open image in media viewer
+                </button>
+              </div>
+            );
+          }
+          return <InlineImage key={i} src={src} />;
+        }
+        return (
           <span key={i} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
             {seg.value}
           </span>
-        ),
-      )}
+        );
+      })}
       {isStreaming && <StreamingCursor />}
       {/** show provider badge for LLM if available */}
       {/** meta is not directly available here so parent will render new badge */}
@@ -269,7 +296,18 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
   return (
     <div style={containerStyle}>
       <div style={bubbleStyle} aria-label={`message-${msg.id}`}>
-        <RichContent content={msg.content || (isStreaming ? '' : '…')} isStreaming={isStreaming} />
+        {/* If the message meta contains structured cards, render as
+            a magazine-style compact card grid (titles only). Clicking a
+            card opens a full-width overlay with the full content. */}
+        {(() => {
+          const raw = (msg.meta && (msg.meta.raw as any)) || null;
+          const structured = raw?.structured || raw;
+          const cards = structured?.cards || structured?.results || null;
+          if (Array.isArray(cards) && cards.length > 0) {
+            return <MagazineLayout cards={cards} msg={msg} />;
+          }
+          return <RichContent content={msg.content || (isStreaming ? '' : '…')} isStreaming={isStreaming} />;
+        })()}
         {/* indicate which LLM provider generated this reply */}
         {msg.meta?.llm?.provider && (
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
@@ -293,3 +331,92 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
 };
 
 export default MessageBubble;
+
+// ---------------------------------------------------------------------------
+// Magazine layout: compact titled cards that expand to a full-width overlay
+// ---------------------------------------------------------------------------
+const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ cards, msg }) => {
+  const pushImage = useAppStore((s) => s.pushImage);
+  const [expanded, setExpanded] = useState<any | null>(null);
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+        {cards.map((c: any, i: number) => (
+          <button
+            key={c.id || i}
+            onClick={() => setExpanded(c)}
+            style={{
+              textAlign: 'left',
+              padding: '10px 12px',
+              borderRadius: 8,
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.04)',
+              cursor: 'pointer',
+              color: 'var(--color-text, #e6e6e6)',
+              fontSize: 13,
+              minHeight: 48,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+            aria-label={`card-${c.id || i}`}
+          >
+            <div style={{ flex: 1, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {c.title || c.name || `Option ${i + 1}`}
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11 }}>{(c.use_cases || []).length ? (c.use_cases || []).length : ''}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* expanded overlay */}
+      {expanded && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            left: 12,
+            right: 12,
+            top: 68,
+            bottom: 40,
+            zIndex: 800,
+            background: 'rgba(6,6,12,0.96)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 10,
+            padding: 18,
+            overflow: 'auto',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{expanded.title || expanded.name}</div>
+              {expanded.estimated_use_cases && (
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.46)', marginTop: 4 }}>
+                  Estimated use cases: {(expanded.estimated_use_cases || []).join(', ')}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {expanded.media_url && (
+                <button
+                  onClick={() => pushImage && pushImage(expanded.media_url)}
+                  style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(124,106,247,0.18)', border: '1px solid rgba(124,106,247,0.35)', color: '#dfe6ff', cursor: 'pointer' }}
+                >
+                  Open media
+                </button>
+              )}
+              <button onClick={() => setExpanded(null)} style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer' }}>Close</button>
+            </div>
+          </div>
+
+          <div style={{ color: 'rgba(255,255,255,0.86)', lineHeight: 1.6 }}>
+            {expanded.summary && <div style={{ marginBottom: 12 }}>{expanded.summary}</div>}
+            {expanded.content && <div style={{ whiteSpace: 'pre-wrap' }}>{expanded.content}</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

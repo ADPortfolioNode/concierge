@@ -182,7 +182,8 @@ def test_image_generation_plugin_gemini_fallback(monkeypatch):
     plugin = FakePlugin()
     result = asyncio.get_event_loop().run_until_complete(plugin.run("something"))
     assert result["source"] == "gemini"
-    assert "gemini.png" in result["url"]
+    # allow either png or jpg extensions from fallback providers
+    assert "gemini." in result["url"]
 
 
 def test_plugin_to_dict():

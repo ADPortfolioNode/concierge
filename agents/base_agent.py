@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from memory.memory_store import MemoryStore
@@ -39,6 +40,17 @@ class BaseAgent:
         """Public entrypoint for running tasks. Acquires per-agent lock to
         avoid concurrent runs in same agent instance.
         """
+        # Guard: prevent accidental file-editing when the environment
+        # explicitly disables it. This checks for common file-editing
+        # intent phrases in the task instructions and returns a clear
+        # error if edits are not allowed.
+        allow_file_edits = os.environ.get("ALLOW_FILE_EDITS", "0").lower() in ("1", "true", "yes")
+        text = task.get("instructions") or task.get("code") or ""
+        if not allow_file_edits and isinstance(text, str):
+            lowered = text.lower()
+            triggers = ("write file", "create file", "edit file", "save file", "apply_patch", "apply_patch(", "open(")
+            if any(k in lowered for k in triggers):
+                return {"error": "file editing is disabled in this environment. Set ALLOW_FILE_EDITS=1 to enable in development.", "agent": self.name}
         async with self._lock:
             logger.info("%s executing task: %s", self.name, task.get("title") or task.get("task_id"))
             try:

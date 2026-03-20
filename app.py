@@ -15,17 +15,39 @@ from typing import Any, Optional, Deque
 from pathlib import Path
 import collections
 
-# Load .env before any os.getenv calls so keys are available to all modules
+# Load .env before any os.getenv calls so keys are available to all modules.
+# Use override=True so local .env explicitly governs values during development
+# (won't affect CI if env vars are provided by the environment).
 try:
     from dotenv import load_dotenv as _load_dotenv
-    _load_dotenv(Path(__file__).parent / ".env", override=False)
+    _load_dotenv(Path(__file__).parent / ".env", override=True)
 except ImportError:
-    pass  # dotenv not installed; fall back to system environment only
+    # If python-dotenv isn't available, try a minimal manual loader for the
+    # most common keys so running from PowerShell/Git Bash still works.
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        try:
+            for ln in env_path.read_text(encoding="utf-8").splitlines():
+                ln = ln.strip()
+                if not ln or ln.startswith('#') or '=' not in ln:
+                    continue
+                k, v = ln.split('=', 1)
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
+                # prefer explicit .env value; always set so child processes see it
+                os.environ[k] = v
+        except Exception:
+            pass
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response
 from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import httpx
+import hashlib
+from datetime import datetime
 
 from orchestration.sacred_timeline import SacredTimeline
 from core.concurrency import AsyncConcurrencyManager
@@ -39,6 +61,8 @@ from integrations.integration_loader import load_default_integrations
 import integrations.integration_registry as _intg_reg
 from tools.tool_registry import list_tools as _list_tool_names, get_tool as _get_tool
 from tools.tool_registry import register_tool as _register_tool
+from core.feature_flags import is_enabled
+from core.observability import setup as observability_setup, MEDIA_SAVED, REQUEST_COUNTER
 
 # Phase 14-16: Workstation, Projects, and background Task Queue
 from workstation import upload_router as _upload_router
@@ -48,7 +72,10 @@ from tasks.task_worker import register_default_handlers as _register_task_handle
 # Distributed job execution layer (Celery + Redis) — optional: degrades
 # gracefully when celery/redis are not installed (e.g. local dev without Docker).
 try:
-    from jobs import job_router as _job_router
+    # Import the jobs submodule and prefer its `router` attribute if present.
+    import importlib
+    _jr_mod = importlib.import_module('jobs.job_router')
+    _job_router = getattr(_jr_mod, 'router', _jr_mod)
     _jobs_available = True
 except Exception as _jobs_import_err:  # noqa: BLE001
     _job_router = None
@@ -84,6 +111,10 @@ logging.getLogger().addHandler(_recent_logs)
 logger = logging.getLogger(__name__)
 # log version on startup
 logger.info(f"Concierge version {VERSION} starting")
+# Log presence of key environment variables (don't print secrets)
+_openai_set = bool(os.getenv("OPENAI_API_KEY"))
+_gemini_set = bool(os.getenv("GEMINI_API_KEY"))
+logger.info(f"OPENAI_API_KEY set: {_openai_set}; GEMINI_API_KEY set: {_gemini_set}")
 if not _jobs_available and _jobs_import_err_msg:
     logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
@@ -100,6 +131,35 @@ async def _lifespan(application: FastAPI):
         concurrency_manager=application.state.concurrency,
         memory_store=application.state.memory,
     )
+    # start background media cleanup task
+    async def _media_cleanup_loop():
+        try:
+            media_images = Path(__file__).parent / 'media' / 'images'
+            max_age = int(os.getenv('MEDIA_MAX_AGE_SECONDS', str(60 * 60 * 24 * 7)))
+            while True:
+                try:
+                    now = time.time()
+                    if media_images.exists():
+                        for p in media_images.iterdir():
+                            try:
+                                if p.is_file():
+                                    mtime = p.stat().st_mtime
+                                    if now - mtime > max_age:
+                                        p.unlink()
+                            except Exception:
+                                logger.exception('Failed to evaluate/remove media file %s', p)
+                except Exception:
+                    logger.exception('Media cleanup iteration failed')
+                await asyncio.sleep(int(os.getenv('MEDIA_CLEANUP_INTERVAL', '3600')))
+        except asyncio.CancelledError:
+            return
+
+    application.state.media_cleanup_task = asyncio.create_task(_media_cleanup_loop())
+    # attach observability endpoints and middleware
+    try:
+        observability_setup(application)
+    except Exception:
+        logger.exception('Failed to initialize observability')
     # Register built-in tools so /api/v1/tools can list them
     from tools.web_search_tool import WebSearchTool
     from tools.code_execution_tool import CodeExecutionTool
@@ -120,6 +180,14 @@ async def _lifespan(application: FastAPI):
 
 
 app = FastAPI(lifespan=_lifespan)
+
+# Serve generated media (images/audio/video) from /media
+try:
+    media_path = Path(__file__).parent / "media"
+    media_path.mkdir(exist_ok=True)
+    app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
+except Exception:
+    logger.exception("Failed to mount media directory for static files")
 
 # ----------------------------------------------------------------------
 # CORS setup
@@ -146,6 +214,11 @@ async def log_requests(request: Request, call_next):
     logger.info("Incoming request: %s %s", request.method, request.url)
     try:
         response = await call_next(request)
+        # increment Prometheus request counter if available
+        try:
+            REQUEST_COUNTER.labels(method=request.method, path=request.url.path, status=str(response.status_code)).inc()
+        except Exception:
+            pass
         logger.info("Response status: %s for %s %s", response.status_code, request.method, request.url)
         return response
     except Exception:
@@ -275,6 +348,122 @@ async def concierge_message(payload: ConciergeMessagePayload):
         'timestamp': now,
     }
 
+    # Persist any remote images found in the assistant response and rewrite
+    # their URLs to point at our local `/media/images/` mount so the frontend
+    # always renders a stable, local copy.
+    async def _persist_and_rewrite_images(text: str) -> str:
+        if not text or not isinstance(text, str):
+            return text
+        # simple heuristic: match http/https URLs that likely point to images
+        url_re = re.compile(r"(https?://[^\s\)\"]+\.(?:png|jpe?g|gif|webp))", re.IGNORECASE)
+        found = list(url_re.finditer(text))
+        if not found:
+            # try a looser match (no extension) and check content-type
+            url_re2 = re.compile(r"(https?://[^\s\)\"]+)")
+            candidates = [m.group(1) for m in url_re2.finditer(text)]
+        else:
+            candidates = [m.group(1) for m in found]
+
+        media_dir = Path(__file__).parent / 'media' / 'images'
+        media_dir.mkdir(parents=True, exist_ok=True)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for url in candidates:
+                try:
+                    # HEAD first to check content-type quickly
+                    head = await client.head(url, follow_redirects=True)
+                    ctype = head.headers.get('content-type', '') if head is not None else ''
+                    if not ctype.startswith('image'):
+                        # try GET anyway for some hosts that don't respond to HEAD
+                        resp = await client.get(url, follow_redirects=True)
+                        if resp.status_code != 200 or not resp.headers.get('content-type', '').startswith('image'):
+                            continue
+                    else:
+                        resp = await client.get(url, follow_redirects=True)
+                    if resp.status_code != 200:
+                        continue
+                    img_bytes = resp.content
+                    # derive extension from content-type or url
+                    ext = None
+                    if 'jpeg' in resp.headers.get('content-type', ''):
+                        ext = 'jpg'
+                    elif 'png' in resp.headers.get('content-type', ''):
+                        ext = 'png'
+                    elif 'gif' in resp.headers.get('content-type', ''):
+                        ext = 'gif'
+                    elif 'webp' in resp.headers.get('content-type', ''):
+                        ext = 'webp'
+                    else:
+                        # fallback: try to take extension from URL
+                        parsed = url.split('?')[0]
+                        if '.' in parsed:
+                            ext = parsed.rsplit('.', 1)[-1][:4]
+                        else:
+                            ext = 'png'
+                    # filename deterministic-ish
+                    sha = hashlib.sha1(img_bytes).hexdigest()[:12]
+                    ts = int(time.time())
+                    fname = f"img_{sha}_{ts}.{ext}"
+                    fpath = media_dir / fname
+                    fpath.write_bytes(img_bytes)
+                    # sidecar metadata
+                    sidecar = {
+                        'filename': fname,
+                        'prompt': None,
+                        'mime_type': resp.headers.get('content-type', ''),
+                        'created_at': datetime.utcnow().isoformat() + 'Z',
+                        'size': len(img_bytes),
+                        'source': 'remote',
+                        'remote_url': url,
+                    }
+                    try:
+                        (media_dir / (fname + '.json')).write_text(json.dumps(sidecar))
+                    except Exception:
+                        logger.exception('Failed to write sidecar for %s', fname)
+                    # replace occurrences of the original URL with our local path
+                    local_url = f"/media/images/{fname}"
+                    text = text.replace(url, local_url)
+                except Exception:
+                    logger.exception('Failed to fetch or persist image %s', url)
+                    continue
+        return text
+
+    # rewrite content_val and raw metadata if they contain remote image URLs
+    try:
+        content_val = await _persist_and_rewrite_images(content_val)
+    except Exception:
+        logger.exception('Error persisting images found in assistant content')
+    try:
+        # if result is a dict/structured object, stringify nested response text
+        if isinstance(result, dict):
+            # deep scan for strings in result to rewrite URLs
+            def _rewrite_in_obj(obj):
+                if isinstance(obj, str):
+                    return asyncio.get_event_loop().run_until_complete(_persist_and_rewrite_images(obj))
+                if isinstance(obj, dict):
+                    return {k: _rewrite_in_obj(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [_rewrite_in_obj(v) for v in obj]
+                return obj
+            try:
+                # run the rewrite for top-level known keys
+                if 'response' in result and isinstance(result['response'], str):
+                    result['response'] = await _persist_and_rewrite_images(result['response'])
+                if 'media' in result and isinstance(result['media'], list):
+                    new_media = []
+                    for m in result['media']:
+                        if isinstance(m, str):
+                            new_media.append(await _persist_and_rewrite_images(m))
+                        elif isinstance(m, dict):
+                            # rewrite url fields inside media dicts
+                            if 'url' in m and isinstance(m['url'], str):
+                                m['url'] = await _persist_and_rewrite_images(m['url'])
+                            new_media.append(m)
+                    result['media'] = new_media
+            except Exception:
+                logger.exception('Failed to rewrite nested URLs in result dict')
+    except Exception:
+        logger.exception('Error scanning result for images')
+
     # append entries to conversation state (used by /conversation endpoint)
     app.state.conversation.append(user_entry)
     app.state.conversation.append(data)
@@ -313,7 +502,28 @@ async def concierge_timeline():
 @app.get('/api/v1/concierge/timeline/graph')
 async def concierge_timeline_graph():
     png = app.state.timeline.get_plan_graph_png()
-    return Response(content=png, media_type='image/png')
+    # return as a streaming response of raw PNG bytes
+    return StreamingResponse(iter([png]), media_type='image/png')
+
+
+@app.get('/api/v1/concierge/timeline/stream')
+async def concierge_timeline_stream():
+    """Server-Sent Events endpoint streaming timeline updates in real-time."""
+    async def event_generator():
+        # subscribe to the timeline updates
+        q = app.state.timeline.subscribe_timeline()
+        try:
+            while True:
+                update = await q.get()
+                import json as _json
+                yield f"data: {_json.dumps(update)}\n\n"
+        finally:
+            try:
+                app.state.timeline.unsubscribe_timeline(q)
+            except Exception:
+                pass
+
+    return StreamingResponse(event_generator(), media_type='text/event-stream')
 
 
 @app.post('/api/v1/concierge/stream')
@@ -353,6 +563,58 @@ async def concierge_stream(payload: ConciergeMessagePayload):
 @app.get('/api/v1/concierge/conversation')
 async def concierge_conversation():
     return _api_response(list(app.state.conversation))
+
+
+@app.get('/api/v1/concierge/media')
+async def concierge_media_list(request: Request):
+    """Admin listing of saved media files (media/images)."""
+    try:
+        media_images = Path(__file__).parent / 'media' / 'images'
+        items = []
+        if media_images.exists():
+            # Only include image files (skip sidecar JSON files)
+            allowed_exts = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif'}
+            for p in sorted(media_images.iterdir()):
+                if p.is_file() and p.suffix.lower() in allowed_exts:
+                    stat = p.stat()
+                    # If feature flag `media_absolute_urls` is enabled, return
+                    # absolute URLs based on the request base URL so clients
+                    # do not need to normalize `/media` paths.
+                    try:
+                        base_url = str(Request.scope.get('root_path', ''))
+                    except Exception:
+                        base_url = ''
+                    # build absolute or relative URL depending on flag
+                    if is_enabled('media_absolute_urls'):
+                        base = str(request.base_url).rstrip('/')
+                        url = f"{base}/media/images/{p.name}"
+                    else:
+                        url = f"/media/images/{p.name}"
+                    item = {
+                        'filename': p.name,
+                        'url': url,
+                        'size': stat.st_size,
+                        'mtime': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(stat.st_mtime)),
+                    }
+                    # attempt to load sidecar metadata if present
+                    try:
+                        meta_path = p.with_suffix(p.suffix + '.json')
+                        # example: img_xxx.png.json (legacy) OR img_xxx.png.json; also try .json alongside
+                        if not meta_path.exists():
+                            meta_path = p.with_suffix('.json')
+                        if meta_path.exists():
+                            try:
+                                meta_text = meta_path.read_text()
+                                item['metadata'] = json.loads(meta_text)
+                            except Exception:
+                                item['metadata'] = {'error': 'failed to read metadata'}
+                    except Exception:
+                        item['metadata'] = None
+                    items.append(item)
+        return _api_response(items)
+    except Exception as exc:
+        logger.exception('Failed to list media files')
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # Register Phase 14-16 routers

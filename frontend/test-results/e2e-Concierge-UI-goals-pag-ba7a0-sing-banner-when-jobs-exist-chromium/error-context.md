@@ -1,0 +1,153 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Concierge Concierge" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img "Concierge" [ref=e8]
+        - generic [ref=e9]: Concierge
+      - navigation [ref=e10]:
+        - link "Home" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Goals" [ref=e12] [cursor=pointer]:
+          - /url: /goals
+        - link "Tasks" [ref=e13] [cursor=pointer]:
+          - /url: /tasks
+        - link "Workspace" [ref=e14] [cursor=pointer]:
+          - /url: /workspace
+        - link "Strategy" [ref=e15] [cursor=pointer]:
+          - /url: /strategy
+        - link "How‑To" [ref=e16] [cursor=pointer]:
+          - /url: /howto
+        - link "Capabilities" [ref=e17] [cursor=pointer]:
+          - /url: /capabilities
+  - complementary [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e21]:
+        - img "timeline graph" [ref=e22] [cursor=pointer]
+        - button "▾" [ref=e23] [cursor=pointer]
+      - generic "message-welcome" [ref=e27]:
+        - generic [ref=e28]: Welcome. I'm ready when you are. What would you like to work on today?
+        - generic [ref=e29]: 3/19/2026, 8:55:35 PM
+      - generic [ref=e32]:
+        - button "📎" [ref=e33] [cursor=pointer]
+        - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e34]
+        - button "↑" [disabled] [ref=e35]
+  - main [ref=e36]:
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e41]: Goal job
+            - generic [ref=e42]: 1 processing task · 0m5s elapsed
+          - button "hide details" [active] [ref=e43] [cursor=pointer]
+        - generic [ref=e46]: Goal job – queued
+      - heading "🎯 Goals" [level=1] [ref=e47]
+      - paragraph [ref=e48]: Goals are high-level outcomes. Describe what you want to achieve and Concierge will decompose it into a prioritised task tree, run specialist agents, and synthesise a final report. Click any prompt below to start a goal in the chat.
+      - generic [ref=e49]:
+        - generic [ref=e50]:
+          - generic [ref=e51]: STEP 1
+          - generic [ref=e52]: Describe outcome
+          - generic [ref=e53]: Be specific — include a timeframe and measurable result.
+        - generic [ref=e54]:
+          - generic [ref=e55]: STEP 2
+          - generic [ref=e56]: Planner decomposes
+          - generic [ref=e57]: Goal → prioritised tasks with dependencies.
+        - generic [ref=e58]:
+          - generic [ref=e59]: STEP 3
+          - generic [ref=e60]: Agents execute
+          - generic [ref=e61]: Research, Coding, and Critic agents run in parallel.
+        - generic [ref=e62]:
+          - generic [ref=e63]: STEP 4
+          - generic [ref=e64]: Synthesizer reports
+          - generic [ref=e65]: Key points, risks, and recommendations returned.
+      - generic [ref=e66]:
+        - heading "🚀 Launch & delivery" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - button "\"Create a 4-week goal to launch a public-facing REST API for our SaaS product.\" Click to use →" [ref=e69] [cursor=pointer]:
+            - generic [ref=e70]: "\"Create a 4-week goal to launch a public-facing REST API for our SaaS product.\""
+            - generic [ref=e71]: Click to use →
+          - button "\"Plan the rollout of a new authentication system — list tasks, risks, and milestones.\" Click to use →" [ref=e72] [cursor=pointer]:
+            - generic [ref=e73]: "\"Plan the rollout of a new authentication system — list tasks, risks, and milestones.\""
+            - generic [ref=e74]: Click to use →
+          - button "\"I need to ship a mobile MVP in 6 weeks. Break it into weekly goals.\" Click to use →" [ref=e75] [cursor=pointer]:
+            - generic [ref=e76]: "\"I need to ship a mobile MVP in 6 weeks. Break it into weekly goals.\""
+            - generic [ref=e77]: Click to use →
+          - button "\"Map out the go-to-market plan for the v2.0 release.\" Click to use →" [ref=e78] [cursor=pointer]:
+            - generic [ref=e79]: "\"Map out the go-to-market plan for the v2.0 release.\""
+            - generic [ref=e80]: Click to use →
+      - generic [ref=e81]:
+        - heading "⚙️ Technical improvement" [level=2] [ref=e82]
+        - generic [ref=e83]:
+          - button "\"Set a goal to reduce CI/CD pipeline time from 12 minutes to under 5.\" Click to use →" [ref=e84] [cursor=pointer]:
+            - generic [ref=e85]: "\"Set a goal to reduce CI/CD pipeline time from 12 minutes to under 5.\""
+            - generic [ref=e86]: Click to use →
+          - button "\"Improve test coverage from 55% to 85% across all core modules in 3 weeks.\" Click to use →" [ref=e87] [cursor=pointer]:
+            - generic [ref=e88]: "\"Improve test coverage from 55% to 85% across all core modules in 3 weeks.\""
+            - generic [ref=e89]: Click to use →
+          - button "\"Plan a database schema migration to support multi-tenancy.\" Click to use →" [ref=e90] [cursor=pointer]:
+            - generic [ref=e91]: "\"Plan a database schema migration to support multi-tenancy.\""
+            - generic [ref=e92]: Click to use →
+          - button "\"Reduce React bundle size by 30% — identify the biggest wins first.\" Click to use →" [ref=e93] [cursor=pointer]:
+            - generic [ref=e94]: "\"Reduce React bundle size by 30% — identify the biggest wins first.\""
+            - generic [ref=e95]: Click to use →
+      - generic [ref=e96]:
+        - heading "📊 Research & analysis" [level=2] [ref=e97]
+        - generic [ref=e98]:
+          - button "\"Research the top 3 alternatives to Qdrant for our vector store and produce a comparison.\" Click to use →" [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]: "\"Research the top 3 alternatives to Qdrant for our vector store and produce a comparison.\""
+            - generic [ref=e101]: Click to use →
+          - button "\"Analyse our Q1 sprint velocity data and recommend process improvements.\" Click to use →" [ref=e102] [cursor=pointer]:
+            - generic [ref=e103]: "\"Analyse our Q1 sprint velocity data and recommend process improvements.\""
+            - generic [ref=e104]: Click to use →
+          - button "\"Investigate why API p95 latency increased 40% after the last deploy.\" Click to use →" [ref=e105] [cursor=pointer]:
+            - generic [ref=e106]: "\"Investigate why API p95 latency increased 40% after the last deploy.\""
+            - generic [ref=e107]: Click to use →
+          - button "\"Survey industry best practices for LLM observability in 2026.\" Click to use →" [ref=e108] [cursor=pointer]:
+            - generic [ref=e109]: "\"Survey industry best practices for LLM observability in 2026.\""
+            - generic [ref=e110]: Click to use →
+      - generic [ref=e111]:
+        - heading "🤝 Team & process" [level=2] [ref=e112]
+        - generic [ref=e113]:
+          - button "\"Create monthly goals for improving developer onboarding documentation.\" Click to use →" [ref=e114] [cursor=pointer]:
+            - generic [ref=e115]: "\"Create monthly goals for improving developer onboarding documentation.\""
+            - generic [ref=e116]: Click to use →
+          - button "\"Plan a 2-week sprint to reduce the backlog of bug reports by 50%.\" Click to use →" [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]: "\"Plan a 2-week sprint to reduce the backlog of bug reports by 50%.\""
+            - generic [ref=e119]: Click to use →
+          - button "\"Outline a knowledge-transfer plan for the outgoing lead engineer.\" Click to use →" [ref=e120] [cursor=pointer]:
+            - generic [ref=e121]: "\"Outline a knowledge-transfer plan for the outgoing lead engineer.\""
+            - generic [ref=e122]: Click to use →
+          - button "\"Set team objectives for improving code review turnaround to under 24 hours.\" Click to use →" [ref=e123] [cursor=pointer]:
+            - generic [ref=e124]: "\"Set team objectives for improving code review turnaround to under 24 hours.\""
+            - generic [ref=e125]: Click to use →
+          - button "\"Design a promotional banner image for the goal.\" Click to use →" [ref=e126] [cursor=pointer]:
+            - generic [ref=e127]: "\"Design a promotional banner image for the goal.\""
+            - generic [ref=e128]: Click to use →
+      - generic [ref=e129]:
+        - heading "🖼️ Multimedia goals" [level=2] [ref=e130]
+        - generic [ref=e131]:
+          - button "\"Generate a logo for this goal/project.\" Click to use →" [ref=e132] [cursor=pointer]:
+            - generic [ref=e133]: "\"Generate a logo for this goal/project.\""
+            - generic [ref=e134]: Click to use →
+          - button "\"What multimedia assets would support this objective?\" Click to use →" [ref=e135] [cursor=pointer]:
+            - generic [ref=e136]: "\"What multimedia assets would support this objective?\""
+            - generic [ref=e137]: Click to use →
+  - region "Media output stage" [ref=e138]:
+    - generic [ref=e139]:
+      - img [ref=e140]
+      - generic [ref=e149]: Media Output
+      - button "⇔" [ref=e150] [cursor=pointer]
+      - button "🖼" [ref=e151] [cursor=pointer]
+      - button "▼" [ref=e153] [cursor=pointer]
+      - button "✕" [ref=e154] [cursor=pointer]
+    - generic [ref=e155]:
+      - generic "Image layer" [ref=e156]:
+        - img "AI-generated output" [ref=e157]
+        - button "Save" [ref=e158]
+      - generic [ref=e162]:
+        - generic [ref=e163]: 🖼
+        - generic [ref=e164]: "50"
+```

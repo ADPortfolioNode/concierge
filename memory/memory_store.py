@@ -448,10 +448,28 @@ class MemoryStore:
                 try:
                     safe_meta = _sanitize_for_chroma(metadata)
                     self._collection.add(documents=[summary], metadatas=[safe_meta], ids=[rec_id])
-                except Exception:
-                    logger.exception("Chroma add failed")
+                except Exception as e:
+                    # Detect common missing-native-dependency errors (onnxruntime)
+                    err_text = str(e) or ''
+                    if 'onnxruntime' in err_text or 'onnxruntime python package is not installed' in err_text.lower():
+                        logger.error("Chroma add failed due to missing onnxruntime. Disabling Chroma and falling back to in-memory. Install onnxruntime with: pip install onnxruntime")
+                        try:
+                            # disable chroma for remainder of process to avoid repeated failures
+                            self._client = None
+                            self._collection = None
+                        except Exception:
+                            pass
+                    else:
+                        logger.exception("Chroma add failed")
 
             await loop.run_in_executor(None, _add_chroma)
+            # If chroma was disabled by the failure handler above, fall back
+            if self._client is None or self._collection is None:
+                logger.warning("Chroma disabled; storing %s in in-memory fallback", rec_id)
+                self._in_memory.append({"id": rec_id, "summary": summary, "metadata": metadata})
+                await asyncio.sleep(0)
+                return rec_id
+
             logger.debug("MemoryStore stored %s in chroma", rec_id)
             return rec_id
 
