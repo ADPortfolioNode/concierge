@@ -53,3 +53,21 @@ test_phase6_out*.txt
 .vscode
 .idea
 *.swp
+# Ignore common media files that aren't part of app assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+*.mp4
+*.mov
+*.avi
+*.psd
+*.ai
+
+# Allow the app's media assets in `media/images` and frontend public
+!/media/
+!/media/images/**
+!/frontend/public/**
