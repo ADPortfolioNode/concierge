@@ -30,7 +30,7 @@
         - button "▾" [ref=e23] [cursor=pointer]
       - generic "message-welcome" [ref=e27]:
         - generic [ref=e28]: Welcome. I'm ready when you are. What would you like to work on today?
-        - generic [ref=e29]: 3/19/2026, 8:55:02 PM
+        - generic [ref=e29]: 3/20/2026, 2:09:28 PM
       - generic [ref=e32]:
         - button "📎" [ref=e33] [cursor=pointer]
         - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e34]
@@ -40,7 +40,7 @@
       - generic [ref=e39]:
         - generic [ref=e40]:
           - generic [ref=e41]: Example job
-          - generic [ref=e42]: 1 processing task · 0m28s elapsed
+          - generic [ref=e42]: 1 processing task · 0m58s elapsed
         - button "show details" [ref=e43] [cursor=pointer]
       - heading "✅ Tasks" [level=1] [ref=e45]
       - paragraph [ref=e46]: Tasks run in the background — read files, generate code, analyse datasets. Enqueue via chat or the Postman collection, then poll for results. Click any prompt to try one now.

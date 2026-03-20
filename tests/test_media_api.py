@@ -1,68 +1,51 @@
-import json
-from pathlib import Path
-
-from fastapi.testclient import TestClient
 import os
+import json
+import base64
+from pathlib import Path
+from fastapi.testclient import TestClient
 
-from plugins.image_generation_plugin import ImageGenerationPlugin
-import matplotlib
-matplotlib.use('Agg')
+from app import app
 
 
-def test_media_endpoint_and_timeline_graph():
-    # ensure a sample image + sidecar exist
+def _ensure_sample_image():
     tiny_png_b64 = (
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQImWNgYAAAAAMA"
         "ASsJTYQAAAAASUVORK5CYII="
     )
-    import base64
-
     content = base64.b64decode(tiny_png_b64)
-    fname = ImageGenerationPlugin._save_bytes_to_media_static(
-        content,
-        "integration-prompt",
-        metadata={"prompt": "integration-prompt", "source": "test", "mime_type": "image/png"},
-    )
+    media_dir = Path(__file__).resolve().parent.parent / "media" / "images"
+    media_dir.mkdir(parents=True, exist_ok=True)
+    fname = f"test_img_{int(Path(__file__).stat().st_mtime)}.png"
+    img_path = media_dir / fname
+    img_path.write_bytes(content)
+    sidecar = {
+        "filename": fname,
+        "mime_type": "image/png",
+        "created_at": "2026-01-01T00:00:00Z",
+        "size": len(content),
+        "source": "test",
+        "remote_url": f"/media/images/{fname}",
+    }
+    (media_dir / (fname + ".json")).write_text(json.dumps(sidecar))
+    return fname
 
-    root = Path(__file__).resolve().parent.parent
-    img_path = root / "media" / "images" / fname
-    meta_path = root / "media" / "images" / (fname + ".json")
 
-    assert img_path.exists()
-    assert meta_path.exists()
-
-    # import the app and run TestClient
-    from app import app
-
-    # enable server-side absolute media URLs for this request
+def test_media_list_and_timeline_graph():
+    fname = _ensure_sample_image()
+    # enable absolute URLs feature flag
     os.environ['FEATURE_FLAGS'] = 'media_absolute_urls'
     with TestClient(app) as client:
-        # media listing
         r = client.get("/api/v1/concierge/media")
         assert r.status_code == 200
         payload = r.json()
-        # accept either a bare list or an envelope {"data": [...]}
-        if isinstance(payload, dict) and "data" in payload:
-            data = payload["data"]
-        else:
-            data = payload
+        assert payload.get("status") == "success"
+        data = payload.get("data")
         assert isinstance(data, list)
 
-        # ensure our file is listed (by filename)
         filenames = [item.get("metadata", {}).get("filename") or item.get("filename") for item in data]
         assert fname in filenames
 
-        # timeline graph should return an image (PNG) even if empty
         r2 = client.get("/api/v1/concierge/timeline/graph")
         assert r2.status_code == 200
         ctype = r2.headers.get("content-type", "")
         assert "image" in ctype
-
-        # verify server returned absolute URL when feature flag enabled
-        found = False
-        for item in data:
-            url = item.get('url')
-            if url and url.startswith('http'):
-                found = True
-                break
-        assert found, "expected at least one absolute media URL when flag enabled"

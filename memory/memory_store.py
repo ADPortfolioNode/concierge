@@ -25,6 +25,16 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     chromadb = None
 
+# Detect whether onnxruntime is available so we can avoid triggering
+# Chromadb's ONNX embedder at runtime in environments without the native
+# dependency. If onnxruntime is missing we will skip initializing Chroma
+# to prevent late ImportError/DLL failures.
+try:
+    import onnxruntime  # type: ignore
+    _ONNX_AVAILABLE = True
+except Exception:
+    _ONNX_AVAILABLE = False
+
 try:
     # qdrant client (optional)
     from qdrant_client import QdrantClient
@@ -90,7 +100,11 @@ class MemoryStore:
         self._qdrant_vector_dim = int(os.getenv("QDRANT_VECTOR_DIM", "8"))
 
         # Initialize selected vector DB client if available. We prefer chroma, else qdrant.
-        if self._vector_db == "chroma" and chromadb is not None:
+        # If onnxruntime is not available, avoid initializing Chroma as
+        # Chromadb may attempt to import native ONNX dependencies when
+        # constructing its embedding function. This prevents DLL import
+        # failures on systems without `onnxruntime` installed.
+        if self._vector_db == "chroma" and chromadb is not None and _ONNX_AVAILABLE:
             try:
                 try:
                     self._client = chromadb.Client()
@@ -112,6 +126,9 @@ class MemoryStore:
             except Exception:
                 logger.exception("Failed to initialize chromadb client; using in-memory fallback")
                 self._client = None
+        else:
+            if self._vector_db == "chroma" and chromadb is not None and not _ONNX_AVAILABLE:
+                logger.warning("onnxruntime not available; skipping Chroma initialization and using in-memory fallback")
 
         elif self._vector_db == "qdrant" and QdrantClient is not None:
             try:

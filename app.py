@@ -47,6 +47,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import httpx
 import hashlib
+import re
 from datetime import datetime
 
 from orchestration.sacred_timeline import SacredTimeline
@@ -314,7 +315,7 @@ async def ask(payload: AskPayload):
 
 
 @app.post("/api/v1/concierge/message")
-async def concierge_message(payload: ConciergeMessagePayload):
+async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     # the Pydantic validator above guarantees we have a nonempty `message`
     msg = payload.message
     result = await app.state.timeline.handle_user_input(msg)
@@ -351,7 +352,7 @@ async def concierge_message(payload: ConciergeMessagePayload):
     # Persist any remote images found in the assistant response and rewrite
     # their URLs to point at our local `/media/images/` mount so the frontend
     # always renders a stable, local copy.
-    async def _persist_and_rewrite_images(text: str) -> str:
+    async def _persist_and_rewrite_images(text: str, request: Request) -> str:
         if not text or not isinstance(text, str):
             return text
         # simple heuristic: match http/https URLs that likely point to images
@@ -420,7 +421,14 @@ async def concierge_message(payload: ConciergeMessagePayload):
                     except Exception:
                         logger.exception('Failed to write sidecar for %s', fname)
                     # replace occurrences of the original URL with our local path
-                    local_url = f"/media/images/{fname}"
+                    if is_enabled('media_absolute_urls'):
+                        try:
+                            base = str(request.base_url).rstrip('/')
+                            local_url = f"{base}/media/images/{fname}"
+                        except Exception:
+                            local_url = f"/media/images/{fname}"
+                    else:
+                        local_url = f"/media/images/{fname}"
                     text = text.replace(url, local_url)
                 except Exception:
                     logger.exception('Failed to fetch or persist image %s', url)
@@ -429,7 +437,7 @@ async def concierge_message(payload: ConciergeMessagePayload):
 
     # rewrite content_val and raw metadata if they contain remote image URLs
     try:
-        content_val = await _persist_and_rewrite_images(content_val)
+        content_val = await _persist_and_rewrite_images(content_val, request)
     except Exception:
         logger.exception('Error persisting images found in assistant content')
     try:
@@ -447,16 +455,16 @@ async def concierge_message(payload: ConciergeMessagePayload):
             try:
                 # run the rewrite for top-level known keys
                 if 'response' in result and isinstance(result['response'], str):
-                    result['response'] = await _persist_and_rewrite_images(result['response'])
+                    result['response'] = await _persist_and_rewrite_images(result['response'], request)
                 if 'media' in result and isinstance(result['media'], list):
                     new_media = []
                     for m in result['media']:
                         if isinstance(m, str):
-                            new_media.append(await _persist_and_rewrite_images(m))
+                            new_media.append(await _persist_and_rewrite_images(m, request))
                         elif isinstance(m, dict):
                             # rewrite url fields inside media dicts
                             if 'url' in m and isinstance(m['url'], str):
-                                m['url'] = await _persist_and_rewrite_images(m['url'])
+                                m['url'] = await _persist_and_rewrite_images(m['url'], request)
                             new_media.append(m)
                     result['media'] = new_media
             except Exception:
@@ -581,7 +589,7 @@ async def concierge_media_list(request: Request):
                     # absolute URLs based on the request base URL so clients
                     # do not need to normalize `/media` paths.
                     try:
-                        base_url = str(Request.scope.get('root_path', ''))
+                        base_url = str(request.scope.get('root_path', ''))
                     except Exception:
                         base_url = ''
                     # build absolute or relative URL depending on flag

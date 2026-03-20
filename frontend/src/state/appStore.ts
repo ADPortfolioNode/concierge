@@ -9,7 +9,8 @@ export interface MediaItem {
 }
 
 // Regexes shared with MediaStage for routing responses to the right layer
-const _IMG_RE = /https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*/gi;
+// Accept absolute http(s) image URLs and local `/media/images/*` paths
+const _IMG_RE = /(?:https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/media\/images\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?)/gi;
 const _VID_RE = /https?:\/\/\S+?\.(?:mp4|webm)(?:[?#]\S*)?/gi;
 const _AUD_RE = /https?:\/\/\S+?\.(?:mp3|wav|m4a)(?:[?#]\S*)?/gi;
 

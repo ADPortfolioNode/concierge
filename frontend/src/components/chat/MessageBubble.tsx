@@ -44,8 +44,9 @@ if (typeof document !== 'undefined' && !document.getElementById('_stream-blink')
 
 /** Regex that matches http(s) URLs ending with an image extension OR known
  *  image-hosting domains (picsum.photos, i.imgur.com, etc.) */
+// Match absolute http(s) image URLs, known image hosts, or local `/media/images/...` paths
 const IMAGE_URL_RE =
-  /https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*/gi;
+  /(?:https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/media\/images\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?)/gi;
 
 interface Segment {
   kind: 'text' | 'image';

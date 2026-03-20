@@ -29,15 +29,15 @@
         - img "timeline graph" [ref=e22] [cursor=pointer]
         - button "▾" [ref=e23] [cursor=pointer]
       - generic [ref=e25]:
-        - generic "message-1773968149598" [ref=e27]:
+        - generic "message-1774030253026" [ref=e27]:
           - generic [ref=e28]: integration test
-          - generic [ref=e29]: 3/19/2026, 8:55:49 PM
-        - generic "message-1773968149599" [ref=e31]:
+          - generic [ref=e29]: 3/20/2026, 2:10:53 PM
+        - generic "message-1774030253027" [ref=e31]:
           - generic [ref=e32]: "I understand you're asking about \"integration test\". I'm currently running without an OpenAI API key, so my reasoning is rule-based rather than generative. For full AI-powered responses, add `OPENAI_API_KEY` to your environment and restart the server. I can still help with planning, code generation, summarization, and file analysis — what would you like to do?"
           - button "▸ details" [ref=e34] [cursor=pointer]:
             - generic [ref=e35]: ▸
             - text: details
-          - generic [ref=e36]: 3/19/2026, 8:55:49 PM
+          - generic [ref=e36]: 3/20/2026, 2:10:53 PM
       - generic [ref=e39]:
         - button "📎" [ref=e40] [cursor=pointer]
         - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e41]

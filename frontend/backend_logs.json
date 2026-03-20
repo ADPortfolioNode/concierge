@@ -1,0 +1,32 @@
+﻿{
+    "lines":  [
+                  "2026-03-20 12:09:34,001 INFO app: Concierge version 1.0.0 starting",
+                  "2026-03-20 12:09:34,001 INFO app: OPENAI_API_KEY set: True; GEMINI_API_KEY set: True",
+                  "2026-03-20 12:09:35,670 INFO httpx: HTTP Request: GET http://localhost:8000/api/v2/auth/identity \"HTTP/1.1 200 OK\"",
+                  "2026-03-20 12:09:36,485 INFO httpx: HTTP Request: GET http://localhost:8000/api/v2/tenants/default_tenant \"HTTP/1.1 200 OK\"",
+                  "2026-03-20 12:09:36,491 INFO httpx: HTTP Request: GET http://localhost:8000/api/v2/tenants/default_tenant/databases/default_database \"HTTP/1.1 200 OK\"",
+                  "2026-03-20 12:09:36,536 INFO httpx: HTTP Request: POST http://localhost:8000/api/v2/tenants/default_tenant/databases/default_database/collections \"HTTP/1.1 200 OK\"",
+                  "2026-03-20 12:09:36,923 INFO plugins.plugin_registry: PluginRegistry: registered plugin \u0027summarization\u0027 (v0.2.0)",
+                  "2026-03-20 12:09:36,923 INFO plugins.plugin_registry: PluginRegistry: registered plugin \u0027image_generation\u0027 (v0.2.0)",
+                  "2026-03-20 12:09:36,923 INFO plugins.plugin_loader: Plugin loader: registered 2 built-in plugin(s)",
+                  "2026-03-20 12:09:36,926 INFO integrations.integration_registry: IntegrationRegistry: registered integration \u0027openai\u0027 (service=\u0027OpenAI\u0027, v0.2.0)",
+                  "2026-03-20 12:09:36,928 INFO integrations.integration_registry: IntegrationRegistry: registered integration \u0027gemini\u0027 (service=\u0027GoogleGemini\u0027, v0.1.0)",
+                  "2026-03-20 12:09:36,930 INFO integrations.integration_registry: IntegrationRegistry: registered integration \u0027stripe\u0027 (service=\u0027Stripe\u0027, v0.2.0)",
+                  "2026-03-20 12:09:36,930 INFO integrations.integration_registry: IntegrationRegistry: registered integration \u0027slack\u0027 (service=\u0027Slack\u0027, v0.2.0)",
+                  "2026-03-20 12:09:36,930 INFO integrations.integration_loader: Integration loader: registered 4 built-in integration(s)",
+                  "2026-03-20 12:09:36,978 INFO tasks.task_queue: TaskQueue: registered handler for \u0027read_file\u0027",
+                  "2026-03-20 12:09:36,981 INFO tasks.task_queue: TaskQueue: registered handler for \u0027write_file\u0027",
+                  "2026-03-20 12:09:36,985 INFO tasks.task_queue: TaskQueue: registered handler for \u0027append_file\u0027",
+                  "2026-03-20 12:09:36,985 INFO tasks.task_queue: TaskQueue: registered handler for \u0027generate_code\u0027",
+                  "2026-03-20 12:09:36,991 INFO tasks.task_queue: TaskQueue: registered handler for \u0027dataset_analysis\u0027",
+                  "2026-03-20 12:09:36,992 INFO tasks.task_worker: TaskWorker: default handlers registered.",
+                  "2026-03-20 12:09:36,993 INFO tasks.task_queue: TaskQueue worker started.",
+                  "2026-03-20 12:09:37,004 INFO httpx: HTTP Request: GET http://localhost:8000/api/v2/tenants/default_tenant/databases/default_database/collections/d8581558-979d-4bc2-a3ee-60fdcf746bfd/count?read_level=index_and_wal \"HTTP/1.1 200 OK\"",
+                  "2026-03-20 12:09:37,044 ERROR memory.memory_store: Chroma add failed due to missing onnxruntime. Disabling Chroma and falling back to in-memory. Install onnxruntime with: pip install onnxruntime",
+                  "2026-03-20 12:09:37,099 WARNING memory.memory_store: Chroma disabled; storing df5cde4f-2df3-428a-8c65-cd8775c7f88b in in-memory fallback",
+                  "2026-03-20 12:09:37,100 INFO memory.memory_store: Migration ingested 1 records from E:\\2024 RESET\\concierge\\data",
+                  "2026-03-20 12:09:56,536 INFO app: Incoming request: GET http://127.0.0.1:8000/media/images/img_00ca9b65d4_1773874646.png",
+                  "2026-03-20 12:09:56,622 INFO app: Response status: 200 for GET http://127.0.0.1:8000/media/images/img_00ca9b65d4_1773874646.png",
+                  "2026-03-20 13:46:33,273 INFO app: Incoming request: GET http://127.0.0.1:8000/health/logs?limit=200"
+              ]
+}

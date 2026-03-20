@@ -29,12 +29,12 @@
         - img "timeline graph" [ref=e22] [cursor=pointer]
         - button "▾" [ref=e23] [cursor=pointer]
       - generic [ref=e25]:
-        - generic "message-1773968048556" [ref=e27]:
+        - generic "message-1774030104865" [ref=e27]:
           - generic [ref=e28]: search for foo
-          - generic [ref=e29]: 3/19/2026, 8:54:08 PM
-        - generic "message-1773968048557" [ref=e31]:
+          - generic [ref=e29]: 3/20/2026, 2:08:24 PM
+        - generic "message-1774030104866" [ref=e31]:
           - generic [ref=e32]: …
-          - generic [ref=e33]: 3/19/2026, 8:54:08 PM
+          - generic [ref=e33]: 3/20/2026, 2:08:24 PM
       - generic [ref=e36]:
         - button "📎" [ref=e37] [cursor=pointer]
         - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e38]
