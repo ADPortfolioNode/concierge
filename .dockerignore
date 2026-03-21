@@ -69,8 +69,9 @@ test_phase6_out*.txt
 
 # Allow the app's media assets in `media/images` and frontend public
 # Exclude media, data, build artifacts and test traces from Docker context
-media/
-data/
+/# Ignore only repository root media and data folders
+/media/
+/data/
 frontend/dist/
 frontend/test-results/
 build_packages/

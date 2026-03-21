@@ -29,6 +29,7 @@ frontend/test-results/
 *.zip
 phase7b_notebook.ipynb
 *.ipynb
-media/
+// Ignore only repository root media folder, not frontend component folders
+/media/
 data/
 **/*.zip
