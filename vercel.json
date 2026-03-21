@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "vercel_app.py",
+      "src": "main.py",
       "use": "@vercel/python"
     },
     {
@@ -13,8 +13,7 @@
   ],
   "outputDirectory": "frontend/dist",
   "routes": [
-    { "src": "/api/(.*)", "dest": "/vercel_app.py" },
+    { "src": "/api/(.*)", "dest": "/main.py" },
     { "src": "/(.*)", "dest": "/frontend/dist/$1" }
   ]
 }
-7
