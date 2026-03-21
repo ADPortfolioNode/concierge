@@ -11,6 +11,7 @@
       "config": { "distDir": "dist" }
     }
   ],
+  "outputDirectory": "frontend/dist",
   "routes": [
     { "src": "/api/(.*)", "dest": "/app.py" },
     { "src": "/(.*)", "dest": "/frontend/dist/$1" }
