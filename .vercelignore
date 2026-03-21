@@ -23,3 +23,12 @@ requirements.full.txt
 *.db
 dist/
 media/images/*
+# Ignore large or local-only artifacts that shouldn't be bundled to Vercel
+**/test-results/
+frontend/test-results/
+*.zip
+phase7b_notebook.ipynb
+*.ipynb
+media/
+data/
+**/*.zip
