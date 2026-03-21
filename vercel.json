@@ -14,6 +14,8 @@
   "outputDirectory": "frontend/dist",
   "routes": [
     { "src": "/api/(.*)", "dest": "/main.py" },
-    { "src": "/(.*)", "dest": "/frontend/dist/$1" }
+    { "src": "/__files", "dest": "/main.py" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
