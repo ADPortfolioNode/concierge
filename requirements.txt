@@ -1,5 +1,6 @@
 fastapi>=0.95.0
-uvicorn[standard]>=0.22.0
+# Use plain `uvicorn` (no extras) to avoid optional heavy deps in serverless builds
+uvicorn>=0.22.0
 pydantic>=1.10.0
 openai>=1.0.0
 httpx>=0.23.0
