@@ -50,40 +50,35 @@ import hashlib
 import re
 from datetime import datetime
 
-from orchestration.sacred_timeline import SacredTimeline
-from core.concurrency import AsyncConcurrencyManager
-from memory.memory_store import MemoryStore
-from config.settings import get_settings
+# Defer heavy/optional imports to runtime to keep module import small for
+# serverless builds. Populate these in the lifespan startup.
+SacredTimeline = None
+AsyncConcurrencyManager = None
+MemoryStore = None
+get_settings = None
 
-# Capability layers — plugins, tools, integrations
-from plugins.plugin_loader import load_default_plugins
-import plugins.plugin_registry as _plugin_reg
-from integrations.integration_loader import load_default_integrations
-import integrations.integration_registry as _intg_reg
-from tools.tool_registry import list_tools as _list_tool_names, get_tool as _get_tool
-from tools.tool_registry import register_tool as _register_tool
-from core.feature_flags import is_enabled
-from core.observability import setup as observability_setup, MEDIA_SAVED, REQUEST_COUNTER
+# capability layers placeholders
+load_default_plugins = None
+_plugin_reg = None
+load_default_integrations = None
+_intg_reg = None
+_list_tool_names = None
+_get_tool = None
+_register_tool = None
+is_enabled = None
+observability_setup = None
+MEDIA_SAVED = None
+REQUEST_COUNTER = None
 
-# Phase 14-16: Workstation, Projects, and background Task Queue
-from workstation import upload_router as _upload_router
-from projects import project_router as _project_router
-from tasks import task_router as _task_router, get_queue as _get_task_queue
-from tasks.task_worker import register_default_handlers as _register_task_handlers
-# Distributed job execution layer (Celery + Redis) — optional: degrades
-# gracefully when celery/redis are not installed (e.g. local dev without Docker).
-try:
-    # Import the jobs submodule and prefer its `router` attribute if present.
-    import importlib
-    _jr_mod = importlib.import_module('jobs.job_router')
-    _job_router = getattr(_jr_mod, 'router', _jr_mod)
-    _jobs_available = True
-except Exception as _jobs_import_err:  # noqa: BLE001
-    _job_router = None
-    _jobs_available = False
-    _jobs_import_err_msg = str(_jobs_import_err)
-else:
-    _jobs_import_err_msg = None
+# routers / task handlers placeholders
+_upload_router = None
+_project_router = None
+_task_router = None
+_get_task_queue = None
+_register_task_handlers = None
+_job_router = None
+_jobs_available = False
+_jobs_import_err_msg = None
 
 # load application version from file
 _VERSION_FILE = Path(__file__).parent / "VERSION"
@@ -125,7 +120,21 @@ async def _lifespan(application: FastAPI):
     # ── startup ──────────────────────────────────────────────────────────
     application.state.start_time = time.time()
     application.state.conversation = []  # in-memory history; cleared on restart
+    import importlib
+    # late-import configuration and core components
+    cfg_mod = importlib.import_module('config.settings')
+    get_settings = getattr(cfg_mod, 'get_settings')
     settings = get_settings()
+
+    concurrency_mod = importlib.import_module('core.concurrency')
+    AsyncConcurrencyManager = getattr(concurrency_mod, 'AsyncConcurrencyManager')
+
+    memory_mod = importlib.import_module('memory.memory_store')
+    MemoryStore = getattr(memory_mod, 'MemoryStore')
+
+    orches_mod = importlib.import_module('orchestration.sacred_timeline')
+    SacredTimeline = getattr(orches_mod, 'SacredTimeline')
+
     application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
     application.state.memory = MemoryStore(collection_name=settings.memory_collection)
     application.state.timeline = SacredTimeline(
@@ -156,26 +165,106 @@ async def _lifespan(application: FastAPI):
             return
 
     application.state.media_cleanup_task = asyncio.create_task(_media_cleanup_loop())
-    # attach observability endpoints and middleware
+    # attach observability endpoints and middleware (lazy import)
     try:
+        obs_mod = importlib.import_module('core.observability')
+        observability_setup = getattr(obs_mod, 'setup')
+        MEDIA_SAVED = getattr(obs_mod, 'MEDIA_SAVED', None)
+        REQUEST_COUNTER = getattr(obs_mod, 'REQUEST_COUNTER', None)
         observability_setup(application)
     except Exception:
         logger.exception('Failed to initialize observability')
-    # Register built-in tools so /api/v1/tools can list them
-    from tools.web_search_tool import WebSearchTool
-    from tools.code_execution_tool import CodeExecutionTool
-    from tools.file_memory_tool import FileMemoryTool
-    for tool_cls in (WebSearchTool, CodeExecutionTool, FileMemoryTool):
-        try:
-            _register_tool(tool_cls())
-        except Exception:
-            logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
-    # Load capability layers
-    load_default_plugins()
-    load_default_integrations()
-    # Wire file-agent handlers and start the background task worker
-    _register_task_handlers()
-    await _get_task_queue().start_worker()
+    # Register built-in tools
+    try:
+        tools_mod = importlib.import_module('tools.tool_registry')
+        _register_tool = getattr(tools_mod, 'register_tool')
+        _list_tool_names = getattr(tools_mod, 'list_tools')
+        _get_tool = getattr(tools_mod, 'get_tool')
+    except Exception:
+        _register_tool = None
+        _list_tool_names = None
+        _get_tool = None
+
+    try:
+        from tools.web_search_tool import WebSearchTool
+        from tools.code_execution_tool import CodeExecutionTool
+        from tools.file_memory_tool import FileMemoryTool
+        for tool_cls in (WebSearchTool, CodeExecutionTool, FileMemoryTool):
+            try:
+                if _register_tool:
+                    _register_tool(tool_cls())
+            except Exception:
+                logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
+    except Exception:
+        # tools optional for minimal deployments
+        pass
+
+    # Load capability layers (plugins/integrations)
+    try:
+        pl_mod = importlib.import_module('plugins.plugin_loader')
+        load_default_plugins = getattr(pl_mod, 'load_default_plugins')
+        pr_mod = importlib.import_module('plugins.plugin_registry')
+        _plugin_reg = pr_mod
+        if load_default_plugins:
+            load_default_plugins()
+    except Exception:
+        logger.exception('Failed to load plugins (continuing)')
+
+    try:
+        il_mod = importlib.import_module('integrations.integration_loader')
+        load_default_integrations = getattr(il_mod, 'load_default_integrations')
+        ir_mod = importlib.import_module('integrations.integration_registry')
+        _intg_reg = ir_mod
+        if load_default_integrations:
+            load_default_integrations()
+    except Exception:
+        logger.exception('Failed to load integrations (continuing)')
+
+    # Wire file-agent handlers and start the background task worker (optional)
+    try:
+        tw_mod = importlib.import_module('tasks.task_worker')
+        _register_task_handlers = getattr(tw_mod, 'register_default_handlers')
+        tq_mod = importlib.import_module('tasks')
+        _get_task_queue = getattr(tq_mod, 'get_queue')
+        _register_task_handlers()
+        await _get_task_queue().start_worker()
+    except Exception:
+        logger.exception('Task worker not available or failed to start (continuing)')
+
+    # Register routers from workstation/projects/tasks if available
+    try:
+        ws_mod = importlib.import_module('workstation')
+        _upload_router = getattr(ws_mod, 'upload_router', None)
+        if _upload_router is not None:
+            application.include_router(_upload_router)
+    except Exception:
+        pass
+    try:
+        prj_mod = importlib.import_module('projects')
+        _project_router = getattr(prj_mod, 'project_router', None)
+        if _project_router is not None:
+            application.include_router(_project_router)
+    except Exception:
+        pass
+    try:
+        tmod = importlib.import_module('tasks')
+        _task_router = getattr(tmod, 'task_router', None)
+        if _task_router is not None:
+            application.include_router(_task_router)
+    except Exception:
+        pass
+
+    # Optional distributed job router
+    try:
+        jr_mod = importlib.import_module('jobs.job_router')
+        _job_router = getattr(jr_mod, 'router', jr_mod)
+        _jobs_available = True
+        if _job_router is not None:
+            application.include_router(_job_router)
+    except Exception as _jobs_import_err:  # noqa: BLE001
+        _job_router = None
+        _jobs_available = False
+        _jobs_import_err_msg = str(_jobs_import_err)
     yield
     # ── shutdown (nothing to clean up yet) ───────────────────────────────
 
