@@ -15,7 +15,5 @@
     { "src": "/api/(.*)", "dest": "/app.py" },
     { "src": "/(.*)", "dest": "/frontend/dist/build/$1" }
   ],
-  "functions": {
-    "app.py": { "memory": 1024, "maxDuration": 60 }
-  }
+  
 }
