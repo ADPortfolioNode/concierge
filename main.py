@@ -8,6 +8,8 @@ from fastapi import FastAPI
 import os
 import json
 from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import Request, HTTPException
 
 app = FastAPI()
 
@@ -60,3 +62,41 @@ async def _list_files():
         if len(files) >= max_entries:
             break
     return JSONResponse(content={'files_count': len(files), 'files': files})
+
+
+# Catch-all to serve static files or the SPA index.html as a fallback.
+@app.get('/{full_path:path}')
+async def spa_fallback(request: Request, full_path: str):
+    if full_path.startswith(('api/', '_', '__')):
+        raise HTTPException(status_code=404)
+
+    candidates = [
+        os.path.join('.', full_path),
+        os.path.join('frontend', 'dist', full_path),
+        os.path.join('assets', full_path),
+        os.path.join('dist', full_path),
+        os.path.join('frontend', 'dist', 'assets', full_path),
+        os.path.join('/vercel/output', full_path),
+    ]
+
+    for c in candidates:
+        try:
+            if os.path.isfile(c):
+                return FileResponse(c)
+        except Exception:
+            continue
+
+    # fallback to index.html from several likely locations
+    index_candidates = [
+        os.path.join('.', 'index.html'),
+        os.path.join('frontend', 'dist', 'index.html'),
+        os.path.join('/vercel/output', 'index.html'),
+    ]
+    for idx in index_candidates:
+        try:
+            if os.path.isfile(idx):
+                return FileResponse(idx, media_type='text/html')
+        except Exception:
+            continue
+
+    raise HTTPException(status_code=404)
