@@ -11,6 +11,7 @@ import importlib
 import logging
 import traceback
 from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +35,40 @@ async def _mount_real_app():
         logger.error(traceback.format_exc())
         # Do not re-raise — keep the function process alive so Vercel can serve fallback responses
         return
+
+
+# Serve the static SPA index as a fallback when static build is not present in deployment
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    candidates = [
+        os.path.join('frontend', 'dist', 'index.html'),
+        'index.html',
+        'frontend_index.html'
+    ]
+    for path in candidates:
+        try:
+            if os.path.exists(path):
+                return HTMLResponse(content=open(path, 'r', encoding='utf-8').read(), status_code=200)
+        except Exception:
+            continue
+    return JSONResponse(content={"detail": "Not Found"}, status_code=404)
+
+
+@app.get('/index.html', include_in_schema=False)
+async def serve_index_html():
+    return await serve_index()
+
+
+@app.get('/assets/{path:path}', include_in_schema=False)
+async def serve_asset(path: str):
+    candidates = [
+        os.path.join('frontend', 'dist', 'assets', path),
+        os.path.join('assets', path)
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return FileResponse(p)
+    return JSONResponse(content={"detail": "Not Found"}, status_code=404)
 
 
 @app.get('/_health')
