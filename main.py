@@ -7,21 +7,33 @@ imports at build-time.
 from fastapi import FastAPI
 import os
 import json
+import importlib
+import logging
+import traceback
 from fastapi.responses import JSONResponse
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
 
 @app.on_event("startup")
 async def _mount_real_app():
+    logger.info("startup: mounting real app...")
     try:
-        import importlib
         real = importlib.import_module('app')
         real_app = getattr(real, 'app', None)
         if real_app is not None:
-            app.mount('/_app', real_app)
-    except Exception:
-        return
+            app.mount('/', real_app)
+            logger.info("mounted real app at '/'")
+        else:
+            logger.error("module 'app' has no attribute 'app' (real_app is None)")
+    except Exception as e:
+        logger.error(f"failed to import/mount real app: {e}")
+        logger.error(traceback.format_exc())
+        # re-raise so Vercel logs show the error during cold start
+        raise
 
 
 @app.get('/_health')
