@@ -274,8 +274,23 @@ app = FastAPI(lifespan=_lifespan)
 # Serve generated media (images/audio/video) from /media
 try:
     media_path = Path(__file__).parent / "media"
-    media_path.mkdir(exist_ok=True)
-    app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
+    try:
+        media_path.mkdir(exist_ok=True)
+        app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
+    except OSError as _err:
+        import errno as _errno
+        # On serverless platforms the package directory may be read-only.
+        # Fall back to a writable temporary directory (e.g. /tmp/media).
+        if getattr(_err, 'errno', None) == _errno.EROFS or getattr(_err, 'errno', None) == 30:
+            tmp_media = Path(os.getenv('MEDIA_DIR', '/tmp/media'))
+            try:
+                tmp_media.mkdir(parents=True, exist_ok=True)
+                app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
+                logger.warning("Read-only filesystem; using fallback media dir: %s", tmp_media)
+            except Exception:
+                logger.exception("Failed to create or mount fallback media directory %s", tmp_media)
+        else:
+            raise
 except Exception:
     logger.exception("Failed to mount media directory for static files")
 
