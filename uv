@@ -22,7 +22,14 @@ if [ "$#" -ge 1 ] && [ "$1" = "lock" ]; then
     elif [ -x ".venv/bin/python" ]; then
       PYPATH=".venv/bin/python"
     else
-      PYPATH=".vercel/python/.venv/bin/python"
+      # If no project venv exists, try system python3/python; if none, delegate without --python
+      if command -v python3 >/dev/null 2>&1; then
+        PYPATH="$(command -v python3)"
+      elif command -v python >/dev/null 2>&1; then
+        PYPATH="$(command -v python)"
+      else
+        exec "$REAL_UV" lock "${@:2}"
+      fi
     fi
     exec "$REAL_UV" lock --python "$PYPATH" "${@:2}"
   fi
