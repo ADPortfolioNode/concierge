@@ -41,7 +41,8 @@ const TimelineHero: React.FC = () => {
 
   const tasks = Array.isArray(timelinePlan?.tasks) ? timelinePlan.tasks : [];
   // Use an explicit graph version token to force reload when timelinePlan changes
-  const graphUrl = makeApiUrl(`/api/v1/concierge/timeline/graph?v=${encodeURIComponent(graphVersion)}`);
+  // Use a relative URL so system images are requested from the current origin.
+  const graphUrl = `/api/v1/concierge/timeline/graph?v=${encodeURIComponent(graphVersion)}`;
 
   useEffect(() => {
     // bump the graph version whenever timelinePlan changes so the browser
