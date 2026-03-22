@@ -5,10 +5,11 @@
     {
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "frontend/dist" }
+      "config": { "distDir": "dist" }
     },
     { "src": "main.py", "use": "@vercel/python" }
   ],
+  "outputDirectory": "frontend/dist",
 
   "routes": [
     { "src": "/api/(.*)", "dest": "/main.py" },
