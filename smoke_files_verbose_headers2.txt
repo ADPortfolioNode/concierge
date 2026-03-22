@@ -1,0 +1,11 @@
+HTTP/1.1 404 Not Found
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 22
+Content-Type: application/json
+Date: Sun, 22 Mar 2026 18:24:51 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: iad1::iad1::wqmh7-1774203895453-e178c184f63f
+

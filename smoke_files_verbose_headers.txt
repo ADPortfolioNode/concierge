@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Age: 0
+Cache-Control: public, max-age=0, must-revalidate
+Content-Length: 65415
+Content-Type: application/json
+Date: Sun, 22 Mar 2026 19:14:12 GMT
+Server: Vercel
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Vercel-Cache: MISS
+X-Vercel-Id: iad1::iad1::6tw6j-1774206853303-436203cf9b36
+
