@@ -57,6 +57,18 @@ See the project spec provided by the user; the workspace mirrors that layout.
 The app can be served by any static host once built. Ensure the backend
 is mounted under `/api/v1/` and CORS is configured accordingly.
 
+### Production environment variables
+
+- Set the `VITE_API_URL` environment variable in your hosting/deployment
+  environment to the backend base URL (no trailing slash), for example:
+
+  `VITE_API_URL=https://api.yourdomain.com`
+
+- In Vercel: go to Project → Settings → Environment Variables, add `VITE_API_URL`
+  for the `Production` environment and redeploy. The client will throw an
+  error at startup if `VITE_API_URL` is missing in production to prevent
+  accidentally calling `localhost:8001` from deployed assets.
+
 ---
 
 This repo is intentionally minimal; extend features by adding new containers

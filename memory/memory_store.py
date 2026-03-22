@@ -99,96 +99,91 @@ class MemoryStore:
         # vector dimension for qdrant when embeddings are unavailable
         self._qdrant_vector_dim = int(os.getenv("QDRANT_VECTOR_DIM", "8"))
 
-        # Initialize selected vector DB client if available. We prefer chroma, else qdrant.
-        # If onnxruntime is not available, avoid initializing Chroma as
-        # Chromadb may attempt to import native ONNX dependencies when
-        # constructing its embedding function. This prevents DLL import
-        # failures on systems without `onnxruntime` installed.
-        if self._vector_db == "chroma" and chromadb is not None and _ONNX_AVAILABLE:
-            try:
+        # Initialize selected vector DB client if available. Prefer Chroma when
+        # configured, otherwise attempt Qdrant. If optional libraries are
+        # missing fall back to the in-memory JSONL-backed store.
+        if self._vector_db == "chroma":
+            if chromadb is not None and _ONNX_AVAILABLE:
                 try:
-                    self._client = chromadb.Client()
-                except Exception:
                     try:
-                        self._client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+                        self._client = chromadb.Client()
                     except Exception:
-                        self._client = None
-
-                if self._client is not None:
-                    try:
-                        if hasattr(self._client, "get_or_create_collection"):
-                            self._collection = self._client.get_or_create_collection(name=self._collection_name)
-                        else:
-                            self._collection = self._client.create_collection(name=self._collection_name)
-                    except Exception:
-                        logger.exception("Failed to create/get chroma collection; disabling chroma")
-                        self._client = None
-            except Exception:
-                logger.exception("Failed to initialize chromadb client; using in-memory fallback")
-                self._client = None
-        else:
-            if self._vector_db == "chroma" and chromadb is not None and not _ONNX_AVAILABLE:
-                logger.warning("onnxruntime not available; skipping Chroma initialization and using in-memory fallback")
-
-        elif self._vector_db == "qdrant" and QdrantClient is not None:
-            try:
-                # Prefer explicit host/port constructor for compatibility
-                try:
-                    self._client = QdrantClient(host=qdrant_host, port=int(qdrant_port))
-                except Exception:
-                    # fallback to URL form if needed
-                    try:
-                        self._client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
-                    except Exception:
-                        self._client = None
-
-                if self._client is not None:
-                    # create collection if not exists; use production-size vector dim
-                    try:
-                        exists = None
                         try:
-                            exists = self._client.get_collection(collection_name=self._collection_name)
+                            self._client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
                         except Exception:
+                            self._client = None
+
+                    if self._client is not None:
+                        try:
+                            if hasattr(self._client, "get_or_create_collection"):
+                                self._collection = self._client.get_or_create_collection(name=self._collection_name)
+                            else:
+                                self._collection = self._client.create_collection(name=self._collection_name)
+                        except Exception:
+                            logger.exception("Failed to create/get chroma collection; disabling chroma")
+                            self._client = None
+                except Exception:
+                    logger.exception("Failed to initialize chromadb client; using in-memory fallback")
+                    self._client = None
+            else:
+                if chromadb is not None:
+                    logger.warning("onnxruntime not available; skipping Chroma initialization and using in-memory fallback")
+
+        elif self._vector_db == "qdrant":
+            if QdrantClient is not None:
+                try:
+                    try:
+                        self._client = QdrantClient(host=qdrant_host, port=int(qdrant_port))
+                    except Exception:
+                        try:
+                            self._client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
+                        except Exception:
+                            self._client = None
+
+                    if self._client is not None:
+                        try:
                             exists = None
+                            try:
+                                exists = self._client.get_collection(collection_name=self._collection_name)
+                            except Exception:
+                                exists = None
 
-                        # Use named vector field 'embedding' for schema compatibility
-                        if qdrant_models is not None:
-                            vectors_config = {
-                                "embedding": qdrant_models.VectorParams(
-                                    size=1536, distance=qdrant_models.Distance.COSINE
-                                )
-                            }
-                        else:
-                            vectors_config = {"embedding": {"size": 1536, "distance": "Cosine"}}
+                            if qdrant_models is not None:
+                                vectors_config = {
+                                    "embedding": qdrant_models.VectorParams(
+                                        size=1536, distance=qdrant_models.Distance.COSINE
+                                    )
+                                }
+                            else:
+                                vectors_config = {"embedding": {"size": 1536, "distance": "Cosine"}}
 
-                        dev_mode = os.getenv("DEV_MODE", "false").lower() in ("1", "true", "yes")
-                        if not exists:
-                            if dev_mode:
-                                    # destructive recreate in development
+                            dev_mode = os.getenv("DEV_MODE", "false").lower() in ("1", "true", "yes")
+                            if not exists:
+                                if dev_mode:
                                     self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
                                     logger.info("Qdrant collection recreated (dev): %s", self._collection_name)
+                                else:
+                                    try:
+                                        self._client.create_collection(collection_name=self._collection_name, vectors_config=vectors_config)
+                                        logger.info("Qdrant collection created: %s", self._collection_name)
+                                    except Exception:
+                                        self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
+                                        logger.info("Qdrant collection recreated (fallback): %s", self._collection_name)
                             else:
-                                try:
-                                    self._client.create_collection(collection_name=self._collection_name, vectors_config=vectors_config)
-                                    logger.info("Qdrant collection created: %s", self._collection_name)
-                                except Exception:
-                                    # fallback to recreate if create not available
-                                    self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
-                                    logger.info("Qdrant collection recreated (fallback): %s", self._collection_name)
-                        else:
-                            logger.info("Qdrant collection exists: %s", self._collection_name)
-                            logger.info("Qdrant vector config: %s", vectors_config)
+                                logger.info("Qdrant collection exists: %s", self._collection_name)
+                                logger.info("Qdrant vector config: %s", vectors_config)
 
-                        logger.info("Connected to Qdrant at %s:%s", qdrant_host, qdrant_port)
-                    except Exception:
-                        logger.exception("Qdrant collection create failed; disabling qdrant")
-                        self._client = None
-                    else:
-                        # mark as qdrant-backed
-                        self._is_qdrant = True
-            except Exception:
-                logger.exception("Failed to initialize Qdrant client; using in-memory fallback")
-                self._client = None
+                            logger.info("Connected to Qdrant at %s:%s", qdrant_host, qdrant_port)
+                        except Exception:
+                            logger.exception("Qdrant collection create failed; disabling qdrant")
+                            self._client = None
+                        else:
+                            self._is_qdrant = True
+                except Exception:
+                    logger.exception("Failed to initialize Qdrant client; using in-memory fallback")
+                    self._client = None
+            else:
+                logger.warning("Qdrant client not installed; using in-memory fallback")
 
         self._in_memory: List[Dict[str, Any]] = []
         # intelligence graph structures

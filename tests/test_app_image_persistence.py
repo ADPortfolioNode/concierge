@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 def test_post_message_persists_remote_image():
-    url = 'http://localhost:8001/api/v1/concierge/message'
+    # Allow override from environment for CI or non-standard hosts
+    base = os.getenv('BASE_URL', 'http://localhost:8001').rstrip('/')
+    url = f"{base}/api/v1/concierge/message"
     # Use an existing local media file as the "remote" resource to avoid
     # external network dependence in CI. Pick the newest file under media/images
     root = Path(__file__).resolve().parent.parent
@@ -15,7 +17,7 @@ def test_post_message_persists_remote_image():
     imgs = sorted([p for p in media_dir.iterdir() if p.suffix.lower() in exts], key=lambda p: p.stat().st_mtime, reverse=True)
     assert imgs, 'no sample media images available to test with'
     sample = imgs[0].name
-    remote_url = f'http://localhost:8001/media/images/{sample}'
+    remote_url = f'{base}/media/images/{sample}'
     payload = {"message": f"Please fetch this image: {remote_url}"}
     r = requests.post(url, json=payload, timeout=30)
     assert r.status_code == 200, r.text

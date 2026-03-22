@@ -121,6 +121,7 @@ async def _lifespan(application: FastAPI):
     application.state.start_time = time.time()
     application.state.conversation = []  # in-memory history; cleared on restart
     import importlib
+    global is_enabled
     # late-import configuration and core components
     cfg_mod = importlib.import_module('config.settings')
     get_settings = getattr(cfg_mod, 'get_settings')
@@ -134,6 +135,14 @@ async def _lifespan(application: FastAPI):
 
     orches_mod = importlib.import_module('orchestration.sacred_timeline')
     SacredTimeline = getattr(orches_mod, 'SacredTimeline')
+
+    # feature flag helper (populate module-level `is_enabled` so route handlers
+    # can call it without requiring imports)
+    try:
+        ff_mod = importlib.import_module('core.feature_flags')
+        is_enabled = getattr(ff_mod, 'is_enabled')
+    except Exception:
+        is_enabled = lambda name: False
 
     application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
     application.state.memory = MemoryStore(collection_name=settings.memory_collection)
@@ -729,10 +738,13 @@ async def concierge_media_list(request: Request):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-# Register Phase 14-16 routers
-app.include_router(_upload_router)
-app.include_router(_project_router)
-app.include_router(_task_router)
+# Register Phase 14-16 routers (only include if the router was loaded)
+if _upload_router is not None:
+    app.include_router(_upload_router)
+if _project_router is not None:
+    app.include_router(_project_router)
+if _task_router is not None:
+    app.include_router(_task_router)
 if _jobs_available and _job_router is not None:
     app.include_router(_job_router)
 

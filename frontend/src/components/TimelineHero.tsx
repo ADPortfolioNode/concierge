@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 
+const apiBase = (import.meta as any).env?.VITE_API_URL || '';
+function makeApiUrl(path: string) {
+  if (apiBase && String(apiBase).trim()) {
+    return `${String(apiBase).replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+  }
+  return path;
+}
+
 const TimelineHero: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
   const fetchTimeline = useAppStore((s) => s.fetchTimeline);
@@ -33,7 +41,7 @@ const TimelineHero: React.FC = () => {
 
   const tasks = Array.isArray(timelinePlan?.tasks) ? timelinePlan.tasks : [];
   // Use an explicit graph version token to force reload when timelinePlan changes
-  const graphUrl = `/api/v1/concierge/timeline/graph?v=${encodeURIComponent(graphVersion)}`;
+  const graphUrl = makeApiUrl(`/api/v1/concierge/timeline/graph?v=${encodeURIComponent(graphVersion)}`);
 
   useEffect(() => {
     // bump the graph version whenever timelinePlan changes so the browser

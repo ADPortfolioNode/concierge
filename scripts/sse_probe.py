@@ -2,7 +2,11 @@ import asyncio
 import time
 import json
 
-url = "http://localhost:8001/api/v1/concierge/stream"
+import os
+
+# allow overriding when probing non-local servers (CI, staging, etc.)
+base = os.getenv('BASE_URL', 'http://localhost:8001').rstrip('/')
+url = f"{base}/api/v1/concierge/stream"
 payload = {"message": f"sse probe from agent {time.time()}"}
 
 async def run_httpx():
