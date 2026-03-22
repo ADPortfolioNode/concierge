@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "vite build && cp dist/index.html ../index.html",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint './src/**/*.{ts,tsx}' --fix",
     "test:e2e": "playwright test --config=playwright.config.ts"
