@@ -32,8 +32,8 @@ async def _mount_real_app():
     except Exception as e:
         logger.error(f"failed to import/mount real app: {e}")
         logger.error(traceback.format_exc())
-        # re-raise so Vercel logs show the error during cold start
-        raise
+        # Do not re-raise — keep the function process alive so Vercel can serve fallback responses
+        return
 
 
 @app.get('/_health')
