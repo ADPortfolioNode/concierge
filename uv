@@ -19,6 +19,10 @@ if [ "$#" -ge 1 ] && [ "$1" = "lock" ]; then
     # prefer the builder venv path; fall back to project .venv if present
     if [ -x ".vercel/python/.venv/bin/python" ]; then
       PYPATH=".vercel/python/.venv/bin/python"
+      # Ensure a project `.venv` exists (some tools expect `.venv` path); symlink if missing
+      if [ -d ".vercel/python/.venv" ] && [ ! -e ".venv" ]; then
+        ln -s .vercel/python/.venv .venv || true
+      fi
     elif [ -x ".venv/bin/python" ]; then
       PYPATH=".venv/bin/python"
     else
