@@ -2,6 +2,7 @@
   "version": 2,
   
   "routes": [
+    { "src": "^/api/_health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/__files$", "dest": "/main.py" },
     { "src": "^/assets/(.*)$", "dest": "/frontend/dist/assets/$1" },
