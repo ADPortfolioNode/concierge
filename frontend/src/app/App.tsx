@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import Routes from './routes';
 import { useAppStore } from '../state/appStore';
 
@@ -23,6 +24,7 @@ const App: React.FC = () => {
     <React.StrictMode>
       <BrowserRouter>
         <Routes />
+        <Analytics />
       </BrowserRouter>
     </React.StrictMode>
   );
