@@ -18,7 +18,7 @@ test.describe('Concierge UI', () => {
     await page.evaluate(() => (window as any).USE_POST = true);
 
     // Check the landing text
-    await expect(page.locator('text=Welcome to Concierge')).toBeVisible();
+    await expect(page.locator('text=AI Ops Concierge')).toBeVisible();
 
     // stub the API so that when the UI sends a message we immediately return
     // a minimal success payload; verify the conversation updates accordingly.
@@ -178,8 +178,8 @@ test.describe('Concierge UI', () => {
 
   test('navigation includes how-to and page renders', async ({ page }) => {
     await page.goto(BASE, { waitUntil: 'networkidle' });
-    // confirm link is present in header
-    const link = page.locator('nav >> text=How‑To');
+    // confirm link is present in header (label was renamed to "Guide")
+    const link = page.locator('nav >> text=Guide');
     await expect(link).toBeVisible();
     await link.click();
     // new page should have the heading we added (emoji/casing may vary)
