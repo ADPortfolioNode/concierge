@@ -1,32 +1,71 @@
 # Use official lightweight Python image
-FROM python:3.11-slim
+###
+# Multi-stage Dockerfile
+# - Optional `frontend` build stage (Node) when ARG BUILD_FRONTEND=1
+# - Python runtime image installs either `requirements.txt` or the fuller
+#   `requirements.full.txt` when ARG INSTALL_FULL_REQUIREMENTS=1 is passed.
+# - Accepts `VITE_API_URL` as a build-arg so frontend builds embed the right
+#   API URL at build-time (Vite injects VITE_* envs during build).
+###
 
-# Prevent Python from writing .pyc files
+ARG PYTHON_IMAGE=python:3.11-slim
+FROM ${PYTHON_IMAGE} AS base
+
+# Prevent Python from writing .pyc files and buffering
 ENV PYTHONDONTWRITEBYTECODE=1
-
-# Prevent Python from buffering stdout/stderr
 ENV PYTHONUNBUFFERED=1
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (minimal)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install minimal system dependencies needed to compile native wheels
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first (for caching)
-COPY requirements.txt .
+### Optional frontend build stage (Node) ###############################
+ARG BUILD_FRONTEND=0
+ARG VITE_API_URL=""
+FROM node:18-alpine AS frontend-build
+WORKDIR /build
+ENV NODE_ENV=production
+# copy only frontend sources for better cache
+COPY frontend/package.json frontend/package-lock.json ./
+# Install deps based on package.json, then copy remaining frontend files
+RUN npm ci --no-audit --no-fund
+COPY frontend ./
+# pass VITE_API_URL as an env var during build so Vite picks it up
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+RUN npm run build --if-present
 
-# Install Python dependencies
+### Final runtime image ###############################################
+FROM base AS runtime
+
+# Build args to control install behavior
+ARG INSTALL_FULL_REQUIREMENTS=0
+
+# Copy requirements
+COPY requirements.txt ./
+COPY requirements.full.txt ./ || true
+
+# Upgrade pip and install requirements; prefer full if requested and present
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN if [ "${INSTALL_FULL_REQUIREMENTS}" = "1" ] && [ -f requirements.full.txt ]; then \
+            pip install -r requirements.full.txt ; \
+        else \
+            pip install -r requirements.txt ; \
+        fi
 
-# Copy project
+# Copy application code
 COPY . .
 
-# Expose port
+# Copy built frontend assets from the build stage (if present)
+COPY --from=frontend-build /build/dist /app/frontend_dist
+
+# Expose the app port (FastAPI default)
 EXPOSE 8000
 
-# Run FastAPI app
+# Default command
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,5 +1,6 @@
 import apiClient from './client';
 import { ApiResponse } from '../types/api';
+import { makeApiUrl } from '@/config/activeServer';
 
 export const sendMessage = async (message: string) => {
   if (!message || !message.trim()) {
@@ -54,10 +55,9 @@ export type StreamEvent =
  * the streaming leg (Axios cannot stream SSE natively).
  */
 export async function* streamMessage(message: string): AsyncGenerator<StreamEvent> {
-  const baseURL =
-    ((import.meta as any).env?.VITE_API_URL || 'http://localhost:8001').replace(/\/$/, '');
+  const streamUrl = makeApiUrl('/api/v1/concierge/stream');
 
-  const response = await fetch(`${baseURL}/api/v1/concierge/stream`, {
+  const response = await fetch(streamUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),

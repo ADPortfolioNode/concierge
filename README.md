@@ -9,11 +9,17 @@ Prereqs:
 
 - Python 3.11+
 - Set `OPENAI_API_KEY` in your environment to enable real LLM calls (optional);
-- `matplotlib` is now required for rendering timeline graphs (see `/api/v1/concierge/timeline/graph`).
-  when running inside Docker the compose file will forward this variable from
-  the host or `.env` file into the `app` container – you must restart the
-  stack after changing it.  A missing key causes the service to fall back to
-  rule-based responses and placeholder images.  Image generation uses OpenAI's
+- `matplotlib` is used to render the timeline graph at `/api/v1/concierge/timeline/graph`.
+  For lightweight serverless builds (for example Vercel) `matplotlib` may be
+  omitted to keep the deployment small. In that case the backend will fall
+  back to a simple Pillow-generated image so the endpoint still returns a
+  valid PNG (install `matplotlib` locally or in full development installs
+  to enable the richer diagram output). See `requirements.full.txt` for the
+  full development dependency list that includes `matplotlib`.
+  When running inside Docker the compose file will forward environment
+  variables from the host or `.env` file into the `app` container – you must
+  restart the stack after changing them. A missing key causes the service to
+  fall back to rule-based responses and placeholder images. Image generation uses OpenAI's
   image API (`gpt-image-1` model); earlier repository versions referred to the
   older "DALL-E 3" name which is now deprecated.  
   • If the OpenAI image service fails due to rate limits or billing, and you

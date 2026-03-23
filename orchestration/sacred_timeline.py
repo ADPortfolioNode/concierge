@@ -792,143 +792,197 @@ class SacredTimeline:
             pass
 
     def get_plan_graph_png(self) -> bytes:
-        """Generate a simple PNG rendering of the last plan using matplotlib.
+        """Generate a PNG rendering of the last plan.
+
+        Prefer matplotlib for rich diagrams. If matplotlib is not
+        available (e.g. slim serverless builds) fall back to a simple
+        Pillow-rendered text image so the endpoint never returns 500.
 
         Returns raw PNG bytes; caller should set content-type accordingly.
         """
         import io
-        import math
         import textwrap
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
 
         plan = self.get_last_plan()
         tasks = (plan.get('tasks') if plan and plan.get('tasks') else []) or []
 
-        if not tasks:
-            fig = plt.figure(figsize=(4, 1))
-            fig.text(0.5, 0.5, 'no plan', ha='center', va='center')
-            buf = io.BytesIO()
+        # Try to use matplotlib if available (full visual graph)
+        try:
+            import matplotlib.pyplot as plt  # type: ignore
+            import matplotlib.patches as mpatches  # type: ignore
+            use_matplotlib = True
+        except Exception:
+            use_matplotlib = False
+
+        if use_matplotlib:
+            # --- existing matplotlib implementation ---
+            import math
+
+            if not tasks:
+                fig = plt.figure(figsize=(4, 1))
+                fig.text(0.5, 0.5, 'no plan', ha='center', va='center')
+                buf = io.BytesIO()
+                fig.tight_layout()
+                fig.savefig(buf, format='png')
+                plt.close(fig)
+                buf.seek(0)
+                return buf.read()
+
+            # Index tasks by id for easy lookup
+            tasks_by_id = {t.get('task_id') or f"t{i}": t for i, t in enumerate(tasks)}
+            # Ensure each task has an id and normalized depends_on
+            for i, t in enumerate(tasks):
+                if not t.get('task_id'):
+                    t['task_id'] = f"t{i}"
+                deps = t.get('depends_on') or []
+                t['depends_on'] = deps
+
+            # Compute depth (level) for each task: 0 for roots
+            depths: dict = {}
+
+            def compute_depth(tid, seen=None):
+                if seen is None:
+                    seen = set()
+                if tid in depths:
+                    return depths[tid]
+                if tid in seen:
+                    return 0
+                seen.add(tid)
+                t = tasks_by_id.get(tid)
+                if not t:
+                    depths[tid] = 0
+                    return 0
+                parents = t.get('depends_on') or []
+                if not parents:
+                    depths[tid] = 0
+                    return 0
+                d = max((compute_depth(p, seen) for p in parents), default=0) + 1
+                depths[tid] = d
+                return d
+
+            for tid in list(tasks_by_id.keys()):
+                compute_depth(tid)
+
+            # Group tasks by depth
+            levels: dict = {}
+            for tid, d in depths.items():
+                levels.setdefault(d, []).append(tasks_by_id.get(tid))
+
+            max_level = max(levels.keys()) if levels else 0
+            max_width = max(len(v) for v in levels.values())
+
+            # Layout parameters
+            node_w = 2.2
+            node_h = 0.9
+            x_gap = 0.8
+            y_gap = 1.2
+
+            fig_w = max(4, max_width * (node_w + x_gap) / 1.8)
+            fig_h = max(2, (max_level + 1) * (node_h + y_gap) / 1.6)
+            fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+            ax.set_xlim(0, max_width * (node_w + x_gap))
+            ax.set_ylim(-0.5, (max_level + 1) * (node_h + y_gap))
+            ax.axis('off')
+
+            # Compute node positions: centered within their level
+            positions: dict = {}
+            for d in range(0, max_level + 1):
+                row = levels.get(d, [])
+                n = len(row)
+                if n == 0:
+                    continue
+                total_w = n * node_w + (n - 1) * x_gap
+                start_x = 0.5 * (max_width * (node_w + x_gap) - total_w)
+                y = (max_level - d) * (node_h + y_gap) + 0.5
+                for i, t in enumerate(row):
+                    x = start_x + i * (node_w + x_gap)
+                    positions[t['task_id']] = (x, y)
+
+            # Color palette
+            colors = ["#7c6af7", "#4fb0c6", "#f7a35c", "#90ed7d", "#f15c80"]
+
+            # Draw nodes
+            for idx, t in enumerate(tasks):
+                tid = t['task_id']
+                x, y = positions.get(tid, (0, 0.5))
+                rect = mpatches.FancyBboxPatch((x, y), node_w, node_h,
+                                               boxstyle="round,pad=0.1",
+                                               linewidth=1, edgecolor="#333333",
+                                               facecolor=colors[idx % len(colors)], alpha=0.25)
+                ax.add_patch(rect)
+                # Title + instructions (wrapped)
+                title = t.get('title') or ''
+                instr = t.get('instructions') or ''
+                label = title if title.strip() else instr
+                wrapped = textwrap.fill(label, width=24)
+                ax.text(x + node_w / 2, y + node_h / 2, wrapped, ha='center', va='center', fontsize=8)
+
+            # Draw arrows for dependencies (from parent -> child)
+            for t in tasks:
+                tid = t['task_id']
+                child_pos = positions.get(tid)
+                if not child_pos:
+                    continue
+                cx, cy = child_pos
+                for parent_id in (t.get('depends_on') or []):
+                    ppos = positions.get(parent_id)
+                    if not ppos:
+                        continue
+                    px, py = ppos
+                    # start at parent's center right, end at child's center left
+                    start = (px + node_w, py + node_h / 2)
+                    end = (cx, cy + node_h / 2)
+                    ax.annotate('', xy=end, xytext=start,
+                                arrowprops=dict(arrowstyle='->', color='#444444', lw=1.0,
+                                                shrinkA=2, shrinkB=2))
+
             fig.tight_layout()
-            fig.savefig(buf, format='png')
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=150)
             plt.close(fig)
             buf.seek(0)
             return buf.read()
 
-        # Index tasks by id for easy lookup
-        tasks_by_id = {t.get('task_id') or f"t{i}": t for i, t in enumerate(tasks)}
-        # Ensure each task has an id and normalized depends_on
-        for i, t in enumerate(tasks):
-            if not t.get('task_id'):
-                t['task_id'] = f"t{i}"
-            deps = t.get('depends_on') or []
-            t['depends_on'] = deps
+        # --- Pillow fallback: return a simple textual PNG so callers still get an image ---
+        try:
+            from PIL import Image, ImageDraw, ImageFont  # type: ignore
 
-        # Compute depth (level) for each task: 0 for roots
-        depths: dict = {}
+            # Render a simple text-based image listing task titles (minimizes regression)
+            if not tasks:
+                lines = ["no plan"]
+            else:
+                lines = []
+                for t in tasks:
+                    title = (t.get('title') or '').strip()
+                    instr = (t.get('instructions') or '').strip()
+                    label = title if title else instr
+                    lines.append((label or "(untitled task)")[:120])
 
-        def compute_depth(tid, seen=None):
-            if seen is None:
-                seen = set()
-            if tid in depths:
-                return depths[tid]
-            if tid in seen:
-                return 0
-            seen.add(tid)
-            t = tasks_by_id.get(tid)
-            if not t:
-                depths[tid] = 0
-                return 0
-            parents = t.get('depends_on') or []
-            if not parents:
-                depths[tid] = 0
-                return 0
-            d = max((compute_depth(p, seen) for p in parents), default=0) + 1
-            depths[tid] = d
-            return d
+            # Basic layout
+            width = 800
+            line_h = 20
+            padding = 12
+            height = max(60, padding * 2 + line_h * len(lines))
 
-        for tid in list(tasks_by_id.keys()):
-            compute_depth(tid)
+            img = Image.new('RGBA', (width, height), (6, 6, 12, 255))
+            draw = ImageDraw.Draw(img)
+            try:
+                font = ImageFont.load_default()
+            except Exception:
+                font = None
 
-        # Group tasks by depth
-        levels: dict = {}
-        for tid, d in depths.items():
-            levels.setdefault(d, []).append(tasks_by_id.get(tid))
+            y = padding
+            for line in lines:
+                draw.text((padding, y), line, fill=(230, 230, 230), font=font)
+                y += line_h
 
-        max_level = max(levels.keys()) if levels else 0
-        max_width = max(len(v) for v in levels.values())
-
-        # Layout parameters
-        node_w = 2.2
-        node_h = 0.9
-        x_gap = 0.8
-        y_gap = 1.2
-
-        fig_w = max(4, max_width * (node_w + x_gap) / 1.8)
-        fig_h = max(2, (max_level + 1) * (node_h + y_gap) / 1.6)
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        ax.set_xlim(0, max_width * (node_w + x_gap))
-        ax.set_ylim(-0.5, (max_level + 1) * (node_h + y_gap))
-        ax.axis('off')
-
-        # Compute node positions: centered within their level
-        positions: dict = {}
-        for d in range(0, max_level + 1):
-            row = levels.get(d, [])
-            n = len(row)
-            if n == 0:
-                continue
-            total_w = n * node_w + (n - 1) * x_gap
-            start_x = 0.5 * (max_width * (node_w + x_gap) - total_w)
-            y = (max_level - d) * (node_h + y_gap) + 0.5
-            for i, t in enumerate(row):
-                x = start_x + i * (node_w + x_gap)
-                positions[t['task_id']] = (x, y)
-
-        # Color palette
-        colors = ["#7c6af7", "#4fb0c6", "#f7a35c", "#90ed7d", "#f15c80"]
-
-        # Draw nodes
-        for idx, t in enumerate(tasks):
-            tid = t['task_id']
-            x, y = positions.get(tid, (0, 0.5))
-            rect = mpatches.FancyBboxPatch((x, y), node_w, node_h,
-                                           boxstyle="round,pad=0.1",
-                                           linewidth=1, edgecolor="#333333",
-                                           facecolor=colors[idx % len(colors)], alpha=0.25)
-            ax.add_patch(rect)
-            # Title + instructions (wrapped)
-            title = t.get('title') or ''
-            instr = t.get('instructions') or ''
-            label = title if title.strip() else instr
-            wrapped = textwrap.fill(label, width=24)
-            ax.text(x + node_w / 2, y + node_h / 2, wrapped, ha='center', va='center', fontsize=8)
-
-        # Draw arrows for dependencies (from parent -> child)
-        for t in tasks:
-            tid = t['task_id']
-            child_pos = positions.get(tid)
-            if not child_pos:
-                continue
-            cx, cy = child_pos
-            for parent_id in (t.get('depends_on') or []):
-                ppos = positions.get(parent_id)
-                if not ppos:
-                    continue
-                px, py = ppos
-                # start at parent's center right, end at child's center left
-                start = (px + node_w, py + node_h / 2)
-                end = (cx, cy + node_h / 2)
-                ax.annotate('', xy=end, xytext=start,
-                            arrowprops=dict(arrowstyle='->', color='#444444', lw=1.0,
-                                            shrinkA=2, shrinkB=2))
-
-        fig.tight_layout()
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=150)
-        plt.close(fig)
-        buf.seek(0)
-        return buf.read()
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            return buf.read()
+        except Exception:
+            # As a last resort, return a 1x1 transparent PNG (avoid 500)
+            return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc``\x00\x00\x00\x04\x00\x01\x0e\x11\x02\xb5\x00\x00\x00\x00IEND\xaeB`\x82
         if 'last_evaluation' in locals() and last_evaluation is not None:
             if isinstance(last_evaluation, dict):
                 eval_out = last_evaluation

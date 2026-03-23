@@ -6,9 +6,9 @@
  */
 
 import React, { useCallback, useRef, useState } from 'react';
+import { makeApiUrl } from '@/config/activeServer';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8001';
-const UPLOAD_URL = `${API_BASE}/api/v1/workstation/upload`;
+const UPLOAD_URL = makeApiUrl('/api/v1/workstation/upload');
 
 export interface FileContext {
   upload_id: string;

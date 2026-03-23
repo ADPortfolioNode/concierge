@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ConversationMessage } from '../types/domain';
 import * as ConciergeAPI from '@/api/conciergeService';
+import { ACTIVE_API_BASE, makeApiUrl } from '@/config/activeServer';
 
 export interface MediaItem {
   id: string;
@@ -14,8 +15,8 @@ const _IMG_RE = /(?:https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)
 const _VID_RE = /https?:\/\/\S+?\.(?:mp4|webm)(?:[?#]\S*)?/gi;
 const _AUD_RE = /https?:\/\/\S+?\.(?:mp3|wav|m4a)(?:[?#]\S*)?/gi;
 
-// Base API host for resolving local media paths (set via VITE_API_URL)
-const API_BASE = ((import.meta as any).env?.VITE_API_URL || '').replace(/\/$/, '');
+// Base API host for resolving local media paths (set via Vite envs)
+const API_BASE = (ACTIVE_API_BASE || '').replace(/\/$/, '');
 
 function _normalizeMediaUrl(url: string) {
   if (!url) return url;
@@ -135,7 +136,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   startTimelineStream: () => {
     if (typeof window === 'undefined') return;
     try {
-      const es = new EventSource('/api/v1/concierge/timeline/stream');
+      const es = new EventSource(makeApiUrl('/api/v1/concierge/timeline/stream'));
       (window as any).__TIMELINE_ES__ = es;
       es.onmessage = (ev) => {
         try {

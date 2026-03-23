@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
-
-const apiBase = (import.meta as any).env?.VITE_API_URL || '';
-function makeApiUrl(path: string) {
-  if (apiBase && String(apiBase).trim()) {
-    return `${String(apiBase).replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
-  }
-  return path;
-}
+import { makeApiUrl } from '@/config/activeServer';
 
 const TimelineHeader: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
@@ -26,10 +19,23 @@ const TimelineHeader: React.FC = () => {
   // if there's no plan yet, still show a compact header icon that can open dropdown
   const [open, setOpen] = useState(false);
 
+  const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
+  const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
+  const graphSrc = makeApiUrl(graphPath);
+  const placeholderPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+
   return (
     <div style={{ background: '#111827', color: '#9ca3af', padding: '6px 10px', fontSize: 12, position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img src={`/api/v1/concierge/timeline/graph?v=${encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()))}`} alt="timeline graph" style={{ height: 36, cursor: 'pointer' }} onClick={() => setOpen((v) => !v)} />
+        <img
+          src={graphSrc}
+          alt="timeline graph"
+          style={{ height: 36, cursor: 'pointer' }}
+          loading="lazy"
+          decoding="async"
+          onClick={() => setOpen((v) => !v)}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+        />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {(timelinePlan?.tasks || []).slice(0, 4).map((t: any, idx: number) => (
             <button
@@ -56,7 +62,14 @@ const TimelineHeader: React.FC = () => {
         <div style={{ position: 'absolute', right: 10, top: '100%', marginTop: 8, background: '#0b1220', border: '1px solid #263244', borderRadius: 8, padding: 12, width: 540, zIndex: 60 }}>
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: '0 0 220px' }}>
-              <img src={`/api/v1/concierge/timeline/graph?v=${encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()))}`} alt="timeline graph large" style={{ width: '100%', borderRadius: 6 }} />
+              <img
+                src={graphSrc}
+                alt="timeline graph large"
+                style={{ width: '100%', borderRadius: 6 }}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+              />
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#e6edf3' }}>Timeline</div>

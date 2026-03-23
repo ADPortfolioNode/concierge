@@ -1,13 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
-
-const apiBase = (import.meta as any).env?.VITE_API_URL || '';
-function makeApiUrl(path: string) {
-  if (apiBase && String(apiBase).trim()) {
-    return `${String(apiBase).replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
-  }
-  return path;
-}
+import { makeApiUrl } from '@/config/activeServer';
 
 const TimelineHero: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
@@ -42,7 +35,11 @@ const TimelineHero: React.FC = () => {
   const tasks = Array.isArray(timelinePlan?.tasks) ? timelinePlan.tasks : [];
   // Use an explicit graph version token to force reload when timelinePlan changes
   // Use a relative URL so system images are requested from the current origin.
-  const graphUrl = `/api/v1/concierge/timeline/graph?v=${encodeURIComponent(graphVersion)}`;
+  const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
+  const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
+  const graphSrc = makeApiUrl(graphPath);
+  const placeholderPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+  const graphUrl = graphSrc;
 
   useEffect(() => {
     // bump the graph version whenever timelinePlan changes so the browser
@@ -60,9 +57,16 @@ const TimelineHero: React.FC = () => {
       <div style={{ marginBottom: 18 }}>
         {/* Full-width hero row */}
         <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.03)', background: 'linear-gradient(90deg, rgba(124,106,247,0.04), rgba(79,176,198,0.01))' }}>
-          <button onClick={() => setExpanded(true)} style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
-            <img src={graphUrl} alt="timeline hero" style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
-          </button>
+            <button onClick={() => setExpanded(true)} style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
+              <img
+                src={graphUrl}
+                alt="timeline hero"
+                style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+              />
+            </button>
 
           {/* One-row horizontal task strip */}
           <div style={{ display: 'flex', gap: 8, padding: '10px 12px', alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap' }}>
@@ -84,9 +88,16 @@ const TimelineHero: React.FC = () => {
       {expanded && (
         <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }} onClick={() => setExpanded(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: '92%', height: '86%', display: 'flex', gap: 18, borderRadius: 12 }}>
-            <div style={{ flex: '0 0 64%', height: '100%', borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img src={graphUrl} alt="timeline large" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            </div>
+              <div style={{ flex: '0 0 64%', height: '100%', borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src={graphUrl}
+                  alt="timeline large"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  loading="lazy"
+                  decoding="async"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+                />
+              </div>
             <div style={{ flex: 1, height: '100%', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>Sacred Timeline</div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginBottom: 12 }}>Includes Concierge activity and live updates</div>

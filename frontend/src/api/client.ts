@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { ACTIVE_API_BASE } from '../config/activeServer';
 
 // Timeout is disabled by default (0 = no limit) to accommodate slow LLM
 // inference and large file uploads.  Override via the VITE_API_TIMEOUT env
@@ -6,23 +7,11 @@ import axios from 'axios';
 const _envTimeout = import.meta.env.VITE_API_TIMEOUT;
 const defaultTimeout = _envTimeout !== undefined ? Number(_envTimeout) : 0;
 
-// allow overriding the backend host via environment variable (Vite runtime).
-// when running the dev frontend server on :5173 we need to call the real
-// API on :8001, otherwise requests will go to the same origin and fail with
-// 503/404. VITE_API_URL should include protocol and port but no trailing slash.
-const _viteApiUrl = (import.meta as any).env?.VITE_API_URL;
-// In production builds we require an explicit backend URL to avoid bundling
-// a localhost default into a deployed asset. This helps prevent remote
-// users of the deployed frontend from attempting to contact `localhost:8001`.
-if ((import.meta as any).env && (import.meta as any).env.PROD && !_viteApiUrl) {
-  throw new Error(
-    'VITE_API_URL must be set in production builds. Set VITE_API_URL to your backend base URL (e.g. https://api.example.com)'
-  );
-}
-const base = ((_viteApiUrl) || 'http://localhost:8001').replace(/\/$/, '');
+// Use central ACTIVE_API_BASE (resolved from Vite envs) and append API prefix.
+const base = (ACTIVE_API_BASE || '').replace(/\/$/, '');
 const apiClient = axios.create({
   baseURL: `${base}/api/v1`,
-  timeout: defaultTimeout,   // 0 = no Axios built-in timeout
+  timeout: defaultTimeout, // 0 = no Axios built-in timeout
 });
 
 // Helper to start/stop adaptive timeout timers. We attach the timer and

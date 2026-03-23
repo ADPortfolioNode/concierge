@@ -172,7 +172,7 @@ const TasksPage: React.FC = () => {
       {!loading && offline && (
         <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>⚠️</span>
-          <span>Cannot reach the API backend. Make sure the server is running on <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 5px', borderRadius: 4 }}>localhost:8001</code> (run <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 5px', borderRadius: 4 }}>./start.sh</code>) then refresh.</span>
+          <span>Cannot reach the API backend. Make sure the backend is running (check your <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 5px', borderRadius: 4 }}>VITE_API_URL</code> / local server) then refresh.</span>
         </div>
       )}
 

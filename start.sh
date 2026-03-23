@@ -132,6 +132,14 @@ Options:
   --clear    stop and remove running compose services (docker-compose down)
   --frontend      start the React frontend dev server (npm run dev) and log output (default)
   --no-frontend   do not attempt to start the frontend service
+    --docker-build    run `docker build` for the repository root Dockerfile
+    --buildx          use `docker buildx build` (supports --platform)
+    --push-image      push the built image to the configured registry (requires `--image-tag`)
+    --image-tag=<name:tag>  override image tag used for build/push (default: concierge:latest)
+    --platform=<list> comma-separated platforms for buildx (default: linux/amd64)
+    --build-frontend        build frontend during Docker build (passes BUILD_FRONTEND=1)
+    --install-full-reqs     install `requirements.full.txt` instead of `requirements.txt`
+    --vite-api-url=<url>    pass VITE_API_URL build-arg into frontend build
   -h, --help display this message
 
 Examples:
@@ -147,6 +155,16 @@ BUILD=false
 DIAG=false
 LOGS=false
 TEST=false
+# Docker image build/push flags
+DOCKER_BUILD=false
+PUSH_IMAGE=false
+IMAGE_TAG="concierge:latest"
+# Buildx support
+DOCKER_BUILDX=false
+PLATFORMS="linux/amd64"
+BUILD_FRONTEND=false
+INSTALL_FULL_REQUIREMENTS=false
+VITE_API_URL_ARG=""
 # frontend will be started by default; use --no-frontend to skip
 FRONTEND=true
 CLEAR=false
@@ -159,6 +177,14 @@ for arg in "$@"; do
         --diag) DIAG=true ;;
         --log) LOGS=true ;; 
         --test) TEST=true ;;
+        --docker-build) DOCKER_BUILD=true ;;
+        --buildx) DOCKER_BUILDX=true ;;
+        --push-image) PUSH_IMAGE=true ;;
+        --image-tag=*) IMAGE_TAG="${arg#--image-tag=}" ;;
+        --platform=*) PLATFORMS="${arg#--platform=}" ;;
+        --build-frontend) BUILD_FRONTEND=true ;;
+        --install-full-reqs) INSTALL_FULL_REQUIREMENTS=true ;;
+        --vite-api-url=*) VITE_API_URL_ARG="${arg#--vite-api-url=}" ;;
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
         --clear) CLEAR=true ;;
@@ -210,6 +236,114 @@ if $DIAG; then
         docker ps -a || true
         echo "--- end diagnostics ---"
     } | tee start.log
+fi
+
+# Optional: build/push a repository Docker image for deployment/test
+if $DOCKER_BUILD; then
+    # Auto-detect image tag and Dockerfile/context from compose or repo layout
+    if [ -f "docker-compose.yml" ]; then
+        echo "Parsing docker-compose.yml to infer build settings..."
+        # extract the 'app' service block (lines indented under 'app:')
+        svc_block=$(awk '/^\s*app:\s*$/{flag=1;next}/^[^[:space:]]/{flag=0}flag{print}' docker-compose.yml || true)
+        # look for explicit image: or container_name: fields
+        detected_image=$(echo "$svc_block" | sed -n 's/^[[:space:]]*image:[[:space:]]*//p' | tr -d '"' | tr -d "'" | xargs || true)
+        detected_container=$(echo "$svc_block" | sed -n 's/^[[:space:]]*container_name:[[:space:]]*//p' | tr -d '"' | tr -d "'" | xargs || true)
+        if [ -n "$detected_image" ] && [ "$IMAGE_TAG" = "concierge:latest" ]; then
+            IMAGE_TAG="$detected_image"
+        elif [ -n "$detected_container" ] && [ "$IMAGE_TAG" = "concierge:latest" ]; then
+            IMAGE_TAG="$detected_container"
+        fi
+        # if build context specified with a Dockerfile path, prefer that (simple heuristics)
+        build_dockerfile=$(echo "$svc_block" | sed -n 's/^[[:space:]]*dockerfile:[[:space:]]*//p' | tr -d '"' | tr -d "'" | xargs || true)
+        build_context=$(echo "$svc_block" | sed -n 's/^[[:space:]]*build:[[:space:]]*//p' | tr -d '"' | tr -d "'" | xargs || true)
+    fi
+
+    # Fallback: search for common Dockerfile locations
+    DOCKERFILE_PATH=""
+    if [ -f Dockerfile ]; then
+        DOCKERFILE_PATH="Dockerfile"
+    elif [ -f app/Dockerfile ]; then
+        DOCKERFILE_PATH="app/Dockerfile"
+    elif [ -f frontend/Dockerfile ]; then
+        DOCKERFILE_PATH="frontend/Dockerfile"
+    elif [ -n "$build_dockerfile" ]; then
+        DOCKERFILE_PATH="$build_dockerfile"
+    fi
+
+    # If IMAGE_TAG is still the default, derive from repo directory name
+    if [ "$IMAGE_TAG" = "concierge:latest" ]; then
+        repo_name=$(basename "$(pwd)")
+        IMAGE_TAG="${repo_name}:latest"
+    fi
+
+    echo "Using image tag: ${IMAGE_TAG}"
+    if [ -n "$DOCKERFILE_PATH" ]; then
+        echo "Detected Dockerfile: ${DOCKERFILE_PATH}"
+    else
+        echo "No Dockerfile explicitly detected; building from repository root context"
+    fi
+
+    if confirm "Build Docker image ${IMAGE_TAG}?"; then
+        echo "Building Docker image ${IMAGE_TAG} from repository root..."
+        if $DOCKER_BUILDX; then
+            # ensure buildx is available
+            if ! docker buildx version >/dev/null 2>&1; then
+                echo "docker buildx not available; attempting to continue with standard docker build" >&2
+                docker build -t "${IMAGE_TAG}" . || die "docker build failed"
+            else
+                # ensure a builder is selected
+                BUILDER_NAME="concierge-builder"
+                if ! docker buildx inspect "${BUILDER_NAME}" >/dev/null 2>&1; then
+                    echo "Creating buildx builder ${BUILDER_NAME}..."
+                    docker buildx create --name "${BUILDER_NAME}" --use || die "failed to create buildx builder"
+                else
+                    docker buildx use "${BUILDER_NAME}" || true
+                fi
+
+                # assemble build-arg flags for both buildx and docker build
+                BUILD_ARGS=()
+                if $BUILD_FRONTEND; then
+                    BUILD_ARGS+=(--build-arg "BUILD_FRONTEND=1")
+                fi
+                if $INSTALL_FULL_REQUIREMENTS; then
+                    BUILD_ARGS+=(--build-arg "INSTALL_FULL_REQUIREMENTS=1")
+                fi
+                if [ -n "$VITE_API_URL_ARG" ]; then
+                    BUILD_ARGS+=(--build-arg "VITE_API_URL=${VITE_API_URL_ARG}")
+                fi
+
+                # decide push/load flags: --push required for multi-platform
+                if $PUSH_IMAGE; then
+                    BUILDX_FLAGS=(--platform "${PLATFORMS}" --tag "${IMAGE_TAG}" --push)
+                else
+                    # try to load into local Docker if single-platform
+                    if echo "${PLATFORMS}" | grep -q ','; then
+                        echo "Multi-platform build without push cannot load into local Docker; the image will not be available locally." >&2
+                        BUILDX_FLAGS=(--platform "${PLATFORMS}" --tag "${IMAGE_TAG}")
+                    else
+                        BUILDX_FLAGS=(--platform "${PLATFORMS}" --tag "${IMAGE_TAG}" --load)
+                    fi
+                fi
+                docker buildx build "${BUILDX_FLAGS[@]}" "${BUILD_ARGS[@]}" . || die "docker buildx build failed"
+            fi
+        else
+            docker build -t "${IMAGE_TAG}" "${BUILD_ARGS[@]}" . || die "docker build failed"
+        fi
+
+        echo "Built image ${IMAGE_TAG}";
+
+        if $PUSH_IMAGE && ! $DOCKER_BUILDX; then
+            if confirm "Push image ${IMAGE_TAG} to registry?"; then
+                echo "Pushing image ${IMAGE_TAG}..."
+                docker push "${IMAGE_TAG}" || die "docker push failed"
+                echo "Pushed ${IMAGE_TAG}";
+            else
+                echo "Skipping push of ${IMAGE_TAG}."
+            fi
+        fi
+    else
+        echo "Skipping docker build."
+    fi
 fi
 
 if $CLEAR; then
