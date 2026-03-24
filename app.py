@@ -403,6 +403,18 @@ def _api_response(data: any, status: str = 'success'):
     }
 
 
+def _ensure_timeline_available():
+    """Raise HTTP 503 if the application's timeline component is not ready.
+
+    Some serverless deployments may mount the app before background
+    components initialize; guard endpoints that rely on `app.state.timeline`
+    so they return a 503 (service temporarily unavailable) instead of
+    raising an AttributeError and producing a 500.
+    """
+    if not hasattr(app.state, 'timeline') or app.state.timeline is None:
+        raise HTTPException(status_code=503, detail='service temporarily unavailable')
+
+
 # startup logic moved to _lifespan context manager above
 
 
@@ -412,6 +424,7 @@ def _api_response(data: any, status: str = 'success'):
 # to relocate the logic under `/api/v1` later if desired.
 @app.post("/ask")
 async def ask(payload: AskPayload):
+    _ensure_timeline_available()
     if not payload.input:
         # return our error envelope rather than raw HTTPException
         return JSONResponse(status_code=400, content={
@@ -431,6 +444,7 @@ async def ask(payload: AskPayload):
 async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     # the Pydantic validator above guarantees we have a nonempty `message`
     msg = payload.message
+    _ensure_timeline_available()
     result = await app.state.timeline.handle_user_input(msg)
     # The timeline may return a friendly conversational response in the
     # `response` field.  Convert that to the usual `content` string so the
@@ -601,6 +615,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
 @app.get('/api/v1/concierge/metrics')
 async def concierge_metrics():
     """Return simple human-readable metrics about request handling and fallbacks."""
+    _ensure_timeline_available()
     metrics = getattr(app.state.timeline, 'metrics', None)
     if metrics is None:
         return _api_response({'error': 'metrics not available'}, status='error')
@@ -617,11 +632,13 @@ async def concierge_metrics():
 # timeline introspection endpoints
 @app.get('/api/v1/concierge/timeline')
 async def concierge_timeline():
+    _ensure_timeline_available()
     plan = app.state.timeline.get_last_plan()
     return _api_response(plan or {})
 
 @app.get('/api/v1/concierge/timeline/graph')
 async def concierge_timeline_graph():
+    _ensure_timeline_available()
     png = app.state.timeline.get_plan_graph_png()
     # return as a streaming response of raw PNG bytes
     return StreamingResponse(iter([png]), media_type='image/png')
@@ -631,6 +648,7 @@ async def concierge_timeline_graph():
 async def concierge_timeline_stream():
     """Server-Sent Events endpoint streaming timeline updates in real-time."""
     async def event_generator():
+        _ensure_timeline_available()
         # subscribe to the timeline updates
         q = app.state.timeline.subscribe_timeline()
         try:
@@ -658,6 +676,8 @@ async def concierge_stream(payload: ConciergeMessagePayload):
     an ``EventSource`` that supports POST — most libraries do).
     """
     msg = payload.message
+
+    _ensure_timeline_available()
 
     async def _event_gen():
         try:
