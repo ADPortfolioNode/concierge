@@ -5,18 +5,27 @@ const MODE = env.MODE || (env.DEV ? 'development' : env.PROD ? 'production' : 'p
 const VITE_API_URL = (env.VITE_API_URL || '').replace(/\/$/, '');
 const VITE_LOCAL_API_URL = (env.VITE_LOCAL_API_URL || '').replace(/\/$/, '');
 
+// Support a runtime-self placeholder: if the build-time env is set to
+// "<self.server>" we'll treat it as an instruction to use the page
+// origin at runtime (same-origin deployments). Normalize to an empty
+// string so the runtime fallback in `makeApiUrl` will use
+// `window.location.origin`.
+const NORMALIZED_VITE_API_URL = VITE_API_URL === '<self.server>' ? '' : VITE_API_URL;
+const NORMALIZED_VITE_LOCAL_API_URL = VITE_LOCAL_API_URL === '<self.server>' ? '' : VITE_LOCAL_API_URL;
+
 // ACTIVE_API_BASE resolution rules:
 // - In development: prefer VITE_LOCAL_API_URL, then VITE_API_URL, then localhost fallback.
 // - In production: require VITE_API_URL (throws early if missing) to avoid bundling a localhost.
 export const ACTIVE_API_BASE: string = (() => {
   if (MODE === 'development') {
-    return VITE_LOCAL_API_URL || VITE_API_URL || 'http://localhost:8001';
+    return NORMALIZED_VITE_LOCAL_API_URL || NORMALIZED_VITE_API_URL || 'http://localhost:8001';
   }
   // In production prefer an explicit VITE_API_URL, but do not throw: when
-  // it's not provided, return an empty string so `makeApiUrl` will fall back
-  // at runtime to the page origin (same-origin deploys) — this avoids
-  // baking hostnames into built assets and supports runtime server detection.
-  return VITE_API_URL || '';
+  // it's not provided (or is the <self.server> placeholder), return an
+  // empty string so `makeApiUrl` will fall back at runtime to the page
+  // origin (same-origin deploys). This avoids baking hostnames into
+  // built assets and supports runtime server detection.
+  return NORMALIZED_VITE_API_URL || '';
 })();
 
 // Build a full URL for API paths. If the active base is empty, return a relative path.
