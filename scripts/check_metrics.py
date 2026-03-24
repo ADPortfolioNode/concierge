@@ -1,6 +1,7 @@
 import urllib.request, urllib.error
 import os
-u = os.getenv('METRICS_URL', 'http://localhost:8001/metrics')
+base = os.getenv('BASE_URL', 'http://localhost:8001').rstrip('/')
+u = os.getenv('METRICS_URL', f"{base}/metrics")
 try:
     req = urllib.request.Request(u, method='GET')
     with urllib.request.urlopen(req, timeout=10) as r:
