@@ -7,7 +7,8 @@ import requests
 
 
 def test_sse_done_event_is_structured_dict():
-    url = os.getenv("CONCIERGE_SSE_URL", "http://localhost:8001/api/v1/concierge/stream")
+    base = os.getenv("BASE_URL", "http://localhost:8001").rstrip('/')
+    url = os.getenv("CONCIERGE_SSE_URL", f"{base}/api/v1/concierge/stream")
     payload = {"message": f"pytest sse probe {time.time()}"}
     with requests.post(url, json=payload, stream=True, headers={"Accept": "text/event-stream"}, timeout=120) as r:
         assert r.status_code == 200, f"Unexpected status: {r.status_code}"
