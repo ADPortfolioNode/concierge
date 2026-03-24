@@ -12,12 +12,11 @@ export const ACTIVE_API_BASE: string = (() => {
   if (MODE === 'development') {
     return VITE_LOCAL_API_URL || VITE_API_URL || 'http://localhost:8001';
   }
-  if (!VITE_API_URL) {
-    throw new Error(
-      'VITE_API_URL must be set in production builds. Set VITE_API_URL to your backend base URL (e.g. https://api.example.com)'
-    );
-  }
-  return VITE_API_URL;
+  // In production prefer an explicit VITE_API_URL, but do not throw: when
+  // it's not provided, return an empty string so `makeApiUrl` will fall back
+  // at runtime to the page origin (same-origin deploys) — this avoids
+  // baking hostnames into built assets and supports runtime server detection.
+  return VITE_API_URL || '';
 })();
 
 // Build a full URL for API paths. If the active base is empty, return a relative path.
