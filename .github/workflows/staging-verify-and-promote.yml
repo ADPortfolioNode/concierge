@@ -1,0 +1,56 @@
+name: Staging Verify and Promote
+
+on:
+  push:
+    branches: [ staging ]
+
+jobs:
+  build_and_verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend deps & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Deploy to Vercel (preview)
+        uses: amondnet/vercel-action@v20
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--confirm'
+          working-directory: .
+
+      - name: Wait for deployment stabilization
+        run: sleep 10
+
+      - name: Run verifier
+        env:
+          VERCEL_ALIAS: ${{ secrets.VERCEL_ALIAS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SKIP_PROMOTE: ${{ env.SKIP_PROMOTE }}
+          AUTO_MERGE: ${{ secrets.AUTO_MERGE }}
+          ALLOW_AUTO_MERGE: ${{ secrets.ALLOW_AUTO_MERGE }}
+        run: |
+          python3 scripts/verify_and_promote.py
