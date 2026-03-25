@@ -6,6 +6,9 @@
     { "src": "^/api/_health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/__files$", "dest": "/main.py" },
+
+    { "handle": "filesystem" },
+
     { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
     { "src": "^/index.html$", "dest": "/index.html" },
     { "src": "^/(.*)$", "dest": "/index.html" }
