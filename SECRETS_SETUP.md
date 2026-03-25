@@ -59,3 +59,24 @@ scripts/setup_github_secrets.sh
 - Do not paste tokens into chat or commit them to the repo. Rotate any token that was exposed.
 - Limit token permissions to the minimum required for CI (deployment scope only).
 - Consider creating a short-lived token and store it in GitHub Actions secrets.
+
+## Vercel Ignored Build Step (optional)
+
+To reduce unnecessary builds, add the following command to your Vercel Project's "Ignored Build Step" field. It returns exit code `1` when a build should run and `0` to skip the build.
+
+- Preferred (use the committed script):
+
+```
+./scripts/should_build.sh
+```
+
+- Inline alternative (paste this single-line command if you prefer not to commit the script):
+
+```
+git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" "$VERCEL_GIT_COMMIT_SHA" | grep -E '^(frontend/|requirements.txt|app.py|vercel.json)' >/dev/null && exit 1 || exit 0
+```
+
+Notes:
+- The committed script is more verbose and logs changed files to the build logs for easier debugging.
+- Keep this conservative list of trigger paths up-to-date if other build-affecting files are added.
+
