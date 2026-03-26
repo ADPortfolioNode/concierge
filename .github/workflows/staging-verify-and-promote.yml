@@ -34,6 +34,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests
 
+      - name: Check required secrets
+        run: |
+          MISSING=0
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_ALIAS; do
+            if [ -z "${{ secrets.$v }}" ]; then
+              echo "Missing secret: $v"
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo "Required secrets are missing. Aborting."
+            exit 1
+          fi
+
       - name: Deploy to Vercel (preview)
         uses: amondnet/vercel-action@v20
         with:
@@ -48,11 +62,16 @@ jobs:
 
       - name: Run verifier
         env:
-          VERCEL_ALIAS: ${{ secrets.VERCEL_ALIAS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           SKIP_PROMOTE: ${{ env.SKIP_PROMOTE }}
           AUTO_MERGE: ${{ secrets.AUTO_MERGE }}
           ALLOW_AUTO_MERGE: ${{ secrets.ALLOW_AUTO_MERGE }}
         run: |
+          # Construct VERCEL_ALIAS with bypass token if provided
+          if [ -n "${{ secrets.VERCEL_BYPASS_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ALIAS }}" ]; then
+            export VERCEL_ALIAS="${{ secrets.VERCEL_ALIAS }}?__vercel_bypass_token=${{ secrets.VERCEL_BYPASS_TOKEN }}"
+          else
+            export VERCEL_ALIAS="${{ secrets.VERCEL_ALIAS }}"
+          fi
           python3 scripts/verify_and_promote.py

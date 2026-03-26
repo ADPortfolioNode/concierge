@@ -22,18 +22,20 @@ def getenv(name, default=None):
     return v if v is not None else default
 
 
-def check_health(base):
+def check_health(base, session=None):
     url = urljoin(base, "/health")
     print(f"Checking health: {url}")
-    r = requests.get(url, timeout=10)
+    s = session or requests
+    r = s.get(url, timeout=10)
     r.raise_for_status()
     return r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text
 
 
-def fetch_index_and_check_assets(base):
+def fetch_index_and_check_assets(base, session=None):
     url = base
     print(f"Fetching root HTML: {url}")
-    r = requests.get(url, timeout=15)
+    s = session or requests
+    r = s.get(url, timeout=15)
     r.raise_for_status()
     html = r.text
     assets = set(re.findall(r'(?:src|href)\s*=\s*"(/assets/[^"]+)"', html))
@@ -43,13 +45,23 @@ def fetch_index_and_check_assets(base):
         asset_url = urljoin(base, asset)
         print(f"Checking asset: {asset_url}")
         try:
-            h = requests.head(asset_url, timeout=10, allow_redirects=True)
+            # Try HEAD first, then GET if HEAD fails or returns >=400
+            h = s.head(asset_url, timeout=10, allow_redirects=True)
             if h.status_code >= 400:
-                print(f"Asset returned {h.status_code}")
-                failed.append((asset_url, h.status_code))
+                print(f"HEAD returned {h.status_code}, trying GET")
+                g = s.get(asset_url, timeout=15, allow_redirects=True)
+                if g.status_code >= 400:
+                    print(f"GET returned {g.status_code}")
+                    failed.append((asset_url, g.status_code))
         except Exception as e:
-            print(f"Asset check error: {e}")
-            failed.append((asset_url, str(e)))
+            print(f"Asset check error, attempting GET: {e}")
+            try:
+                g = s.get(asset_url, timeout=15, allow_redirects=True)
+                if g.status_code >= 400:
+                    failed.append((asset_url, g.status_code))
+            except Exception as e2:
+                print(f"GET also failed: {e2}")
+                failed.append((asset_url, str(e2)))
     return failed
 
 
@@ -77,16 +89,39 @@ def main():
         sys.exit(3)
     base = alias if alias.startswith("http") else f"https://{alias}"
 
+    # If a bypass token is provided, append it to the base URL as a query param
+    bypass = getenv("VERCEL_BYPASS_TOKEN")
+    if bypass:
+        if "?" in base:
+            base = f"{base}&__vercel_bypass_token={bypass}"
+        else:
+            base = f"{base}?__vercel_bypass_token={bypass}"
+
+    # Build a session with reasonable headers and retry-alike behaviour
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Verifier/1.0 (+https://github.com/ADPortfolioNode/concierge)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    })
+
     # Basic checks
-    try:
-        health = check_health(base)
-        print("Health OK:", health)
-    except Exception as e:
-        print("Health check failed:", e)
-        sys.exit(4)
+    # Health check with retries
+    health = None
+    max_attempts = 5
+    for attempt in range(1, max_attempts + 1):
+        try:
+            health = check_health(base, session=session)
+            print("Health OK:", health)
+            break
+        except Exception as e:
+            print(f"Health check attempt {attempt} failed: {e}")
+            if attempt == max_attempts:
+                print("Health check failed after retries")
+                sys.exit(4)
+            time.sleep(2 ** attempt)
 
     try:
-        failed_assets = fetch_index_and_check_assets(base)
+        failed_assets = fetch_index_and_check_assets(base, session=session)
         if failed_assets:
             print("Asset checks failed:", failed_assets)
             sys.exit(5)
