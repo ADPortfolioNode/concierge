@@ -36,7 +36,7 @@ def fetch_index_and_check_assets(base):
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     html = r.text
-    assets = set(re.findall(r"(?:src|href)\s*=\s*\"(/assets/[^"]+)\"", html))
+    assets = set(re.findall(r'(?:src|href)\s*=\s*"(/assets/[^"]+)"', html))
     print(f"Found {len(assets)} asset references")
     failed = []
     for asset in assets:

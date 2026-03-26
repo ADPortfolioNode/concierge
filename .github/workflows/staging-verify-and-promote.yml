@@ -3,6 +3,8 @@ name: Staging Verify and Promote
 on:
   push:
     branches: [ staging ]
+  # Allow manual runs from the Actions UI or `gh workflow run`
+  workflow_dispatch: {}
 
 jobs:
   build_and_verify:
