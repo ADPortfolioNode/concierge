@@ -10,12 +10,14 @@ const VITE_LOCAL_API_URL = (env.VITE_LOCAL_API_URL || '').replace(/\/$/, '');
 // origin at runtime (same-origin deployments). Normalize to an empty
 // string so the runtime fallback in `makeApiUrl` will use
 // `window.location.origin`.
-const NORMALIZED_VITE_API_URL = VITE_API_URL === '<self.server>' ? '' : VITE_API_URL;
-const NORMALIZED_VITE_LOCAL_API_URL = VITE_LOCAL_API_URL === '<self.server>' ? '' : VITE_LOCAL_API_URL;
+// Treat the placeholder from this repo's samples as unset.
+const isPlaceholder = (url: string) => !url || url === '<self.server>' || url.startsWith('https://api.example');
+const NORMALIZED_VITE_API_URL = isPlaceholder(VITE_API_URL) ? '' : VITE_API_URL;
+const NORMALIZED_VITE_LOCAL_API_URL = isPlaceholder(VITE_LOCAL_API_URL) ? '' : VITE_LOCAL_API_URL;
 
 // ACTIVE_API_BASE resolution rules:
 // - In development: prefer VITE_LOCAL_API_URL, then VITE_API_URL, then localhost fallback.
-// - In production: require VITE_API_URL (throws early if missing) to avoid bundling a localhost.
+// - In production: prefer VITE_API_URL or runtime origin fallback in `makeApiUrl`.
 export const ACTIVE_API_BASE: string = (() => {
   if (MODE === 'development') {
     return NORMALIZED_VITE_LOCAL_API_URL || NORMALIZED_VITE_API_URL || 'http://localhost:8001';

@@ -1,6 +1,10 @@
 {
   "version": 2,
-   
+  "build": {
+    "env": {
+      "VITE_API_URL": "<self.server>"
+    }
+  },
 
   "routes": [
     { "src": "^/api/_health$", "dest": "/main.py" },
