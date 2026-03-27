@@ -4,6 +4,7 @@
 
   "routes": [
     { "src": "^/api/_health$", "dest": "/main.py" },
+    { "src": "^/health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/__files$", "dest": "/main.py" },
 

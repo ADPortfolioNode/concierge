@@ -82,6 +82,12 @@ async def _health_api():
     return {"status": "ok"}
 
 
+# Backwards-compatible health path used by some probes
+@app.get('/health')
+async def health_plain():
+    return {"status": "ok"}
+
+
 # Temporary debug endpoint to list deployed files. Remove after debugging.
 @app.get('/__files')
 async def _list_files():

@@ -23,12 +23,29 @@ def getenv(name, default=None):
 
 
 def check_health(base, session=None):
-    url = urljoin(base, "/health")
-    print(f"Checking health: {url}")
+    # Try several common health endpoints (some deployments expose `_health`)
+    candidates = ["/health", "/_health", "/api/health", "/api/_health"]
     s = session or requests
-    r = s.get(url, timeout=10)
-    r.raise_for_status()
-    return r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text
+    last_exc = None
+    for p in candidates:
+        url = urljoin(base, p)
+        print(f"Checking health: {url}")
+        try:
+            r = s.get(url, timeout=10)
+            # If we get a 401, include a snippet of body for diagnostics
+            if r.status_code == 401:
+                body_snippet = (r.text or '')[:1000]
+                print(f"Received 401 when checking {url}; body snippet:\n{body_snippet}")
+                r.raise_for_status()
+            r.raise_for_status()
+            return r.json() if r.headers.get("content-type", "").startswith("application/json") else r.text
+        except Exception as e:
+            print(f"Health check for {url} failed: {e}")
+            last_exc = e
+            continue
+    # If all candidates failed, raise last exception
+    if last_exc:
+        raise last_exc
 
 
 def fetch_index_and_check_assets(base, session=None):
@@ -87,6 +104,13 @@ def main():
     if not alias:
         print("VERCEL_ALIAS must be set (e.g. my-site-staging.vercel.app)")
         sys.exit(3)
+    # Basic sanitization: trim whitespace and strip accidental angle-bracket placeholders
+    alias = alias.strip()
+    if alias.startswith("<") and alias.endswith(">"):
+        alias = alias[1:-1].strip()
+    # Also remove any stray angle brackets that may have been included
+    alias = alias.strip("<>")
+    # Construct base URL (allow full URL or bare host)
     base = alias if alias.startswith("http") else f"https://{alias}"
 
     # If a bypass token is provided, append it to the base URL as a query param
@@ -103,6 +127,10 @@ def main():
         "User-Agent": "Verifier/1.0 (+https://github.com/ADPortfolioNode/concierge)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     })
+    # If bypass token present, also send it as a header to support Vercel's
+    # preview-protection header-based bypass in environments that require it.
+    if bypass:
+        session.headers.update({"x-vercel-protection-bypass": bypass})
 
     # Basic checks
     # Health check with retries
