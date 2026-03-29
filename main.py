@@ -7,34 +7,17 @@ imports at build-time.
 from fastapi import FastAPI
 import os
 import json
-import importlib
 import logging
-import traceback
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse, FileResponse
+
+from app import app as app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def _mount_real_app():
-    logger.info("startup: mounting real app...")
-    try:
-        real = importlib.import_module('app')
-        real_app = getattr(real, 'app', None)
-        if real_app is not None:
-            app.mount('/', real_app)
-            logger.info("mounted real app at '/'")
-        else:
-            logger.error("module 'app' has no attribute 'app' (real_app is None)")
-    except Exception as e:
-        logger.error(f"failed to import/mount real app: {e}")
-        logger.error(traceback.format_exc())
-        # Do not re-raise — keep the function process alive so Vercel can serve fallback responses
-        return
+# The primary FastAPI app is imported from app.py, which defines all API routes.
+# We keep optional SPA fallback routes in this layer.
 
 
 # Serve the static SPA index as a fallback when static build is not present in deployment
