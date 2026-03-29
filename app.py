@@ -799,6 +799,10 @@ async def get_integrations():
 
 
 # --- health endpoints ------------------------------------------------------
+@app.get('/api/_health')
+async def api_health():
+    return JSONResponse(content={"status": "ok"})
+
 @app.get('/health')
 async def health():
     return JSONResponse(content={"status": "ok", "version": VERSION})
