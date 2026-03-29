@@ -277,8 +277,8 @@ async def _lifespan(application: FastAPI):
     yield
     # ── shutdown (nothing to clean up yet) ───────────────────────────────
 
-
-app = FastAPI(lifespan=_lifespan)
+# create the FastAPI app with the lifespan context manager
+app = FastAPI(lifespan=_lifespan, openapi_url="/openapi.json")
 
 # Serve generated media (images/audio/video) from /media
 try:
