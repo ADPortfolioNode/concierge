@@ -71,6 +71,14 @@ async def serve_asset(path: str):
     return JSONResponse(content={"detail": "Not Found"}, status_code=404)
 
 
+@app.get('/{full_path:path}', include_in_schema=False)
+async def serve_spa_catchall(full_path: str):
+    # Fallback for SPA routing (client-side paths not defined in backend routes).
+    # The real app may mount its own routes; this provides a safe fallback when
+    # the static build is present under frontend/dist.
+    return await serve_index()
+
+
 @app.get('/_health')
 async def _health():
     return {"status": "ok"}
