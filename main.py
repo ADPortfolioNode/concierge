@@ -42,6 +42,16 @@ async def serve_index_html():
     return await serve_index()
 
 
+@app.get('/api/_health')
+async def api_health():
+    return JSONResponse(content={"status": "ok"})
+
+
+@app.get('/openapi.json')
+async def openapi():
+    return JSONResponse(content=app.openapi())
+
+
 @app.get('/assets/{path:path}', include_in_schema=False)
 async def serve_asset(path: str):
     candidates = [
