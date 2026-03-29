@@ -10,6 +10,10 @@
     { "src": "^/health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/__files$", "dest": "/main.py" },
+    { "src": "^/openapi.json$", "dest": "/main.py" },
+    { "src": "^/docs$", "dest": "/main.py" },
+    { "src": "^/redoc$", "dest": "/main.py" },
+    { "src": "^/ask$", "dest": "/main.py" },
 
     { "handle": "filesystem" },
     { "src": "^/assets/(.*)$", "dest": "/dist/assets/$1" },
