@@ -1,11 +1,6 @@
 {
   "version": 2,
-  "build": {
-    "env": {
-      "VITE_API_URL": "<self.server>"
-    }
-  },
-
+  "build": { "env": { "VITE_API_URL": "<self.server>" } },
   "routes": [
     { "src": "^/api/_health$", "dest": "/main.py" },
     { "src": "^/health$", "dest": "/main.py" },
@@ -13,9 +8,8 @@
     { "src": "^/__files$", "dest": "/main.py" },
 
     { "handle": "filesystem" },
-
-    { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
-    { "src": "^/index.html$", "dest": "/index.html" },
-    { "src": "^/(.*)$", "dest": "/index.html" }
+    { "src": "^/assets/(.*)$", "dest": "/frontend/dist/assets/$1" },
+    { "src": "^/index.html$", "dest": "/frontend/dist/index.html" },
+    { "src": "^/(.*)$", "dest": "/frontend/dist/index.html" }
   ]
 }
