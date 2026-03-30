@@ -44,6 +44,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* learn */}
             <NavLink to="/howto"        title="How-to guide and tutorials">Guide</NavLink>
             <NavLink to="/capabilities" title="Registered plugins and integrations">Integrations</NavLink>
+            <NavLink to="/media"        title="View generated media in full-page gallery">Media</NavLink>
           </nav>
         </div>
       </header>

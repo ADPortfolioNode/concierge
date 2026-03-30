@@ -123,6 +123,19 @@ main {
   }
 }
 
+/* Focused chat state: temporarily force two-column layout on narrow screens */
+.app-container.chat-focused {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+@media (max-width: 767px) {
+  .app-container.chat-focused {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
+
 /* typography */
 h1, h2, h3, h4, h5, h6 {
   margin: 0 0 8px 0;

@@ -35,6 +35,12 @@ export const getMedia = async () => {
   return res;
 };
 
+export const cleanupMedia = async () => {
+  const res = await apiClient.post<ApiResponse>('/concierge/media/cleanup');
+  if ((res as any).error) throw new Error((res as any).error);
+  return res;
+};
+
 // ── SSE streaming ──────────────────────────────────────────────────────────
 // Event shapes emitted by the backend (see SacredTimeline.stream_user_input):
 //   { type: 'token',    text: string }   — single LLM output fragment

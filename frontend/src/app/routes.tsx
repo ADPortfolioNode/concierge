@@ -9,6 +9,7 @@ const WorkspacePage = lazy(() => import('../features/workspace/WorkspacePage'));
 const StrategyPage = lazy(() => import('../features/strategy/StrategyPage'));
 const HowToPage = lazy(() => import('../features/concierge/HowToPage'));
 const CapabilitiesPage = lazy(() => import('../features/capabilities/CapabilitiesPage'));
+const MediaPage = lazy(() => import('../features/media/MediaPage'));
 
 import Layout from '../components/layout/Layout';
 
@@ -24,6 +25,7 @@ const Routes: React.FC = () => {
           <Route path="/strategy" element={<StrategyPage />} />
           <Route path="/howto" element={<HowToPage />} />
           <Route path="/capabilities" element={<CapabilitiesPage />} />
+          <Route path="/media" element={<MediaPage />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Switch>
       </Suspense>

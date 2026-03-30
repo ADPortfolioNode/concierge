@@ -15,9 +15,11 @@ from fastapi.responses import HTMLResponse, FileResponse
 from app import app as app
 from fastapi.staticfiles import StaticFiles
 
-# if not already mounted
+# Do not mount SPA on "/" before API routes; mount after routes is preferred.
+# The API router in app.py must take precedence for paths like /api/v1/tasks.
+# We'll maintain SPA static files via explicit /spa path and fallback route.
 app.mount(
-    "/",
+    "/spa",
     StaticFiles(directory=os.path.join("frontend", "dist"), html=True),
     name="spa",
 )
@@ -60,6 +62,16 @@ async def serve_index_html():
     return await serve_index()
 
 
+@app.get('/api/v1/tasks', include_in_schema=False)
+async def debug_tasks():
+    from tasks.task_router import get_queue
+    tasks = get_queue().list_tasks()
+    return JSONResponse(content={
+        'status': 'success',
+        'data': [{'id': t.id, 'status': t.status.value, 'created_at': t.created_at} for t in tasks],
+    })
+
+
 @app.get('/api/_health')
 async def api_health():
     return JSONResponse(content={"status": "ok"})
@@ -88,6 +100,14 @@ async def serve_spa_catchall(full_path: str):
     # The real app may mount its own routes; this provides a safe fallback when
     # the static build is present under frontend/dist.
     return await serve_index()
+
+
+@app.get('/spa/{path:path}', include_in_schema=False)
+async def serve_spa_file(path: str):
+    index_path = _find_spa_index()
+    if index_path is None:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(str(index_path), media_type='text/html')
 
 
 @app.get('/_health')

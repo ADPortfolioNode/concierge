@@ -5,7 +5,7 @@ import MediaPreview from './MediaPreview';
 
 const MAX_LINES = 6;
 
-const MessageInput: React.FC = () => {
+const MessageInput: React.FC<{onFocus?: ()=>void; onBlur?: ()=>void}> = ({ onFocus, onBlur }) => {
   const [value, setValue] = useState('');
   const [attachment, setAttachment] = useState<FileContext | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -125,6 +125,8 @@ const MessageInput: React.FC = () => {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => onFocus?.()}
+          onBlur={() => onBlur?.()}
           placeholder={loading ? 'Sending...' : 'Message — Enter to send, Shift+Enter for newline'}
           disabled={loading}
           rows={1}

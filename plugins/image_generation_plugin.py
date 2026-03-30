@@ -282,6 +282,10 @@ class ImageGenerationPlugin(BasePlugin):
             fname = f"img_{h}_{int(time.time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
             # write sidecar metadata file
             try:
                 meta = metadata or {}
@@ -317,6 +321,10 @@ class ImageGenerationPlugin(BasePlugin):
             fname = f"img_{h}_{int(time.time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
             try:
                 meta = metadata or {}
                 meta.setdefault("filename", fname)

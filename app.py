@@ -11,6 +11,7 @@ import json
 import os
 import time
 import traceback
+import uuid
 from typing import Any, Optional, Deque
 from pathlib import Path
 import collections
@@ -241,27 +242,9 @@ async def _lifespan(application: FastAPI):
         logger.exception('Task worker not available or failed to start (continuing)')
 
     # Register routers from workstation/projects/tasks if available
-    try:
-        ws_mod = importlib.import_module('workstation')
-        _upload_router = getattr(ws_mod, 'upload_router', None)
-        if _upload_router is not None:
-            application.include_router(_upload_router)
-    except Exception as err:
-        logger.exception('Failed to include workstation router')
-    try:
-        prj_mod = importlib.import_module('projects')
-        _project_router = getattr(prj_mod, 'project_router', None)
-        if _project_router is not None:
-            application.include_router(_project_router)
-    except Exception as err:
-        logger.exception('Failed to include project router')
-    try:
-        tmod = importlib.import_module('tasks')
-        _task_router = getattr(tmod, 'task_router', None)
-        if _task_router is not None:
-            application.include_router(_task_router)
-    except Exception as err:
-        logger.exception('Failed to include tasks router (will cause /api/v1/tasks 404)')
+    _include_router_from_module(application, 'workstation', 'upload_router')
+    _include_router_from_module(application, 'projects', 'project_router')
+    _include_router_from_module(application, 'tasks', 'task_router')
 
     # Optional distributed job router
     try:
@@ -279,6 +262,38 @@ async def _lifespan(application: FastAPI):
 
 # create the FastAPI app with the lifespan context manager
 app = FastAPI(lifespan=_lifespan, openapi_url="/openapi.json")
+
+
+def _include_router_from_module(application, module_name, router_attr):
+    """Include optional routers by module/attribute and avoid duplicates."""
+    try:
+        import importlib
+
+        module = importlib.import_module(module_name)
+        router = getattr(module, router_attr, None)
+        if router is None:
+            return False
+
+        prefix = getattr(router, "prefix", None)
+        if prefix:
+            existing = [r.path for r in application.routes if hasattr(r, "path")]
+            if any(p.startswith(prefix) or prefix.startswith(p) for p in existing):
+                logger.info("Router already included: %s.%s", module_name, router_attr)
+                return True
+
+        application.include_router(router)
+        logger.info("Included router at import time: %s.%s", module_name, router_attr)
+        return True
+    except Exception:
+        logger.exception("Failed to include router %s.%s", module_name, router_attr)
+        return False
+
+
+# Even when lifespan callbacks are skipped in some hosting environments, make sure
+# key routers are registered from module import time so API paths remain available.
+_include_router_from_module(app, "workstation", "upload_router")
+_include_router_from_module(app, "projects", "project_router")
+_include_router_from_module(app, "tasks", "task_router")
 
 # Serve generated media (images/audio/video) from /media
 try:
@@ -403,6 +418,13 @@ def _api_response(data: any, status: str = 'success'):
     }
 
 
+def _session_id_from_request(request: Request) -> str:
+	"""Get or create a lightweight per-user session id for media ownership tracking."""
+	cookie_id = request.cookies.get('session_id')
+	if cookie_id and isinstance(cookie_id, str) and cookie_id.strip():
+		return cookie_id
+	# generate stable random id for this session and set cookie in response path
+	return str(uuid.uuid4())
 def _ensure_timeline_available():
     """Raise HTTP 503 if the application's timeline component is not ready.
 
@@ -482,6 +504,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     async def _persist_and_rewrite_images(text: str, request: Request) -> str:
         if not text or not isinstance(text, str):
             return text
+        session_owner = _session_id_from_request(request)
         # simple heuristic: match http/https URLs that likely point to images
         url_re = re.compile(r"(https?://[^\s\)\"]+\.(?:png|jpe?g|gif|webp))", re.IGNORECASE)
         found = list(url_re.finditer(text))
@@ -533,9 +556,14 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
                     fname = f"img_{sha}_{ts}.{ext}"
                     fpath = media_dir / fname
                     fpath.write_bytes(img_bytes)
+                    try:
+                        fpath.chmod(0o755)
+                    except Exception:
+                        pass
                     # sidecar metadata
                     sidecar = {
                         'filename': fname,
+                        'owner': session_owner,
                         'prompt': None,
                         'mime_type': resp.headers.get('content-type', ''),
                         'created_at': datetime.utcnow().isoformat() + 'Z',
@@ -752,10 +780,50 @@ async def concierge_media_list(request: Request):
                     except Exception:
                         item['metadata'] = None
                     items.append(item)
-        return _api_response(items)
+        session_id = _session_id_from_request(request)
+        resp = JSONResponse(content=_api_response(items))
+        resp.set_cookie('session_id', session_id, httponly=True, samesite='Lax', max_age=60 * 60 * 24)
+        return resp
     except Exception as exc:
         logger.exception('Failed to list media files')
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post('/api/v1/concierge/media/cleanup')
+async def concierge_media_cleanup(request: Request):
+    """Delete media/images files owned by the current session."""
+    session_owner = _session_id_from_request(request)
+    media_images = Path(__file__).parent / 'media' / 'images'
+    removed = []
+    if media_images.exists():
+        for p in media_images.iterdir():
+            if not p.is_file() or p.suffix.lower() == '.json':
+                continue
+            meta_path = p.with_suffix(p.suffix + '.json')
+            if not meta_path.exists():
+                # fallback: adjacent .json sidecar
+                meta_path = p.with_suffix('.json')
+            if not meta_path.exists():
+                continue
+            try:
+                metadata = json.loads(meta_path.read_text())
+            except Exception:
+                metadata = {}
+            owner = metadata.get('owner')
+            if owner == session_owner:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+                try:
+                    if meta_path.exists():
+                        meta_path.unlink()
+                except Exception:
+                    pass
+                removed.append(p.name)
+    resp = JSONResponse(content=_api_response({'removed': removed}))
+    resp.set_cookie('session_id', session_owner, httponly=True, samesite='Lax', max_age=60 * 60 * 24)
+    return resp
 
 
 # Register Phase 14-16 routers (only include if the router was loaded)
