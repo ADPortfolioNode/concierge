@@ -831,6 +831,20 @@ async def get_integrations():
                 'errors': {'message': 'integration registry unavailable'},
             },
         )
+
+    if not (_openai_set or _gemini_set):
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'No AI API key configured; set OPENAI_API_KEY or GEMINI_API_KEY.'},
+            },
+        )
+
     return _api_response(_intg_reg.list_integrations())
 
 
