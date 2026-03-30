@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { makeApiUrl } from '@/config/activeServer';
 
 interface Job {
   id: string;
@@ -17,7 +18,7 @@ const ProcessingBanner: React.FC = () => {
     let mounted = true;
     const fetchJobs = async () => {
       try {
-        const resp = await fetch('/api/v1/tasks');
+        const resp = await fetch(makeApiUrl('/api/v1/tasks'));
         if (!resp.ok) return;
         const body = await resp.json();
         const data: Job[] = (body.data as any) || [];
@@ -37,8 +38,8 @@ const ProcessingBanner: React.FC = () => {
   if (jobs.length === 0) return null;
 
   const runningJobs = jobs.filter((j) => {
-    const s = j.status || j.statusObj?.status || j.statusObj?.state || '';
-    return ['running', 'queued', 'PENDING', 'STARTED'].includes(s);
+    const status = j.status || j.statusObj?.status || j.statusObj?.state || '';
+    return ['running', 'queued', 'PENDING', 'STARTED'].includes(status);
   });
   const running = runningJobs.length;
   const total = jobs.length;
@@ -49,9 +50,9 @@ const ProcessingBanner: React.FC = () => {
   if (firstStarted && firstStarted.started_at) {
     const delta = Math.max(0, Date.now() - new Date(firstStarted.started_at).getTime());
     const sec = Math.floor(delta / 1000);
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    elapsedText = `${m}m${s}s elapsed`;
+    const minutes = Math.floor(sec / 60);
+    const seconds = sec % 60;
+    elapsedText = `${minutes}m${seconds}s elapsed`;
   }
   // first job label to show as title
   const firstLabel = jobs[0]?.label;
@@ -74,7 +75,7 @@ const ProcessingBanner: React.FC = () => {
           </span>
         </div>
         <button
-          onClick={() => setShowDetails((s) => !s)}
+          onClick={() => setShowDetails((prev) => !prev)}
           style={{ fontSize: 12, background: 'none', border: 'none', color: '#7c6af7', cursor: 'pointer' }}
         >
           {showDetails ? 'hide' : 'show'} details

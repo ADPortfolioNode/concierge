@@ -246,22 +246,22 @@ async def _lifespan(application: FastAPI):
         _upload_router = getattr(ws_mod, 'upload_router', None)
         if _upload_router is not None:
             application.include_router(_upload_router)
-    except Exception:
-        pass
+    except Exception as err:
+        logger.exception('Failed to include workstation router')
     try:
         prj_mod = importlib.import_module('projects')
         _project_router = getattr(prj_mod, 'project_router', None)
         if _project_router is not None:
             application.include_router(_project_router)
-    except Exception:
-        pass
+    except Exception as err:
+        logger.exception('Failed to include project router')
     try:
         tmod = importlib.import_module('tasks')
         _task_router = getattr(tmod, 'task_router', None)
         if _task_router is not None:
             application.include_router(_task_router)
-    except Exception:
-        pass
+    except Exception as err:
+        logger.exception('Failed to include tasks router (will cause /api/v1/tasks 404)')
 
     # Optional distributed job router
     try:
