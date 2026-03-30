@@ -42,7 +42,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, Response, FileResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -310,6 +310,7 @@ try:
             try:
                 tmp_media.mkdir(parents=True, exist_ok=True)
                 app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
+                media_path = tmp_media
                 logger.warning("Read-only filesystem; using fallback media dir: %s", tmp_media)
             except Exception:
                 logger.exception("Failed to create or mount fallback media directory %s", tmp_media)
@@ -317,6 +318,21 @@ try:
             raise
 except Exception:
     logger.exception("Failed to mount media directory for static files")
+
+# Seed the logo into the media directory for reliable /media access.
+try:
+    candidate_paths = [
+        Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+    ]
+    source_logo = next((p for p in candidate_paths if p.exists()), None)
+    if source_logo and media_path.exists() and media_path.is_dir():
+        target_logo = media_path / 'logo-optimized.svg'
+        if not target_logo.exists() or source_logo.stat().st_mtime > target_logo.stat().st_mtime:
+            import shutil
+            shutil.copy2(str(source_logo), str(target_logo))
+except Exception:
+    logger.exception('Failed to seed logo into media directory')
 
 # ----------------------------------------------------------------------
 # CORS setup
@@ -657,6 +673,31 @@ async def concierge_metrics():
     return _api_response(m)
 
 
+@app.get('/api/v1/env-check')
+async def api_env_check():
+    """Report runtime environment variable availability and media directory state."""
+    openai_present = bool(os.getenv('OPENAI_API_KEY'))
+    gemini_present = bool(os.getenv('GEMINI_API_KEY'))
+    media_dir = os.getenv('MEDIA_DIR', '/tmp/media')
+    media_dir_path = Path(media_dir)
+    media_dir_exists = media_dir_path.exists()
+    media_dir_writable = False
+    try:
+        media_dir_writable = media_dir_path.is_dir() and os.access(media_dir_path, os.W_OK)
+    except Exception:
+        media_dir_writable = False
+
+    payload = {
+        'OPENAI_API_KEY': openai_present,
+        'GEMINI_API_KEY': gemini_present,
+        'MEDIA_DIR': media_dir,
+        'MEDIA_DIR_EXISTS': media_dir_exists,
+        'MEDIA_DIR_WRITABLE': media_dir_writable,
+        'HEALTHCHECK': True,
+    }
+    return _api_response(payload)
+
+
 # timeline introspection endpoints
 @app.get('/api/v1/concierge/timeline')
 async def concierge_timeline():
@@ -920,6 +961,18 @@ async def get_integrations():
 @app.get('/api/_health')
 async def api_health():
     return JSONResponse(content={"status": "ok"})
+
+@app.get('/logo-optimized.svg', include_in_schema=False)
+async def logo_optimized_svg():
+    candidates = [
+        Path(__file__).parent / 'media' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+    ]
+    for path in candidates:
+        if path.exists():
+            return FileResponse(str(path), media_type='image/svg+xml')
+    raise HTTPException(status_code=404, detail='Logo not found')
 
 @app.get('/health')
 async def health():

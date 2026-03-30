@@ -917,9 +917,20 @@ class MemoryStore:
 
         Returns number of ingested records.
         """
-        data_dir = data_dir or os.path.join(os.getcwd(), "data")
+        data_dir = data_dir or os.getenv("DATA_DIR", os.path.join(os.getcwd(), "data"))
         if not os.path.isdir(data_dir):
-            return 0
+            # Serverless environments (e.g. Vercel) mount code under /var/task,
+            # which is typically read-only at runtime. Prefer writeable /tmp/data.
+            tmp_data_dir = os.getenv("DATA_DIR", "/tmp/data")
+            if os.path.isdir(tmp_data_dir):
+                data_dir = tmp_data_dir
+            else:
+                try:
+                    os.makedirs(tmp_data_dir, exist_ok=True)
+                    data_dir = tmp_data_dir
+                except Exception:
+                    logger.info("No available data directory; skipping migration from disk")
+                    return 0
 
         # check if DB already has data
         try:
