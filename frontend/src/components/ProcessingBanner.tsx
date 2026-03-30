@@ -13,18 +13,28 @@ const POLL_INTERVAL = 3000;
 const ProcessingBanner: React.FC = () => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [showDetails, setShowDetails] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const failCountRef = React.useRef(0);
 
   useEffect(() => {
     let mounted = true;
     const fetchJobs = async () => {
       try {
         const resp = await fetch(makeApiUrl('/api/v1/tasks'));
-        if (!resp.ok) return;
+        if (!resp.ok) throw new Error(`Bad status ${resp.status}`);
         const body = await resp.json();
         const data: Job[] = (body.data as any) || [];
-        if (mounted) setJobs(data);
+        if (mounted) {
+          setJobs(data);
+          setOffline(false);
+        }
+        failCountRef.current = 0;
       } catch {
-        // ignore network errors
+        failCountRef.current += 1;
+        if (mounted && failCountRef.current >= 3) {
+          setOffline(true);
+          setJobs([]);
+        }
       }
     };
     fetchJobs();
@@ -34,6 +44,14 @@ const ProcessingBanner: React.FC = () => {
       clearInterval(iv);
     };
   }, []);
+
+  if (offline) {
+    return (
+      <div style={{ background: 'rgba(220,38,38,0.1)', padding: '8px 16px', borderRadius: 6, marginBottom: 16 }}>
+        <span style={{ color: '#f87171', fontSize: 13 }}>API backend unreachable. Please check server status and refresh.</span>
+      </div>
+    );
+  }
 
   if (jobs.length === 0) return null;
 
