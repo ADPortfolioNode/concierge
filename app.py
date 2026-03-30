@@ -774,12 +774,36 @@ if _jobs_available and _job_router is not None:
 @app.get('/api/v1/plugins')
 async def get_plugins():
     """List all registered plugins and their metadata."""
+    if _plugin_reg is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'plugin registry unavailable'},
+            },
+        )
     return _api_response(_plugin_reg.list_plugins())
 
 
 @app.get('/api/v1/tools')
 async def get_tools():
     """List all registered tools and their metadata."""
+    if _list_tool_names is None or _get_tool is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'tool registry unavailable'},
+            },
+        )
     names = _list_tool_names()
     serialized = []
     for name in names:
@@ -795,6 +819,18 @@ async def get_tools():
 @app.get('/api/v1/integrations')
 async def get_integrations():
     """List all registered integrations and their metadata."""
+    if _intg_reg is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'integration registry unavailable'},
+            },
+        )
     return _api_response(_intg_reg.list_integrations())
 
 
