@@ -8,11 +8,19 @@ from fastapi import FastAPI
 import os
 import json
 import logging
+from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse, FileResponse
 
 from app import app as app
+from fastapi.staticfiles import StaticFiles
 
+# if not already mounted
+app.mount(
+    "/",
+    StaticFiles(directory=os.path.join("frontend", "dist"), html=True),
+    name="spa",
+)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -21,20 +29,30 @@ logger = logging.getLogger(__name__)
 
 
 # Serve the static SPA index as a fallback when static build is not present in deployment
+def _spa_index_candidates() -> list[str]:
+    root = Path(__file__).resolve().parent
+    return [
+        root / 'frontend' / 'dist' / 'index.html',
+        Path(os.getcwd()) / 'frontend' / 'dist' / 'index.html',
+        Path('/vercel/output/static/index.html'),
+        Path('/vercel/path0/frontend/dist/index.html'),
+        Path('/vercel/path0/index.html'),
+    ]
+
+
+def _find_spa_index() -> Path | None:
+    for p in _spa_index_candidates():
+        if p.exists():
+            return p
+    return None
+
+
 @app.get("/", include_in_schema=False)
 async def serve_index():
-    candidates = [
-        os.path.join('frontend', 'dist', 'index.html'),
-        'index.html',
-        'frontend_index.html'
-    ]
-    for path in candidates:
-        try:
-            if os.path.exists(path):
-                return HTMLResponse(content=open(path, 'r', encoding='utf-8').read(), status_code=200)
-        except Exception:
-            continue
-    return JSONResponse(content={"detail": "Not Found"}, status_code=404)
+    index_path = _find_spa_index()
+    if index_path is None:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(str(index_path), media_type='text/html')
 
 
 @app.get('/index.html', include_in_schema=False)
