@@ -113,6 +113,7 @@ const MediaStage: React.FC = () => {
   // when true the stage stretches to fill most of the viewport
   // (used both for the "full width" toggle button and auto‑expansion)
   const [fullWidth, setFullWidth] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const prevSize = useRef<{width: number; height: number}>({width: STAGE_W, height: STAGE_H});
 
   // Position: left/top in px; initialised once layout is known
@@ -232,10 +233,19 @@ const MediaStage: React.FC = () => {
   const latestAudio = audioLayers[audioLayers.length - 1];
   const latestText = textHighlights[textHighlights.length - 1];
 
-  const showImage = !!latestImage && !hiddenLayers.has('image');
+  const showImage = !!imageLayers.length && !hiddenLayers.has('image');
   const showVideo = !!latestVideo && !hiddenLayers.has('video');
   const showAudio = !!latestAudio && !hiddenLayers.has('audio');
   const showText = !!latestText && !hiddenLayers.has('text');
+
+  // Keep selected image index in range when new images arrive
+  useEffect(() => {
+    if (imageLayers.length === 0) {
+      setSelectedImageIndex(0);
+    } else if (selectedImageIndex >= imageLayers.length) {
+      setSelectedImageIndex(imageLayers.length - 1);
+    }
+  }, [imageLayers.length, selectedImageIndex]);
 
   if (!hasContent || dismissed) return null;
 
@@ -375,7 +385,7 @@ const MediaStage: React.FC = () => {
               aria-label="Image layer"
             >
               <img
-                src={latestImage.url}
+                src={imageLayers[selectedImageIndex]?.url || latestImage.url}
                 alt="AI-generated output"
                 loading="lazy"
                 style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
@@ -423,6 +433,59 @@ const MediaStage: React.FC = () => {
                     'linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.5) 100%)',
                 }}
               />
+            </div>
+          )}
+
+          {/* ── Image tray for multiple images ────────────────────────────── */}
+          {showImage && imageLayers.length > 1 && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                width: '100%',
+                height: 100,
+                zIndex: 8,
+                background: 'rgba(0,0,0,0.45)',
+                borderTop: '1px solid rgba(255,255,255,0.12)',
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '8px',
+              }}
+            >
+              {imageLayers.map((img, idx) => (
+                <button
+                  key={img.url + idx}
+                  onClick={() => setSelectedImageIndex(idx)}
+                  style={{
+                    border: selectedImageIndex === idx ? '2px solid #7c6af7' : '2px solid rgba(255,255,255,0.12)',
+                    borderRadius: 8,
+                    padding: 0,
+                    marginRight: 8,
+                    background: 'rgba(0,0,0,0.2)',
+                    cursor: 'pointer',
+                    width: 84,
+                    height: 84,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={img.url}
+                    alt={`thumbnail-${idx}`}
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transition: 'transform 0.2s ease',
+                      transform: selectedImageIndex === idx ? 'scale(1.05)' : 'scale(1)',
+                    }}
+                  />
+                </button>
+              ))}
             </div>
           )}
 

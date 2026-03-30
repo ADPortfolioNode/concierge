@@ -357,12 +357,17 @@ async def _stream_text_as_tokens(text: str, delay: float = 0.01) -> AsyncIterato
         yield chunk
 
 
+def _has_ai_api_key() -> bool:
+    """Return True if an AI API key is configured in environment."""
+    return bool(os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY"))
+
+
 def _conversational_reply(user_msg: str) -> str:
     """Return a natural reply for a conversational user message."""
     msg = user_msg.lower().strip()
 
     if any(k in msg for k in ("capabilit", "what can you", "what do you do", "help me with", "what are you", "features")):
-        return (
+        base = (
             "I'm **Concierge**, an AI-powered multi-agent assistant. Here's what I can do:\n\n"
             "• **Conversation** — Answer questions and guide you through tasks.\n"
             "• **Planning** — Decompose complex goals into structured, ordered subtasks.\n"
@@ -373,9 +378,11 @@ def _conversational_reply(user_msg: str) -> str:
             "• **Image generation** — Create images from text prompts (requires `OPENAI_API_KEY`).\n"
             "• **Distributed jobs** — Run long-running tasks asynchronously via Celery + Redis.\n"
             "• **Memory** — Retain context across sessions using vector-backed memory.\n\n"
-            "To unlock full AI responses, set `OPENAI_API_KEY` in your environment. "
-            "What would you like to work on today?"
         )
+        if not _has_ai_api_key():
+            base += "To unlock full AI responses, set `OPENAI_API_KEY` in your environment. "
+        return base + "What would you like to work on today?"
+
 
     if any(k in msg for k in ("hello", "hi ", "hey", "howdy", "greetings", "good morning", "good afternoon", "good evening", "sup ")):
         return "Hello! I'm Concierge, your AI-powered assistant. I can help you plan tasks, research topics, generate code, analyze files, and more. What would you like to tackle today?"
