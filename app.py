@@ -324,6 +324,9 @@ try:
     candidate_paths = [
         Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
         Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/output/static') / 'logo-optimized.svg',
     ]
     source_logo = next((p for p in candidate_paths if p.exists()), None)
     if source_logo and media_path.exists() and media_path.is_dir():
@@ -968,6 +971,9 @@ async def logo_optimized_svg():
         Path(__file__).parent / 'media' / 'logo-optimized.svg',
         Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
         Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/output/static') / 'logo-optimized.svg',
     ]
     for path in candidates:
         if path.exists():
