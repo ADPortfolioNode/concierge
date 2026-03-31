@@ -12,6 +12,7 @@ const MediaRenderer: React.FC<MediaProps> = ({ media }) => {
         <img
           src={media.url || ''}
           alt={media.overlay_text || 'Image'}
+          className="media-renderer media-renderer-image"
           style={{
             maxWidth: '100%',
             maxHeight: 400,
@@ -24,11 +25,25 @@ const MediaRenderer: React.FC<MediaProps> = ({ media }) => {
         />
       );
     case 'video':
-      return <video src={media.url || ''} controls style={{ maxWidth: '100%', borderRadius: 6 }} />;
+      return (
+        <video
+          src={media.url || ''}
+          controls
+          className="media-renderer media-renderer-video"
+          style={{ maxWidth: '100%', borderRadius: 6 }}
+        />
+      );
     case 'audio':
-      return <audio src={media.url || ''} controls style={{ width: '100%' }} />;
+      return (
+        <audio
+          src={media.url || ''}
+          controls
+          className="media-renderer media-renderer-audio"
+          style={{ width: '100%' }}
+        />
+      );
     case 'text':
-      return <div>{media.overlay_text}</div>;
+      return <div className="media-renderer media-renderer-text">{media.overlay_text}</div>;
     default:
       return null;
   }

@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import ChatContainer from '../chat/ChatContainer';
 import ErrorBanner from '../ui/ErrorBanner';
 import MediaStage from '../media/MediaStage';
-import { makeAssetUrl } from '../../config/activeServer';
+import { makeLogoUrl } from '../../config/activeServer';
 
 // ── nav group separator ───────────────────────────────────────────────────
 const NavSep: React.FC = () => (
@@ -18,7 +18,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="header-inner">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NavLink to="/" end style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-              <img src={makeAssetUrl('/media/logo-optimized.svg')} alt="Concierge" className="brand-logo" style={{ height: 26 }} />
+              <img src={makeLogoUrl()} alt="Concierge" className="brand-logo" style={{ height: 26 }} />
               <span style={{ color: '#c4b8ff', fontWeight: 800, fontSize: 15, letterSpacing: '-0.01em' }}>Concierge</span>
             </NavLink>
           </div>

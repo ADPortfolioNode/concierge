@@ -11,7 +11,11 @@ const VITE_LOCAL_API_URL = (env.VITE_LOCAL_API_URL || '').replace(/\/$/, '');
 // string so the runtime fallback in `makeApiUrl` will use
 // `window.location.origin`.
 // Treat the placeholder from this repo's samples as unset.
-const isPlaceholder = (url: string) => !url || url === '<self.server>' || url.startsWith('https://api.example');
+// Use an anchored regex so we only match the `api.example` host itself and
+// do not accidentally treat legitimate URLs that happen to start with that
+// string as placeholders (e.g. api.example.corp.internal).
+const isExampleUrl = (url: string) => /^https?:\/\/api\.example(?:[./]|$)/.test(url);
+const isPlaceholder = (url: string) => !url || url === '<self.server>' || isExampleUrl(url);
 const NORMALIZED_VITE_API_URL = isPlaceholder(VITE_API_URL) ? '' : VITE_API_URL;
 const NORMALIZED_VITE_LOCAL_API_URL = isPlaceholder(VITE_LOCAL_API_URL) ? '' : VITE_LOCAL_API_URL;
 
@@ -60,4 +64,16 @@ export function makeAssetUrl(path: string) {
   return `${ACTIVE_ASSET_BASE}${p}`;
 }
 
-export default { ACTIVE_API_BASE, ACTIVE_ASSET_BASE, makeApiUrl, makeAssetUrl };
+// Per-environment logo URL override.
+// Set VITE_LOGO_URL in the build environment to point at a different logo
+// for each tier (local / staging / production).  When unset the default
+// logo served from the asset base is used.
+const VITE_LOGO_URL = (env.VITE_LOGO_URL || '').trim();
+const NORMALIZED_VITE_LOGO_URL = isPlaceholder(VITE_LOGO_URL) ? '' : VITE_LOGO_URL;
+
+export function makeLogoUrl(): string {
+  if (NORMALIZED_VITE_LOGO_URL) return NORMALIZED_VITE_LOGO_URL;
+  return makeAssetUrl('/media/logo-optimized.svg');
+}
+
+export default { ACTIVE_API_BASE, ACTIVE_ASSET_BASE, makeApiUrl, makeAssetUrl, makeLogoUrl };
