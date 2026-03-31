@@ -325,9 +325,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           imgM?.forEach((u) => get().pushImage(u.trim()));
           vidM?.forEach((u) => get().pushVideo(u.trim()));
           audM?.forEach((u) => get().pushAudio(u.trim()));
-          if (!imgM && !vidM && !audM && content.trim().length > 20) {
-            get().pushTextHighlight(content.trim().slice(0, 500));
-          }
+          // Text-only responses remain in the chat window; no text highlights
+          // are pushed to the media stage so the media display is reserved for
+          // graphics, video, and audio content only.
         } else if (evt.type === 'error') {
           set((s) => ({
             conversation: s.conversation.map((m) =>

@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
+import { useViewport } from '@/utils/useViewport';
 
 const STAGE_W = 380;
 const STAGE_H = 306;
@@ -100,6 +101,7 @@ const MediaStage: React.FC = () => {
   const audioLayers = useAppStore((s) => s.audioLayers);
   const textHighlights = useAppStore((s) => s.textHighlights);
   const clearMediaLayers = useAppStore((s) => s.clearMediaLayers);
+  const { isMobile } = useViewport();
 
   const hasContent =
     imageLayers.length > 0 ||
@@ -121,15 +123,21 @@ const MediaStage: React.FC = () => {
   const [size, setSize] = useState({ width: STAGE_W, height: STAGE_H });
   const posInitialised = useRef(false);
 
+  // Mobile: always pin to top-left below the app header; desktop: initialise
+  // to the bottom-right corner of the viewport.
   useLayoutEffect(() => {
     if (!posInitialised.current) {
       posInitialised.current = true;
-      setPos({
-        left: Math.max(20, window.innerWidth - size.width - 24),
-        top: Math.max(60, window.innerHeight - size.height - 90),
-      });
+      if (isMobile) {
+        setPos({ left: 0, top: 50 });
+      } else {
+        setPos({
+          left: Math.max(20, window.innerWidth - size.width - 24),
+          top: Math.max(60, window.innerHeight - size.height - 90),
+        });
+      }
     }
-  }, []);
+  }, [isMobile]);
 
   // Auto-show whenever new layers arrive
   const layerCount =
@@ -138,16 +146,19 @@ const MediaStage: React.FC = () => {
   useEffect(() => {
     if (!fullWidth) return;
     const onResize = () => {
-      setSize((s) => ({
-        ...s,
-        width: Math.min(MAX_W, window.innerWidth - 40),
-        height: Math.min(MAX_H, window.innerHeight - HEADER_H - 8),
-      }));
-      setPos((p) => ({ ...p, left: 20, top: Math.max(60, window.innerHeight - s.height - 90) }));
+      if (isMobile) {
+        setSize({ width: window.innerWidth, height: Math.min(MAX_H, window.innerHeight - 50) });
+        setPos({ left: 0, top: 50 });
+      } else {
+        const newW = Math.min(MAX_W, window.innerWidth - 40);
+        const newH = Math.min(MAX_H, window.innerHeight - HEADER_H - 8);
+        setSize((s) => ({ ...s, width: newW, height: newH }));
+        setPos((p) => ({ ...p, left: 20, top: Math.max(60, window.innerHeight - newH - 90) }));
+      }
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [fullWidth]);
+  }, [fullWidth, isMobile]);
   const prevCount = useRef(0);
   useEffect(() => {
     if (layerCount > prevCount.current) {
@@ -158,15 +169,22 @@ const MediaStage: React.FC = () => {
         setMinimized(false);
       }
 
-      // if more than one piece of media is present, expand the stage
+      // On mobile: expand for any media arrival; on desktop: expand when > 1 item
       const mediaCount = imageLayers.length + videoLayers.length + audioLayers.length;
-      if (mediaCount > 1 && !fullWidth) {
+      if ((isMobile ? mediaCount >= 1 : mediaCount > 1) && !fullWidth) {
         prevSize.current = size;
-        setSize({
-          width: Math.min(MAX_W, window.innerWidth - 40),
-          height: Math.min(MAX_H, window.innerHeight - HEADER_H - 8),
-        });
-        setPos({ left: 20, top: Math.max(60, window.innerHeight - size.height - 90) });
+        if (isMobile) {
+          // On mobile: full width, positioned below the app header (~50px).
+          // Subtract only the app header offset so the stage doesn't overflow.
+          const mobileH = Math.min(MAX_H, window.innerHeight - 50);
+          setSize({ width: window.innerWidth, height: mobileH });
+          setPos({ left: 0, top: 50 });
+        } else {
+          const newW = Math.min(MAX_W, window.innerWidth - 40);
+          const newH = Math.min(MAX_H, window.innerHeight - HEADER_H - 8);
+          setSize({ width: newW, height: newH });
+          setPos({ left: 20, top: Math.max(60, window.innerHeight - newH - 90) });
+        }
         setFullWidth(true);
       }
     }
@@ -177,6 +195,7 @@ const MediaStage: React.FC = () => {
     videoLayers.length,
     audioLayers.length,
     fullWidth,
+    isMobile,
     size,
   ]);
   
@@ -239,8 +258,6 @@ const MediaStage: React.FC = () => {
 
   if (!hasContent || dismissed) return null;
 
-
-
   return (
     <div
       role="region"
@@ -249,33 +266,34 @@ const MediaStage: React.FC = () => {
         position: 'fixed',
         left: pos.left,
         top: pos.top,
-        width: size.width,
+        width: isMobile ? '100vw' : size.width,
         zIndex: 300,
-        borderRadius: 12,
+        borderRadius: isMobile ? 0 : 12,
         overflow: 'hidden',
         background: 'rgba(6, 6, 12, 0.88)',
         backdropFilter: 'blur(28px)',
         WebkitBackdropFilter: 'blur(28px)',
-        border: '1px solid rgba(255,255,255,0.09)',
-        boxShadow: '0 12px 48px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.04)',
+        border: isMobile ? 'none' : '1px solid rgba(255,255,255,0.09)',
+        borderBottom: '1px solid rgba(255,255,255,0.09)',
+        boxShadow: isMobile ? '0 4px 24px rgba(0,0,0,0.6)' : '0 12px 48px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.04)',
       }}
     >
-      {/* ── Header / drag handle ──────────────────────────────────────────── */}
+      {/* ── Header / drag handle (drag disabled on mobile) ──────────────── */}
       <div
-        onMouseDown={onDragStart}
+        onMouseDown={isMobile ? undefined : onDragStart}
         style={{
           height: HEADER_H,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
           padding: '0 10px',
-          cursor: 'grab',
+          cursor: isMobile ? 'default' : 'grab',
           background: 'rgba(255,255,255,0.025)',
           borderBottom: minimized ? 'none' : '1px solid rgba(255,255,255,0.06)',
           userSelect: 'none',
         }}
       >
-        <DragDots />
+        {!isMobile && <DragDots />}
         <span
           style={{
             fontSize: 10,
@@ -533,8 +551,8 @@ const MediaStage: React.FC = () => {
             </div>
           )}
 
-          {/* resize handle */}
-          <div
+          {/* resize handle — desktop only */}
+          {!isMobile && <div
             onMouseDown={(e) => {
               e.preventDefault();
               const startX = e.clientX;
@@ -565,7 +583,7 @@ const MediaStage: React.FC = () => {
               cursor: 'nwse-resize',
               zIndex: 6,
             }}
-          />
+          />}
           {/* Layer count badge (bottom-right corner) */}
           {(imageLayers.length > 1 || videoLayers.length > 1 || audioLayers.length > 1) && (
             <div

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
+import { useViewport } from '@/utils/useViewport';
 
 interface Props {
   msg: ConversationMessage;
@@ -124,6 +125,7 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   const hasImages = segments.some((s) => s.kind === 'image');
   const pushImage = useAppStore((s) => s.pushImage);
   const pushedRef = useRef<Record<string, boolean>>({});
+  const { isMobile } = useViewport();
 
   if (!hasImages) {
     return (
@@ -138,16 +140,24 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
       {segments.map((seg, i) => {
         if (seg.kind === 'image') {
           const src = seg.value;
-          // If the image is a locally persisted media image, do NOT render
-          // it inline. Instead, push it into the MediaStage store so it is
-          // shown in the media player only. Recognize local media by the
-          // `/media/images/` path which is used by backend.
-          if (src.includes('/media/images/')) {
+          // On mobile OR for locally persisted media images: push to the
+          // MediaStage display instead of rendering inline in the chat bubble.
+          if (isMobile || src.includes('/media/images/')) {
             if (!pushedRef.current[src]) {
               try {
                 pushImage && pushImage(src);
                 pushedRef.current[src] = true;
               } catch (e) {}
+            }
+            // On mobile, images are shown in the dedicated media display — no
+            // inline button needed.  On desktop with local paths, keep the
+            // "Open in media viewer" affordance.
+            if (isMobile) {
+              return (
+                <span key={i} style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'inline-block', margin: '4px 0' }}>
+                  📺 Image displayed in media viewer
+                </span>
+              );
             }
             return (
               <div key={i} style={{ margin: '8px 0' }}>
