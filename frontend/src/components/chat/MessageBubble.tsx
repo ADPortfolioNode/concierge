@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
-import MediaRenderer from '@/components/media/MediaRenderer';
 
 interface Props {
   msg: ConversationMessage;
@@ -268,6 +267,23 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
   const isSystem = msg.role === 'system';
   const streamingId = useAppStore((s) => s.streamingId);
   const isStreaming = streamingId === msg.id;
+  const pushImage = useAppStore((s) => s.pushImage);
+  const pushVideo = useAppStore((s) => s.pushVideo);
+  const pushAudio = useAppStore((s) => s.pushAudio);
+
+  // Route structured media attachments to the MediaStage instead of
+  // rendering them inline. This keeps text dialogue exclusive to the chat
+  // window while images, video, and audio are shown in the media display.
+  const pushedMediaRef = useRef(false);
+  useEffect(() => {
+    if (pushedMediaRef.current) return;
+    const m = msg.media;
+    if (!m || m.type === 'none' || m.type === 'text' || !m.url) return;
+    pushedMediaRef.current = true;
+    if (m.type === 'image') pushImage(m.url);
+    else if (m.type === 'video') pushVideo(m.url);
+    else if (m.type === 'audio') pushAudio(m.url);
+  }, [msg.media, pushImage, pushVideo, pushAudio]);
 
   const containerStyle: React.CSSProperties = {
     display: 'flex',
@@ -316,11 +332,30 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
             {msg.meta.llm.error && ` (${msg.meta.llm.error})`}
           </div>
         )}
-        {/* Render attached media (image/video/audio) */}
+        {/* Media attachments (image/video/audio) are routed to the media
+            display above. Show a small indicator so the user knows media
+            is available. Text-type media is rendered inline. */}
         {msg.media && msg.media.type !== 'none' && msg.media.url && (
-          <div style={{ marginTop: 8 }}>
-            <MediaRenderer media={{ type: msg.media.type, url: msg.media.url }} />
-          </div>
+          msg.media.type === 'text' ? (
+            <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
+              {msg.media.overlay_text}
+            </div>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              <span
+                aria-label={
+                  msg.media.type === 'image'
+                    ? 'Image sent to media display'
+                    : msg.media.type === 'video'
+                    ? 'Video sent to media display'
+                    : 'Audio sent to media display'
+                }
+                style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontStyle: 'italic' }}
+              >
+                {msg.media.type === 'image' ? '🖼' : msg.media.type === 'video' ? '🎬' : '🔊'} Media sent to display
+              </span>
+            </div>
+          )
         )}
         {!isSystem && !isStreaming && <MetaPanel meta={msg.meta} />}
         {msg.timestamp && !isStreaming && (
