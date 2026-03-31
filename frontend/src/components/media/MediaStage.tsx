@@ -245,6 +245,7 @@ const MediaStage: React.FC = () => {
     <div
       role="region"
       aria-label="Media output stage"
+      className="media-stage-float"
       style={{
         position: 'fixed',
         left: pos.left,

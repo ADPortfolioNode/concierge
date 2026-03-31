@@ -55,7 +55,7 @@ async def upload_file(
     if not is_allowed(filename):
         raise HTTPException(
             status_code=415,
-            detail=f"File type not supported. Allowed: txt,pdf,docx,csv,json,png,jpg,jpeg,mp3,wav,mp4",
+            detail="File type not supported. Allowed: txt,pdf,docx,csv,json,png,jpg,jpeg,mp3,wav,mp4",
         )
 
     # Read with size limit  
@@ -66,7 +66,7 @@ async def upload_file(
     if total > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=413,
-            detail=f"File exceeds maximum allowed size of 50 MB.",
+            detail="File exceeds maximum allowed size of 50 MB.",
         )
 
     content = header + rest

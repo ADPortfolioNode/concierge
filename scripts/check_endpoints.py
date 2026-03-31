@@ -1,10 +1,26 @@
-import urllib.request, urllib.error, os, sys
+import os
+import sys
+import urllib.error
+import urllib.request
 
-# allow overriding base URL via CLI arg or env BASE_URL
+# allow overriding base URL via CLI arg (positional or --base-url=<url> / --base-url <url>)
+# or env BASE_URL.
 base = None
-if len(sys.argv) > 1:
-    base = sys.argv[1]
-else:
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    arg = args[i]
+    if arg.startswith('--base-url='):
+        base = arg.split('=', 1)[1]
+    elif arg == '--base-url' and i + 1 < len(args):
+        base = args[i + 1]
+        i += 1
+    elif not arg.startswith('--'):
+        # positional argument — backward-compatible usage
+        base = arg
+    i += 1
+
+if not base:
     base = os.getenv('BASE_URL', 'http://localhost:8001')
 
 urls=[f'{base}/api/v1/concierge/timeline/graph', f'{base}/api/v1/concierge/media']

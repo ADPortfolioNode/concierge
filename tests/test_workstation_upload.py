@@ -152,8 +152,7 @@ def test_upload_endpoint_txt():
         from fastapi.testclient import TestClient
         from app import app
 
-        with tempfile.TemporaryDirectory() as _:
-            client = TestClient(app, raise_server_exceptions=True)
+        with TestClient(app, raise_server_exceptions=True) as client:
             content = b"Hello from test upload!"
             resp = client.post(
                 "/api/v1/workstation/upload",
@@ -176,11 +175,11 @@ def test_upload_endpoint_csv():
         from app import app
 
         csv_data = b"col1,col2\nA,1\nB,2\n"
-        client = TestClient(app, raise_server_exceptions=True)
-        resp = client.post(
-            "/api/v1/workstation/upload",
-            files={"file": ("data.csv", csv_data, "text/csv")},
-        )
+        with TestClient(app, raise_server_exceptions=True) as client:
+            resp = client.post(
+                "/api/v1/workstation/upload",
+                files={"file": ("data.csv", csv_data, "text/csv")},
+            )
         assert resp.status_code == 200, f"status {resp.status_code}"
         body = resp.json()
         data = body.get("data", {})
@@ -195,11 +194,11 @@ def test_upload_endpoint_blocked_extension():
         from fastapi.testclient import TestClient
         from app import app
 
-        client = TestClient(app, raise_server_exceptions=False)
-        resp = client.post(
-            "/api/v1/workstation/upload",
-            files={"file": ("evil.exe", b"\x4d\x5a", "application/octet-stream")},
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            resp = client.post(
+                "/api/v1/workstation/upload",
+                files={"file": ("evil.exe", b"\x4d\x5a", "application/octet-stream")},
+            )
         assert resp.status_code == 400, f"expected 400, got {resp.status_code}"
         ok("upload_endpoint_blocked_extension")
     except ImportError:

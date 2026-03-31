@@ -92,6 +92,7 @@ def extract_text(path: Path, mime: str) -> Tuple[str, Dict[str, Any]]:
 
     Returns ``(extracted_text, metadata_dict)``.
     """
+    path = Path(path)
     size = path.stat().st_size
     meta: Dict[str, Any] = {"size": size, "mime": mime}
 

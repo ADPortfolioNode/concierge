@@ -48,7 +48,7 @@ from pathlib import Path
 import httpx
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Defer heavy/optional imports to runtime to keep module import small for
 # serverless builds. Populate these in the lifespan startup.
@@ -384,11 +384,12 @@ class ConciergeMessagePayload(BaseModel):
 
 
 def _api_response(data: any, status: str = 'success'):
-    from datetime import datetime
+    from datetime import datetime, timezone
+    _now = datetime.now(timezone.utc)
     return {
         'status': status,
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
-        'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+        'timestamp': _now.isoformat().replace('+00:00', 'Z'),
+        'request_id': str(int(_now.timestamp() * 1000)),
         'data': data,
         'meta': {
             'confidence': None,
@@ -538,7 +539,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
                         'filename': fname,
                         'prompt': None,
                         'mime_type': resp.headers.get('content-type', ''),
-                        'created_at': datetime.utcnow().isoformat() + 'Z',
+                        'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
                         'size': len(img_bytes),
                         'source': 'remote',
                         'remote_url': url,
