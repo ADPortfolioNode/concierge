@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
+import TimelineHero from '@/components/TimelineHero';
 
 // ── use-case outcome definitions ─────────────────────────────────────────
 const USE_CASES = [
@@ -174,21 +175,24 @@ const HomePage: React.FC = () => (
       color: '#e2e8f0',
     }}
   >
-    {/* hero */}
+    {/* merged hero (timeline hero used as homepage hero) */}
     <div style={{ marginBottom: 40 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
-          AI Ops Concierge
-        </span>
+      <TimelineHero />
+      <div style={{ marginTop: 24, padding: '24px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
+            AI Ops Concierge
+          </span>
+        </div>
+        <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+          What do you want to{' '}
+          <span style={{ color: '#7c6af7' }}>achieve today?</span>
+        </h1>
+        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 560, lineHeight: 1.7 }}>
+          Your AI operations concierge — type anything in the chat panel, or choose a
+          use case below to get started.
+        </p>
       </div>
-      <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-        What do you want to{' '}
-        <span style={{ color: '#7c6af7' }}>achieve today?</span>
-      </h1>
-      <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 560, lineHeight: 1.7 }}>
-        Your AI operations concierge — type anything in the chat panel, or choose a
-        use case below to get started.
-      </p>
     </div>
 
     {/* quick-start chips */}
