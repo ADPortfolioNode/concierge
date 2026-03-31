@@ -35,9 +35,6 @@ export function makeApiUrl(path: string) {
   if (!path) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
   if (!ACTIVE_API_BASE) {
-    // If no build-time API base was provided, prefer the current page origin
-    // when running in a browser so the app automatically targets the
-    // server that served the frontend (works for same-origin deploys).
     if (typeof window !== 'undefined' && window.location && window.location.origin) {
       return `${window.location.origin}${p}`;
     }
@@ -46,4 +43,21 @@ export function makeApiUrl(path: string) {
   return `${ACTIVE_API_BASE}${p}`;
 }
 
-export default { ACTIVE_API_BASE, makeApiUrl };
+// Asset base URL (logo, stylesheets, static media)
+const VITE_ASSET_BASE = (env.VITE_ASSET_BASE || '').replace(/\/$/, '');
+const NORMALIZED_VITE_ASSET_BASE = isPlaceholder(VITE_ASSET_BASE) ? '' : VITE_ASSET_BASE;
+export const ACTIVE_ASSET_BASE: string = NORMALIZED_VITE_ASSET_BASE || '';
+
+export function makeAssetUrl(path: string) {
+  if (!path) return path;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (!ACTIVE_ASSET_BASE) {
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      return `${window.location.origin}${p}`;
+    }
+    return p;
+  }
+  return `${ACTIVE_ASSET_BASE}${p}`;
+}
+
+export default { ACTIVE_API_BASE, ACTIVE_ASSET_BASE, makeApiUrl, makeAssetUrl };
