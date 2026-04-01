@@ -678,6 +678,9 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     except Exception:
         logger.exception('Error scanning result for images')
 
+    # persist and rewrite content must be reflected in the response payload
+    data['content'] = content_val
+
     # append entries to conversation state (used by /conversation endpoint)
     app.state.conversation.append(user_entry)
     app.state.conversation.append(data)

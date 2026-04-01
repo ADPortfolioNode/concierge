@@ -33,7 +33,7 @@ def test_post_message_persists_remote_image():
     root = Path(__file__).resolve().parent.parent
     from urllib.parse import urlparse
     for p in parts:
-        p = p.strip().rstrip('.,')
+        p = p.strip().rstrip('.,:').strip("'\"")
         # parse URL and get the basename
         parsed = urlparse(p)
         name = Path(parsed.path).name
