@@ -55,7 +55,7 @@ main {
 .app-header a {
   color: rgba(255,255,255,0.5);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 1em;
   font-weight: 500;
   padding: 3px 0;
   border-bottom: 2px solid transparent;

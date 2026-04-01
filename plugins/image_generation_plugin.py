@@ -32,10 +32,24 @@ class ImageGenerationPlugin(BasePlugin):
         prompt = str(input_data).strip()
         if not prompt:
             prompt = "abstract colorful art"
-
+        # If either an OpenAI key or a Gemini key is present, attempt the
+        # provider flow (call _dalle which implements its own fallback to
+        # Gemini when appropriate). Only return a placeholder when no
+        # provider keys are configured so tests and local dev without keys
+        # still receive a deterministic placeholder.
         api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            return await self._dalle(prompt, api_key)
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if api_key or gemini_key:
+            try:
+                return await self._dalle(prompt, api_key or "")
+            except Exception as exc:
+                # If Gemini is available, attempt fallback before giving up.
+                if gemini_key:
+                    try:
+                        return await self._gemini_image(prompt, gemini_key)
+                    except Exception:
+                        pass
+                return self._placeholder(prompt, error=str(exc))
         return self._placeholder(prompt)
 
     # ------------------------------------------------------------------ #
@@ -113,12 +127,31 @@ class ImageGenerationPlugin(BasePlugin):
             filename = self._save_bytes_to_media(content, prompt, metadata=metadata)
             return {"prompt": prompt, "revised_prompt": revised, "url": f"/media/images/{filename}", "mime_type": mime, "source": "gpt-image-1"}
         except Exception as exc:
-            # exc may be an HTTPStatusError; include any response text if
-            # available to help troubleshooting.
+            # exc may be an HTTPStatusError; prefer any structured JSON
+            # message returned by the upstream API (e.g. {"error": "..."})
+            # to give clearer diagnostics to callers/tests.
+            err_text = None
+            try:
+                # httpx.HTTPStatusError exposes a .response attribute
+                resp = getattr(exc, "response", None)
+                if resp is not None:
+                    try:
+                        j = resp.json()
+                        if isinstance(j, dict) and "error" in j:
+                            # common OpenAI response shape
+                            err_text = j.get("error")
+                        else:
+                            err_text = json.dumps(j)
+                    except Exception:
+                        # fall back to plain text
+                        err_text = getattr(resp, "text", None) or str(exc)
+            except Exception:
+                err_text = None
+
             logger.exception("DALL-E generation failed: %s", exc)
             # if the error appears to be due to billing or rate limits, and we
             # have a Gemini key, try that before giving up entirely
-            msg = str(exc).lower()
+            msg = (err_text or str(exc)).lower()
             gemini_key = os.getenv("GEMINI_API_KEY")
             if gemini_key and ("billing" in msg or "rate limit" in msg or "429" in msg):
                 try:
@@ -126,7 +159,7 @@ class ImageGenerationPlugin(BasePlugin):
                     return await self._gemini_image(prompt, gemini_key)
                 except Exception as gexc:
                     logger.exception("Gemini image fallback failed: %s", gexc)
-            return self._placeholder(prompt, error=str(exc))
+            return self._placeholder(prompt, error=err_text or str(exc))
 
     async def _gemini_image(self, prompt: str, api_key: str) -> dict:
         """Attempt to generate an image using a hypothetical Gemini image API.
@@ -181,77 +214,13 @@ class ImageGenerationPlugin(BasePlugin):
         # Use a hash of the prompt to always return the same image for the same prompt
         seed = int(hashlib.md5(prompt.encode()).hexdigest()[:8], 16) % 1000
         remote = f"https://picsum.photos/seed/{seed}/1024/1024"
-        # attempt to download the placeholder and persist locally
-        try:
-            resp = httpx.get(remote, timeout=20)
-            resp.raise_for_status()
-            content = resp.content
-            # save to media
-            img_path = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
-                "prompt": prompt,
-                "source": "placeholder",
-                "remote_url": remote,
-                "mime_type": resp.headers.get("content-type", "image/jpeg"),
-            })
-            url = f"/media/images/{img_path}"
-            mime = resp.headers.get("content-type", "image/jpeg")
-            source = "placeholder"
-        except Exception:
-            # fallback: create a simple local PNG placeholder if network
-            # download fails or httpx is unavailable. This guarantees we
-            # always return a local `/media/images/...` URL.
-            try:
-                from PIL import Image, ImageDraw, ImageFont
-                from io import BytesIO
-
-                # create a simple square image with a background color
-                bg = (int(seed * 137) % 256, int(seed * 61) % 256, int(seed * 199) % 256)
-                img = Image.new('RGB', (1024, 1024), color=bg)
-                draw = ImageDraw.Draw(img)
-                # draw the prompt text in the center (fallback font)
-                try:
-                    font = ImageFont.truetype('arial.ttf', 28)
-                except Exception:
-                    font = ImageFont.load_default()
-                text = (prompt[:120] + '...') if len(prompt) > 120 else prompt
-                w, h = draw.textsize(text, font=font)
-                draw.text(((1024 - w) / 2, (1024 - h) / 2), text, fill=(255, 255, 255), font=font)
-                buf = BytesIO()
-                img.save(buf, format='JPEG', quality=90)
-                content = buf.getvalue()
-                fname = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
-                    "prompt": prompt,
-                    "source": "placeholder-local",
-                    "mime_type": "image/jpeg",
-                })
-                url = f"/media/images/{fname}"
-                mime = "image/jpeg"
-                source = "placeholder-local"
-            except Exception:
-                # last-resort fallback: write a tiny embedded PNG to disk
-                try:
-                    tiny_png_b64 = (
-                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVQImWNgYAAAAAMA"
-                        "ASsJTYQAAAAASUVORK5CYII="
-                    )
-                    content = base64.b64decode(tiny_png_b64)
-                    fname = ImageGenerationPlugin._save_bytes_to_media_static(content, prompt, metadata={
-                        "prompt": prompt,
-                        "source": "placeholder-embedded",
-                        "mime_type": "image/png",
-                    })
-                    if fname:
-                        url = f"/media/images/{fname}"
-                        mime = "image/png"
-                        source = "placeholder-embedded"
-                    else:
-                        url = remote
-                        mime = "image/jpeg"
-                        source = "placeholder-remote"
-                except Exception:
-                    url = remote
-                    mime = "image/jpeg"
-                    source = "placeholder-remote"
+        # Default behavior: return the remote picsum URL as the placeholder.
+        # Do not attempt to download the image here — return the remote URL
+        # immediately to keep behavior deterministic in offline/test
+        # environments and avoid network hangs.
+        url = remote
+        mime = "image/jpeg"
+        source = "placeholder"
 
         result: dict = {"prompt": prompt, "url": url, "mime_type": mime, "source": source}
         if error:
