@@ -304,16 +304,48 @@ try:
     except OSError as _err:
         import errno as _errno
         # On serverless platforms the package directory may be read-only.
-        # Fall back to a writable temporary directory (e.g. /tmp/media).
+        # Fall back to a writable directory from env or /tmp, then /var/task.
         if getattr(_err, 'errno', None) == _errno.EROFS or getattr(_err, 'errno', None) == 30:
-            tmp_media = Path(os.getenv('MEDIA_DIR', '/tmp/media'))
-            try:
-                tmp_media.mkdir(parents=True, exist_ok=True)
-                app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
-                media_path = tmp_media
-                logger.warning("Read-only filesystem; using fallback media dir: %s", tmp_media)
-            except Exception:
-                logger.exception("Failed to create or mount fallback media directory %s", tmp_media)
+            candidate_dirs = [
+                os.getenv('MEDIA_DIR', ''),
+                '/tmp/media',
+                str(Path.cwd() / 'media'),
+                '/var/task/media',
+            ]
+            mounted = False
+            for candidate in candidate_dirs:
+                if not candidate:
+                    continue
+                tmp_media = Path(candidate)
+                try:
+                    tmp_media.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    logger.exception("Could not create candidate media dir %s", tmp_media)
+                    continue
+                # quick writable check
+                test_file = tmp_media / ".write_test"
+                try:
+                    with test_file.open("w", encoding="utf-8") as f:
+                        f.write("ok")
+                    try:
+                        test_file.unlink()
+                    except Exception:
+                        pass
+                except Exception:
+                    logger.exception("Candidate media dir not writable: %s", tmp_media)
+                    continue
+
+                try:
+                    app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
+                    media_path = tmp_media
+                    logger.warning("Using fallback media dir: %s", tmp_media)
+                    mounted = True
+                    break
+                except Exception:
+                    logger.exception("Failed to mount fallback media directory %s", tmp_media)
+            if not mounted:
+                logger.error("Could not mount any fallback media directory")
+                raise
         else:
             raise
 except Exception:

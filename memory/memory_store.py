@@ -919,18 +919,48 @@ class MemoryStore:
         """
         data_dir = data_dir or os.getenv("DATA_DIR", os.path.join(os.getcwd(), "data"))
         if not os.path.isdir(data_dir):
-            # Serverless environments (e.g. Vercel) mount code under /var/task,
-            # which is typically read-only at runtime. Prefer writeable /tmp/data.
-            tmp_data_dir = os.getenv("DATA_DIR", "/tmp/data")
-            if os.path.isdir(tmp_data_dir):
-                data_dir = tmp_data_dir
-            else:
+            # Serverless environments may mount app code under /var/task (read-only)
+            # and provide /tmp for writable disk. Prefer explicit DATA_DIR, /tmp/data,
+            # and fallback to /var/task/data if writable for local-only setups.
+            # Prefer an explicit DATA_DIR, then a writable /tmp/data (serverless),
+            # then a repo-local ./data, and only use /var/task/data as a last-resort
+            # if it is actually writable. Perform a quick write check to avoid
+            # selecting a read-only path.
+            candidates = [
+                os.getenv("DATA_DIR", ""),
+                "/tmp/data",
+                str(Path(__file__).resolve().parent.parent / "data"),
+                "/var/task/data",
+            ]
+            selected = None
+            for candidate in candidates:
+                if not candidate:
+                    continue
                 try:
-                    os.makedirs(tmp_data_dir, exist_ok=True)
-                    data_dir = tmp_data_dir
+                    os.makedirs(candidate, exist_ok=True)
                 except Exception:
-                    logger.info("No available data directory; skipping migration from disk")
-                    return 0
+                    # can't create; try next candidate
+                    continue
+                # quick writable check
+                test_path = os.path.join(candidate, ".write_test")
+                try:
+                    with open(test_path, "w", encoding="utf-8") as f:
+                        f.write("ok")
+                    try:
+                        os.remove(test_path)
+                    except Exception:
+                        pass
+                    selected = candidate
+                    break
+                except Exception:
+                    # not writable, try next
+                    continue
+
+            if selected is None:
+                logger.info("No available data directory; skipping migration from disk")
+                return 0
+
+            data_dir = selected
 
         # check if DB already has data
         try:

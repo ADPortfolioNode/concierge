@@ -13,8 +13,42 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
-# Root for all uploaded files.  Override via UPLOAD_ROOT env var.
-_UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", "/tmp/concierge_uploads"))
+# Root for all uploaded files. Override via `UPLOAD_ROOT` env var.
+# Behavior (best-effort, zero-regression):
+# - If `UPLOAD_ROOT` is set, use it.
+# - Otherwise prefer a writable `/tmp/concierge_uploads` (serverless-friendly).
+# - If `/tmp` is not writable (e.g., some constrained build environments),
+#   fall back to a repo-local `media/uploads` directory for local development.
+def _default_upload_root() -> Path:
+    env_val = os.getenv("UPLOAD_ROOT")
+    if env_val:
+        return Path(env_val)
+
+    candidates = [Path("/tmp/concierge_uploads"), Path(__file__).resolve().parent.parent / "media" / "uploads"]
+    for cand in candidates:
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            # quick writable check: try creating and removing a small file
+            test_file = cand / ".write_test"
+            with test_file.open("w", encoding="utf-8") as f:
+                f.write("ok")
+            test_file.unlink()
+            return cand
+        except Exception:
+            # not writable or other error, try next candidate
+            continue
+
+    # Last-resort: use a relative uploads directory in the current working dir.
+    fallback = Path.cwd() / "uploads"
+    try:
+        fallback.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # If even this fails, raise an explicit error so callers can handle it.
+        raise RuntimeError("No writable upload root available; set UPLOAD_ROOT environment variable.")
+    return fallback
+
+
+_UPLOAD_ROOT = _default_upload_root()
 
 
 def _uploads_root() -> Path:
