@@ -14,6 +14,11 @@
   "env": {
     "VITE_API_URL": "<self.server>"
   },
+  "functions": {
+    "index.py": {
+      "runtime": "python3.11"
+    }
+  },
   "routes": [
     { "src": "^/api/_health$", "dest": "/index.py" },
     { "src": "^/health$", "dest": "/index.py" },
