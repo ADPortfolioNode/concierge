@@ -29,7 +29,8 @@ ARG BUILD_FRONTEND=0
 ARG VITE_API_URL=""
 FROM node:18-alpine AS frontend-build
 WORKDIR /build
-ENV NODE_ENV=production
+# For frontend build we need devDependencies (vite, TypeScript, etc.)
+ENV NODE_ENV=development
 # copy only frontend sources for better cache
 COPY frontend/package.json frontend/package-lock.json ./
 # Install deps based on package.json, then copy remaining frontend files
@@ -48,7 +49,7 @@ ARG INSTALL_FULL_REQUIREMENTS=0
 
 # Copy requirements
 COPY requirements.txt ./
-COPY requirements.full.txt ./ || true
+COPY requirements.full.txt ./
 
 # Upgrade pip and install requirements; prefer full if requested and present
 RUN pip install --upgrade pip
