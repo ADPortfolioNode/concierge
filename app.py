@@ -641,44 +641,9 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
                     continue
         return text
 
-    # rewrite content_val and raw metadata if they contain remote image URLs
-    try:
-        content_val = await _persist_and_rewrite_images(content_val, request)
-    except Exception:
-        logger.exception('Error persisting images found in assistant content')
-    try:
-        # if result is a dict/structured object, stringify nested response text
-        if isinstance(result, dict):
-            # deep scan for strings in result to rewrite URLs
-            def _rewrite_in_obj(obj):
-                if isinstance(obj, str):
-                    return asyncio.get_event_loop().run_until_complete(_persist_and_rewrite_images(obj))
-                if isinstance(obj, dict):
-                    return {k: _rewrite_in_obj(v) for k, v in obj.items()}
-                if isinstance(obj, list):
-                    return [_rewrite_in_obj(v) for v in obj]
-                return obj
-            try:
-                # run the rewrite for top-level known keys
-                if 'response' in result and isinstance(result['response'], str):
-                    result['response'] = await _persist_and_rewrite_images(result['response'], request)
-                if 'media' in result and isinstance(result['media'], list):
-                    new_media = []
-                    for m in result['media']:
-                        if isinstance(m, str):
-                            new_media.append(await _persist_and_rewrite_images(m, request))
-                        elif isinstance(m, dict):
-                            # rewrite url fields inside media dicts
-                            if 'url' in m and isinstance(m['url'], str):
-                                m['url'] = await _persist_and_rewrite_images(m['url'], request)
-                            new_media.append(m)
-                    result['media'] = new_media
-            except Exception:
-                logger.exception('Failed to rewrite nested URLs in result dict')
-    except Exception:
-        logger.exception('Error scanning result for images')
-
-    # persist and rewrite content must be reflected in the response payload
+    # Media output is retired from message content; any media should be consumed via /api/v1/concierge/media.
+    # We do not rewrite image URLs in the response content. The message content remains the same as LM output.
+    # Optionally, persistent media can still be updated using a dedicated media ingestion path if needed.
     data['content'] = content_val
 
     # append entries to conversation state (used by /conversation endpoint)
