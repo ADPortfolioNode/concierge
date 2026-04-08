@@ -1,7 +1,7 @@
 [flake8]
 max-line-length = 120
 
-# Exclude virtual environments, build artefacts, and vendored package
+# Exclude virtual environments, build artifacts, and vendored package
 # directories that are committed to the repository but should never be
 # linted (running flake8 on .venv causes a RecursionError in sympy).
 exclude =
@@ -19,8 +19,8 @@ exclude =
     build
 
 # Ignore widespread pre-existing style issues that are not related to
-# correctness.  Critical checks such as F821 (undefined name) and F811
-# (redefinition) are kept enabled so real bugs are still reported.
+# correctness.  The critical check F821 (undefined name) is kept enabled
+# so real unresolved-name bugs are still reported.
 extend-ignore =
     # Line length — handled by max-line-length above; some long strings
     # are intentional documentation comments.
