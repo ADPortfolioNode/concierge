@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import FileUpload, { type FileContext } from './FileUpload';
 import MediaPreview from './MediaPreview';
-
 const MAX_LINES = 6;
 
 const MessageInput: React.FC = () => {
@@ -15,6 +14,7 @@ const MessageInput: React.FC = () => {
   const sendMessage = useAppStore((s) => s.sendMessage);
   const draftMessage = useAppStore((s) => s.draftMessage);
   const setDraft = useAppStore((s) => s.setDraft);
+  const clearMemory = useAppStore((s) => s.clearMemory);
 
   // expose store helpers so tests can manipulate conversation state.
   useEffect(() => {
@@ -175,13 +175,43 @@ const MessageInput: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
         {loading && (
           <div style={{ fontSize: 12, opacity: 0.8, marginRight: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#7c6af7', animation: 'pulse 1s ease-in-out infinite' }} />
             Streaming…
           </div>
         )}
+        {/* Clear memory — wipes browser-stored conversation history (IndexedDB/localStorage).
+            Hybrid memory pattern: browser side complements the server-side ChromaDB store. */}
+        <button
+          onClick={() => clearMemory()}
+          disabled={loading}
+          title="Clear conversation memory (browser storage)"
+          style={{
+            background: 'none',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 5,
+            color: 'rgba(255,255,255,0.3)',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: 11,
+            padding: '3px 8px',
+            lineHeight: 1.4,
+            transition: 'color 0.15s, border-color 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.color = '#e06c75';
+            el.style.borderColor = 'rgba(224,108,117,0.4)';
+          }}
+          onMouseLeave={(e) => {
+            const el = e.currentTarget as HTMLButtonElement;
+            el.style.color = 'rgba(255,255,255,0.3)';
+            el.style.borderColor = 'rgba(255,255,255,0.08)';
+          }}
+        >
+          🗑 Clear memory
+        </button>
       </div>
     </div>
   );
