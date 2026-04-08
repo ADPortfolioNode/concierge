@@ -175,23 +175,68 @@ const HomePage: React.FC = () => (
       color: '#e2e8f0',
     }}
   >
-    {/* merged hero (timeline hero used as homepage hero) */}
     <div style={{ marginBottom: 40 }}>
-      <TimelineHero />
-      <div style={{ marginTop: 24, padding: '24px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
-            AI Ops Concierge
+      <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: 24, alignItems: 'stretch', borderRadius: 28, overflow: 'hidden', background: 'radial-gradient(circle at top left, rgba(124,106,247,0.18), transparent 35%), linear-gradient(180deg, rgba(15,23,42,0.96), rgba(15,23,42,0.88))', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 40px 120px rgba(0,0,0,0.35)' }}>
+        <div style={{ padding: '44px 40px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 24 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 999, background: 'rgba(124,106,247,0.14)', color: '#9d7efb', fontSize: 12, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', border: '1px solid rgba(124,106,247,0.24)' }}>
+            AI Concierge
           </span>
+          <h1 style={{ fontSize: 46, fontWeight: 900, lineHeight: 1.05, margin: 0, color: '#fff', letterSpacing: '-0.04em' }}>
+            Next-gen operations in a photorealistic AI workspace.
+          </h1>
+          <p style={{ fontSize: 17, color: 'rgba(255,255,255,0.72)', maxWidth: 560, lineHeight: 1.85 }}>
+            Concierge helps you plan, execute, and visualise work with the confidence of
+            AI-driven strategy, all wrapped in a modern, sleek interface.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+            <Link
+              to="/tasks"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 170, padding: '14px 20px', borderRadius: 14, background: '#7c6af7', color: '#fff', fontWeight: 700, textDecoration: 'none', boxShadow: '0 20px 40px rgba(124,106,247,0.18)' }}
+            >
+              Start a task
+            </Link>
+            <Link
+              to="/workspace"
+              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 170, padding: '14px 20px', borderRadius: 14, background: 'rgba(255,255,255,0.06)', color: '#f8fbff', fontWeight: 700, textDecoration: 'none', border: '1px solid rgba(255,255,255,0.12)' }}
+            >
+              Explore workspace
+            </Link>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 16 }}>
+            {['AI planning', 'Document uploads', 'Task orchestration', 'Realtime strategy'].map((label) => (
+              <div key={label} style={{ padding: '14px 16px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', color: '#d8d8ff', fontSize: 13, border: '1px solid rgba(255,255,255,0.06)' }}>
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
-        <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-          What do you want to{' '}
-          <span style={{ color: '#7c6af7' }}>achieve today?</span>
-        </h1>
-        <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 560, lineHeight: 1.7 }}>
-          Your AI operations concierge — type anything in the chat panel, or choose a
-          use case below to get started.
-        </p>
+        <div style={{ position: 'relative', minHeight: 460, overflow: 'hidden', background: '#0f172a' }}>
+          <img
+            src="https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=1200&q=80"
+            alt="Photorealistic workspace visualization"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(0.78)' }}
+            loading="lazy"
+          />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.12), rgba(15,23,42,0.82))' }} />
+          <div style={{ position: 'absolute', left: 24, top: 24, right: 24, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 180px', padding: '14px 16px', borderRadius: 18, background: 'rgba(15,23,42,0.84)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: 13 }}>
+              Photo-real imagery meets serious AI workflows.
+            </div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '12px 16px', borderRadius: 18, background: 'rgba(124,106,247,0.95)', color: '#fff', fontSize: 12, fontWeight: 700 }}>
+              Visual-first design
+            </div>
+          </div>
+          <div style={{ position: 'absolute', left: 24, right: 24, bottom: 24, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+            {['Live chat', 'Context-aware', 'Rapid insights'].map((label) => (
+              <div key={label} style={{ padding: '12px 14px', borderRadius: 16, background: 'rgba(255,255,255,0.05)', color: '#e2e8f0', fontSize: 12, border: '1px solid rgba(255,255,255,0.08)' }}>
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 30 }}>
+        <TimelineHero />
       </div>
     </div>
 

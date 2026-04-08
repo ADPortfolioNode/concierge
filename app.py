@@ -89,7 +89,8 @@ except Exception:
     VERSION = "unknown"
 
 # SERVER_URL is used for ngrok/Vercel staging checks and should be overridable
-# in deployment environments; default to local backend port for CLI/dev.
+# in deployment environments. Use this value anywhere the app needs its own
+# public backend address for links, webhooks, or self-referential endpoints.
 SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8001")
 
 logging.basicConfig(level=logging.INFO)
@@ -131,6 +132,12 @@ async def _lifespan(application: FastAPI):
     cfg_mod = importlib.import_module('config.settings')
     get_settings = getattr(cfg_mod, 'get_settings')
     settings = get_settings()
+
+    chroma_path = os.getenv('CHROMA_PATH', '/app/chroma')
+    try:
+        Path(chroma_path).mkdir(parents=True, exist_ok=True)
+    except Exception:
+        logger.exception('Failed to create CHROMA_PATH directory %s', chroma_path)
 
     concurrency_mod = importlib.import_module('core.concurrency')
     AsyncConcurrencyManager = getattr(concurrency_mod, 'AsyncConcurrencyManager')
@@ -382,12 +389,12 @@ except Exception:
 # separated list.
 from fastapi.middleware.cors import CORSMiddleware
 
-allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
+allow_origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*", "*"],
     allow_headers=["*"],
 )
 
@@ -439,6 +446,7 @@ class ConciergeMessagePayload(BaseModel):
     # `message` for the rest of the code.
     message: Optional[str] = None
     input: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -687,6 +695,21 @@ async def concierge_stream(payload: ConciergeMessagePayload):
 @app.get('/api/v1/concierge/conversation')
 async def concierge_conversation():
     return _api_response(list(app.state.conversation))
+
+
+@app.get('/memory/health')
+async def memory_health():
+    try:
+        mem = app.state.memory
+        if getattr(mem, '_collection', None) is not None and hasattr(mem._collection, 'count'):
+            chroma_count = mem._collection.count()
+        elif getattr(mem, '_client', None) is None:
+            chroma_count = len(getattr(mem, '_in_memory', []))
+        else:
+            chroma_count = None
+        return JSONResponse(content={'status': 'ok', 'chroma_count': chroma_count})
+    except Exception:
+        return JSONResponse(content={'status': 'error', 'chroma_count': None}, status_code=500)
 
 
 @app.get('/api/v1/concierge/media')

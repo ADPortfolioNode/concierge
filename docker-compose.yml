@@ -17,6 +17,7 @@ services:
       - "8001:8000"
     volumes:
       - .:/app
+      - chroma_data:/app/chroma
     depends_on:
       - chroma
       - qdrant
@@ -25,6 +26,9 @@ services:
       - VECTOR_DB=${VECTOR_DB:-chroma}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
+      - CHROMA_PATH=/app/chroma
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8001}
+      - SERVER_URL=${BACKEND_URL:-http://localhost:8001}
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - MEMORY_COMPRESS_THRESHOLD=999999
@@ -106,6 +110,7 @@ services:
       - qdrant_data:/qdrant/storage
 
 volumes:
+  chroma_data:
   qdrant_data:
   redis_data:
   frontend_node_modules:

@@ -11,8 +11,43 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
+
+
+def _choose_writable_data_dir() -> str:
+    """Choose a writable local directory for disk-backed memory/state.
+
+    Serverless platforms such as Vercel mount the app code under /var/task,
+    which is read-only. Prefer explicit DATA_DIR, then /tmp/data, then /tmp.
+    """
+    candidates = [
+        os.getenv("DATA_DIR"),
+        os.getenv("MEMORY_DIR"),
+        "/tmp/data",
+        "/tmp",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            Path(candidate).mkdir(parents=True, exist_ok=True)
+            test_path = Path(candidate) / ".write_test"
+            test_path.write_text("ok", encoding="utf-8")
+            test_path.unlink(missing_ok=True)
+            return str(candidate)
+        except Exception:
+            continue
+    # Fallback to current working directory only when writable.
+    try:
+        cwd = Path(os.getcwd())
+        test_path = cwd / ".write_test"
+        test_path.write_text("ok", encoding="utf-8")
+        test_path.unlink(missing_ok=True)
+        return str(cwd)
+    except Exception:
+        return os.getcwd()
 
 # local import to avoid hard dependency for environments that don't need LLM
 try:
@@ -209,10 +244,11 @@ class MemoryStore:
         # Load local backup file to support restart-safe validation when external
         # vector DB upserts fail. This provides a best-effort persistence fallback
         # for tests and development.
+        self._backup_dir = _choose_writable_data_dir()
+        self._backup_path = os.path.join(self._backup_dir, "memory_backup.jsonl")
         try:
-            backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
-            if os.path.exists(backup_path):
-                with open(backup_path, "r", encoding="utf-8") as fh:
+            if os.path.exists(self._backup_path):
+                with open(self._backup_path, "r", encoding="utf-8") as fh:
                     for line in fh:
                         try:
                             obj = __import__("json").loads(line)
@@ -237,7 +273,7 @@ class MemoryStore:
         # Ensure backup loader is available for explicit reloads (used by tests)
         def _load_backup() -> None:
             try:
-                path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+                path = self._backup_path
                 if not os.path.exists(path):
                     return
                 with open(path, "r", encoding="utf-8") as fh:
@@ -383,7 +419,7 @@ class MemoryStore:
             logger.exception("Failed to update intelligence graph")
         # Always append a local backup record to support restart-safe tests
         try:
-            backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+            backup_path = self._backup_path
             with open(backup_path, "a", encoding="utf-8") as fh:
                 # persist node structure rather than raw summary
                 backup_obj = {"id": rec_id, "node": node.__dict__}
@@ -397,7 +433,7 @@ class MemoryStore:
             logger.debug("MemoryStore (in-memory) stored %s", rec_id)
             # append to local backup for restart-safety
             try:
-                backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+                backup_path = self._backup_path
                 with open(backup_path, "a", encoding="utf-8") as fh:
                     fh.write(__import__("json").dumps({"id": rec_id, "summary": summary, "metadata": metadata}) + "\n")
             except Exception:
@@ -917,20 +953,17 @@ class MemoryStore:
 
         Returns number of ingested records.
         """
-        data_dir = data_dir or os.getenv("DATA_DIR", os.path.join(os.getcwd(), "data"))
+        data_dir = data_dir or os.getenv("DATA_DIR") or os.getenv("MEMORY_DIR") or os.path.join("/tmp", "data")
         if not os.path.isdir(data_dir):
-            # Serverless environments may mount app code under /var/task (read-only)
-            # and provide /tmp for writable disk. Prefer explicit DATA_DIR, /tmp/data,
-            # and fallback to /var/task/data if writable for local-only setups.
-            # Prefer an explicit DATA_DIR, then a writable /tmp/data (serverless),
-            # then a repo-local ./data, and only use /var/task/data as a last-resort
-            # if it is actually writable. Perform a quick write check to avoid
-            # selecting a read-only path.
+            # Serverless environments may mount app code under /var/task (read-only).
+            # Prefer explicit DATA_DIR, then /tmp/data, then /tmp, then local ./data
+            # if it is safe to write. Do not default to /var/task/data on Vercel.
             candidates = [
-                os.getenv("DATA_DIR", ""),
+                os.getenv("DATA_DIR"),
+                os.getenv("MEMORY_DIR"),
                 "/tmp/data",
+                "/tmp",
                 str(Path(__file__).resolve().parent.parent / "data"),
-                "/var/task/data",
             ]
             selected = None
             for candidate in candidates:

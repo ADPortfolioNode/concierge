@@ -21,7 +21,16 @@ Prereqs:
   restart the stack after changing them. A missing key causes the service to
   fall back to rule-based responses and placeholder images. Image generation uses OpenAI's
   image API (`gpt-image-1` model); earlier repository versions referred to the
-  older "DALL-E 3" name which is now deprecated.  
+  older "DALL-E 3" name which is now deprecated.
+  • For deployments behind a tunnel or proxy, set `BACKEND_URL` to your public
+    backend address and forward it into the container as `SERVER_URL`.
+    Example in `.env`:
+
+      BACKEND_URL=https://your-ngrok-url.ngrok-free.app
+      SERVER_URL=${BACKEND_URL}
+
+    Or add `SERVER_URL=${BACKEND_URL}` to your `docker-compose.yml` service
+    environment so the app can resolve its own external URL.
   • If the OpenAI image service fails due to rate limits or billing, and you
     have a `GEMINI_API_KEY` defined, the backend will automatically attempt a
     Gemini image request before falling back to a static placeholder.
@@ -233,6 +242,23 @@ Once ngrok is running, hit the local backend health check at
 
 This setup is intended for free tunneling during Vercel frontend development
 and avoids hardcoding any URL in the source.
+
+## Memory Architecture — ChromaDB on workstation volume + browser IndexedDB for conversation history
+
+Concierge uses a hybrid memory pattern for local Docker development and serverless
+frontend access:
+
+- Persistent vector memory is stored in Chroma on a named Docker volume via
+  `CHROMA_PATH=/app/chroma`.
+- The backend avoids writing to `/var/task` when deployed serverlessly and falls
+  back to writable `/tmp` storage for transient backup state.
+- Browser session history should be stored locally in IndexedDB or localStorage,
+  then sent with each user interaction so the backend can reconstruct the chat
+  thread without relying on server-side filesystem persistence.
+
+This hybrid model is industry-standard for local Docker RAG + Vercel frontend
+workflows: durable backend vectors on workstation storage, plus browser-side
+conversation history for a responsive UI.
 
 ## Build & Docker
 
