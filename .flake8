@@ -1,0 +1,9 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .venv/,
+    */.venv/,
+    .vercel_tmp_env/,
+    build_packages/,
+    uv/,
+    .venv/Lib/site-packages/sympy/polys/numberfields/resolvent_lookup.py
