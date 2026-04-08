@@ -123,6 +123,19 @@ main {
   }
 }
 
+/* Focused chat state: temporarily force two-column layout on narrow screens */
+.app-container.chat-focused {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+@media (max-width: 767px) {
+  .app-container.chat-focused {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
+
 /* typography */
 h1, h2, h3, h4, h5, h6 {
   margin: 0 0 8px 0;
@@ -133,4 +146,29 @@ h1, h2, h3, h4, h5, h6 {
   display: inline-block;
   height: 26px;
   width: auto;
+}
+
+/* Mobile media display — on small screens, media elements (images, video,
+   audio) expand to full container width and stack vertically for legibility. */
+@media (max-width: 767px) {
+  .media-renderer-image {
+    max-width: 100% !important;
+    max-height: 60vw !important;
+    width: 100%;
+    height: auto;
+    display: block;
+    resize: none;
+  }
+
+  .media-renderer-video {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 56vw;
+    display: block;
+  }
+
+  .media-renderer-audio {
+    width: 100% !important;
+    display: block;
+  }
 }

@@ -11,6 +11,7 @@ import json
 import os
 import time
 import traceback
+import uuid
 from typing import Any, Optional, Deque
 from pathlib import Path
 import collections
@@ -41,7 +42,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, Response, FileResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -241,27 +242,9 @@ async def _lifespan(application: FastAPI):
         logger.exception('Task worker not available or failed to start (continuing)')
 
     # Register routers from workstation/projects/tasks if available
-    try:
-        ws_mod = importlib.import_module('workstation')
-        _upload_router = getattr(ws_mod, 'upload_router', None)
-        if _upload_router is not None:
-            application.include_router(_upload_router)
-    except Exception:
-        pass
-    try:
-        prj_mod = importlib.import_module('projects')
-        _project_router = getattr(prj_mod, 'project_router', None)
-        if _project_router is not None:
-            application.include_router(_project_router)
-    except Exception:
-        pass
-    try:
-        tmod = importlib.import_module('tasks')
-        _task_router = getattr(tmod, 'task_router', None)
-        if _task_router is not None:
-            application.include_router(_task_router)
-    except Exception:
-        pass
+    _include_router_from_module(application, 'workstation', 'upload_router')
+    _include_router_from_module(application, 'projects', 'project_router')
+    _include_router_from_module(application, 'tasks', 'task_router')
 
     # Optional distributed job router
     try:
@@ -277,8 +260,40 @@ async def _lifespan(application: FastAPI):
     yield
     # ── shutdown (nothing to clean up yet) ───────────────────────────────
 
+# create the FastAPI app with the lifespan context manager
+app = FastAPI(lifespan=_lifespan, openapi_url="/openapi.json")
 
-app = FastAPI(lifespan=_lifespan)
+
+def _include_router_from_module(application, module_name, router_attr):
+    """Include optional routers by module/attribute and avoid duplicates."""
+    try:
+        import importlib
+
+        module = importlib.import_module(module_name)
+        router = getattr(module, router_attr, None)
+        if router is None:
+            return False
+
+        prefix = getattr(router, "prefix", None)
+        if prefix:
+            existing = [r.path for r in application.routes if hasattr(r, "path")]
+            if any(p.startswith(prefix) or prefix.startswith(p) for p in existing):
+                logger.info("Router already included: %s.%s", module_name, router_attr)
+                return True
+
+        application.include_router(router)
+        logger.info("Included router at import time: %s.%s", module_name, router_attr)
+        return True
+    except Exception:
+        logger.exception("Failed to include router %s.%s", module_name, router_attr)
+        return False
+
+
+# Even when lifespan callbacks are skipped in some hosting environments, make sure
+# key routers are registered from module import time so API paths remain available.
+_include_router_from_module(app, "workstation", "upload_router")
+_include_router_from_module(app, "projects", "project_router")
+_include_router_from_module(app, "tasks", "task_router")
 
 # Serve generated media (images/audio/video) from /media
 try:
@@ -295,6 +310,7 @@ try:
             try:
                 tmp_media.mkdir(parents=True, exist_ok=True)
                 app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
+                media_path = tmp_media
                 logger.warning("Read-only filesystem; using fallback media dir: %s", tmp_media)
             except Exception:
                 logger.exception("Failed to create or mount fallback media directory %s", tmp_media)
@@ -302,6 +318,24 @@ try:
             raise
 except Exception:
     logger.exception("Failed to mount media directory for static files")
+
+# Seed the logo into the media directory for reliable /media access.
+try:
+    candidate_paths = [
+        Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/output/static') / 'logo-optimized.svg',
+    ]
+    source_logo = next((p for p in candidate_paths if p.exists()), None)
+    if source_logo and media_path.exists() and media_path.is_dir():
+        target_logo = media_path / 'logo-optimized.svg'
+        if not target_logo.exists() or source_logo.stat().st_mtime > target_logo.stat().st_mtime:
+            import shutil
+            shutil.copy2(str(source_logo), str(target_logo))
+except Exception:
+    logger.exception('Failed to seed logo into media directory')
 
 # ----------------------------------------------------------------------
 # CORS setup
@@ -407,6 +441,13 @@ def _api_response(data: any, status: str = 'success'):
     }
 
 
+def _session_id_from_request(request: Request) -> str:
+	"""Get or create a lightweight per-user session id for media ownership tracking."""
+	cookie_id = request.cookies.get('session_id')
+	if cookie_id and isinstance(cookie_id, str) and cookie_id.strip():
+		return cookie_id
+	# generate stable random id for this session and set cookie in response path
+	return str(uuid.uuid4())
 def _ensure_timeline_available():
     """Raise HTTP 503 if the application's timeline component is not ready.
 
@@ -486,6 +527,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     async def _persist_and_rewrite_images(text: str, request: Request) -> str:
         if not text or not isinstance(text, str):
             return text
+        session_owner = _session_id_from_request(request)
         # simple heuristic: match http/https URLs that likely point to images
         url_re = re.compile(r"(https?://[^\s\)\"]+\.(?:png|jpe?g|gif|webp))", re.IGNORECASE)
         found = list(url_re.finditer(text))
@@ -537,9 +579,14 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
                     fname = f"img_{sha}_{ts}.{ext}"
                     fpath = media_dir / fname
                     fpath.write_bytes(img_bytes)
+                    try:
+                        fpath.chmod(0o755)
+                    except Exception:
+                        pass
                     # sidecar metadata
                     sidecar = {
                         'filename': fname,
+                        'owner': session_owner,
                         'prompt': None,
                         'mime_type': resp.headers.get('content-type', ''),
                         'created_at': datetime.utcnow().isoformat() + 'Z',
@@ -631,6 +678,31 @@ async def concierge_metrics():
         'summary': f"{metrics.total_requests} requests processed, {metrics.requests_queued} queued, {metrics.failovers} fallbacks to alternate LLM."
     }
     return _api_response(m)
+
+
+@app.get('/api/v1/env-check')
+async def api_env_check():
+    """Report runtime environment variable availability and media directory state."""
+    openai_present = bool(os.getenv('OPENAI_API_KEY'))
+    gemini_present = bool(os.getenv('GEMINI_API_KEY'))
+    media_dir = os.getenv('MEDIA_DIR', '/tmp/media')
+    media_dir_path = Path(media_dir)
+    media_dir_exists = media_dir_path.exists()
+    media_dir_writable = False
+    try:
+        media_dir_writable = media_dir_path.is_dir() and os.access(media_dir_path, os.W_OK)
+    except Exception:
+        media_dir_writable = False
+
+    payload = {
+        'OPENAI_API_KEY': openai_present,
+        'GEMINI_API_KEY': gemini_present,
+        'MEDIA_DIR': media_dir,
+        'MEDIA_DIR_EXISTS': media_dir_exists,
+        'MEDIA_DIR_WRITABLE': media_dir_writable,
+        'HEALTHCHECK': True,
+    }
+    return _api_response(payload)
 
 
 # timeline introspection endpoints
@@ -756,10 +828,50 @@ async def concierge_media_list(request: Request):
                     except Exception:
                         item['metadata'] = None
                     items.append(item)
-        return _api_response(items)
+        session_id = _session_id_from_request(request)
+        resp = JSONResponse(content=_api_response(items))
+        resp.set_cookie('session_id', session_id, httponly=True, samesite='Lax', max_age=60 * 60 * 24)
+        return resp
     except Exception as exc:
         logger.exception('Failed to list media files')
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post('/api/v1/concierge/media/cleanup')
+async def concierge_media_cleanup(request: Request):
+    """Delete media/images files owned by the current session."""
+    session_owner = _session_id_from_request(request)
+    media_images = Path(__file__).parent / 'media' / 'images'
+    removed = []
+    if media_images.exists():
+        for p in media_images.iterdir():
+            if not p.is_file() or p.suffix.lower() == '.json':
+                continue
+            meta_path = p.with_suffix(p.suffix + '.json')
+            if not meta_path.exists():
+                # fallback: adjacent .json sidecar
+                meta_path = p.with_suffix('.json')
+            if not meta_path.exists():
+                continue
+            try:
+                metadata = json.loads(meta_path.read_text())
+            except Exception:
+                metadata = {}
+            owner = metadata.get('owner')
+            if owner == session_owner:
+                try:
+                    p.unlink()
+                except Exception:
+                    pass
+                try:
+                    if meta_path.exists():
+                        meta_path.unlink()
+                except Exception:
+                    pass
+                removed.append(p.name)
+    resp = JSONResponse(content=_api_response({'removed': removed}))
+    resp.set_cookie('session_id', session_owner, httponly=True, samesite='Lax', max_age=60 * 60 * 24)
+    return resp
 
 
 # Register Phase 14-16 routers (only include if the router was loaded)
@@ -778,12 +890,36 @@ if _jobs_available and _job_router is not None:
 @app.get('/api/v1/plugins')
 async def get_plugins():
     """List all registered plugins and their metadata."""
+    if _plugin_reg is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'plugin registry unavailable'},
+            },
+        )
     return _api_response(_plugin_reg.list_plugins())
 
 
 @app.get('/api/v1/tools')
 async def get_tools():
     """List all registered tools and their metadata."""
+    if _list_tool_names is None or _get_tool is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'tool registry unavailable'},
+            },
+        )
     names = _list_tool_names()
     serialized = []
     for name in names:
@@ -799,10 +935,55 @@ async def get_tools():
 @app.get('/api/v1/integrations')
 async def get_integrations():
     """List all registered integrations and their metadata."""
+    if _intg_reg is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'integration registry unavailable'},
+            },
+        )
+
+    if not (_openai_set or _gemini_set):
+        return JSONResponse(
+            status_code=503,
+            content={
+                'status': 'error',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'request_id': str(int(datetime.utcnow().timestamp() * 1000)),
+                'data': None,
+                'meta': {'confidence': None, 'priority': None, 'media': None, 'llm': {'provider': None, 'error': None}},
+                'errors': {'message': 'No AI API key configured; set OPENAI_API_KEY or GEMINI_API_KEY.'},
+            },
+        )
+
     return _api_response(_intg_reg.list_integrations())
 
 
 # --- health endpoints ------------------------------------------------------
+@app.get('/api/_health')
+async def api_health():
+    return JSONResponse(content={"status": "ok"})
+
+@app.get('/logo-optimized.svg', include_in_schema=False)
+async def logo_optimized_svg():
+    candidates = [
+        Path(__file__).parent / 'media' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path(__file__).parent / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'dist' / 'logo-optimized.svg',
+        Path('/vercel/path0') / 'frontend' / 'public' / 'logo-optimized.svg',
+        Path('/vercel/output/static') / 'logo-optimized.svg',
+    ]
+    for path in candidates:
+        if path.exists():
+            return FileResponse(str(path), media_type='image/svg+xml')
+    raise HTTPException(status_code=404, detail='Logo not found')
+
 @app.get('/health')
 async def health():
     return JSONResponse(content={"status": "ok", "version": VERSION})

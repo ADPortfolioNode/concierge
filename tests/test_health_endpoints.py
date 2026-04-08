@@ -27,3 +27,16 @@ def test_health_logs_returns_lines():
     assert isinstance(body["lines"], list)
     for line in body["lines"]:
         assert isinstance(line, str)
+
+
+def test_env_check_reports_keys():
+    # this endpoint should be available in all environments and include key flags
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+    response = client.get('/api/v1/env-check')
+    assert response.status_code == 200
+    data = response.json().get('data')
+    assert data is not None
+    assert 'OPENAI_API_KEY' in data
+    assert 'GEMINI_API_KEY' in data
+    assert 'MEDIA_DIR' in data

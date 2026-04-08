@@ -1,13 +1,30 @@
 {
   "version": 2,
-   
-
+  "builds": [
+    {
+      "src": "index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "env": {
+    "VITE_API_URL": "<self.server>"
+  },
   "routes": [
-    { "src": "^/api/_health$", "dest": "/main.py" },
-    { "src": "^/api/(.*)$", "dest": "/main.py" },
-    { "src": "^/__files$", "dest": "/main.py" },
-    { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
-    { "src": "^/index.html$", "dest": "/index.html" },
-    { "src": "^/(.*)$", "dest": "/index.html" }
+    { "src": "^/api/_health$", "dest": "/index.py" },
+    { "src": "^/health$", "dest": "/index.py" },
+    { "src": "^/api/(.*)$", "dest": "/index.py" },
+    { "src": "^/openapi.json$", "dest": "/index.py" },
+    { "src": "^/docs$", "dest": "/index.py" },
+    { "src": "^/redoc$", "dest": "/index.py" },
+    { "src": "^/ask$", "dest": "/index.py" },
+
+    { "handle": "filesystem" },
+
+    { "src": "^/(.*)$", "dest": "/index.py" }
   ]
 }

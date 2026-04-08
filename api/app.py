@@ -6,7 +6,9 @@ Mounting keeps the lightweight `app` symbol in this file so the builder
 can detect a FastAPI entrypoint without importing large modules at
 parse-time.
 """
+import os
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 app = FastAPI()
 
@@ -26,6 +28,9 @@ async def _try_mount_real_app():
         # swallow errors here; runtime logs will show details if needed
         return
 
+@app.get("/", include_in_schema=False)
+async def serve_index():
+    return FileResponse(os.path.join("frontend", "dist", "index.html"))
 
 @app.get('/_health')
 async def _health():

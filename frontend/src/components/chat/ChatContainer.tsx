@@ -44,6 +44,20 @@ const ConciergeHeader: React.FC = () => (
 const ChatContainer: React.FC = () => {
   const messages = useAppStore((s) => s.conversation);
   const setConversation = useAppStore((s) => s.setConversation);
+  const [chatFocused, setChatFocused] = React.useState(false);
+
+  React.useEffect(() => {
+    const app = document.querySelector('.app-container');
+    if (!app) return;
+    if (chatFocused) {
+      app.classList.add('chat-focused');
+    } else {
+      app.classList.remove('chat-focused');
+    }
+    return () => {
+      app.classList.remove('chat-focused');
+    };
+  }, [chatFocused]);
 
   // compute the provider/error of the most recent assistant message
   const lastMsg = messages.length ? messages[messages.length - 1] : null;
@@ -78,7 +92,7 @@ const ChatContainer: React.FC = () => {
         <MessageList messages={messages} />
       </div>
       <div style={{ flex: '0 0 auto' }}>
-        <MessageInput />
+        <MessageInput onFocus={() => setChatFocused(true)} onBlur={() => setChatFocused(false)} />
       </div>
     </div>
   );

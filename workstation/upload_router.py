@@ -54,7 +54,7 @@ async def upload_file(
     # Extension allow-list
     if not is_allowed(filename):
         raise HTTPException(
-            status_code=415,
+            status_code=400,
             detail=f"File type not supported. Allowed: txt,pdf,docx,csv,json,png,jpg,jpeg,mp3,wav,mp4",
         )
 
@@ -125,6 +125,7 @@ async def upload_file(
         "type": "file_context",
         "upload_id": upload_id,
         "filename": filename,
+        "mime": mime,
         "extracted_text": extracted_text,
         "metadata": metadata,
     }

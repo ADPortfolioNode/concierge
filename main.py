@@ -7,56 +7,79 @@ imports at build-time.
 from fastapi import FastAPI
 import os
 import json
-import importlib
 import logging
-import traceback
+from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse, FileResponse
 
+from app import app as app
+from fastapi.staticfiles import StaticFiles
+
+# Do not mount SPA on "/" before API routes; mount after routes is preferred.
+# The API router in app.py must take precedence for paths like /api/v1/tasks.
+# We'll maintain SPA static files via explicit /spa path and fallback route.
+app.mount(
+    "/spa",
+    StaticFiles(directory=os.path.join("frontend", "dist"), html=True),
+    name="spa",
+)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-
-@app.on_event("startup")
-async def _mount_real_app():
-    logger.info("startup: mounting real app...")
-    try:
-        real = importlib.import_module('app')
-        real_app = getattr(real, 'app', None)
-        if real_app is not None:
-            app.mount('/', real_app)
-            logger.info("mounted real app at '/'")
-        else:
-            logger.error("module 'app' has no attribute 'app' (real_app is None)")
-    except Exception as e:
-        logger.error(f"failed to import/mount real app: {e}")
-        logger.error(traceback.format_exc())
-        # Do not re-raise — keep the function process alive so Vercel can serve fallback responses
-        return
+# The primary FastAPI app is imported from app.py, which defines all API routes.
+# We keep optional SPA fallback routes in this layer.
 
 
 # Serve the static SPA index as a fallback when static build is not present in deployment
+def _spa_index_candidates() -> list[str]:
+    root = Path(__file__).resolve().parent
+    return [
+        root / 'frontend' / 'dist' / 'index.html',
+        Path(os.getcwd()) / 'frontend' / 'dist' / 'index.html',
+        Path('/vercel/output/static/index.html'),
+        Path('/vercel/path0/frontend/dist/index.html'),
+        Path('/vercel/path0/index.html'),
+    ]
+
+
+def _find_spa_index() -> Path | None:
+    for p in _spa_index_candidates():
+        if p.exists():
+            return p
+    return None
+
+
 @app.get("/", include_in_schema=False)
 async def serve_index():
-    candidates = [
-        os.path.join('frontend', 'dist', 'index.html'),
-        'index.html',
-        'frontend_index.html'
-    ]
-    for path in candidates:
-        try:
-            if os.path.exists(path):
-                return HTMLResponse(content=open(path, 'r', encoding='utf-8').read(), status_code=200)
-        except Exception:
-            continue
-    return JSONResponse(content={"detail": "Not Found"}, status_code=404)
+    index_path = _find_spa_index()
+    if index_path is None:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(str(index_path), media_type='text/html')
 
 
 @app.get('/index.html', include_in_schema=False)
 async def serve_index_html():
     return await serve_index()
+
+
+@app.get('/api/v1/tasks', include_in_schema=False)
+async def debug_tasks():
+    from tasks.task_router import get_queue
+    tasks = get_queue().list_tasks()
+    return JSONResponse(content={
+        'status': 'success',
+        'data': [{'id': t.id, 'status': t.status.value, 'created_at': t.created_at} for t in tasks],
+    })
+
+
+@app.get('/api/_health')
+async def api_health():
+    return JSONResponse(content={"status": "ok"})
+
+
+@app.get('/openapi.json')
+async def openapi():
+    return JSONResponse(content=app.openapi())
 
 
 @app.get('/assets/{path:path}', include_in_schema=False)
@@ -71,6 +94,22 @@ async def serve_asset(path: str):
     return JSONResponse(content={"detail": "Not Found"}, status_code=404)
 
 
+@app.get('/{full_path:path}', include_in_schema=False)
+async def serve_spa_catchall(full_path: str):
+    # Fallback for SPA routing (client-side paths not defined in backend routes).
+    # The real app may mount its own routes; this provides a safe fallback when
+    # the static build is present under frontend/dist.
+    return await serve_index()
+
+
+@app.get('/spa/{path:path}', include_in_schema=False)
+async def serve_spa_file(path: str):
+    index_path = _find_spa_index()
+    if index_path is None:
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(str(index_path), media_type='text/html')
+
+
 @app.get('/_health')
 async def _health():
     return {"status": "ok"}
@@ -79,6 +118,12 @@ async def _health():
 # Alias health endpoint for Vercel route that forwards under /api/
 @app.get('/api/_health')
 async def _health_api():
+    return {"status": "ok"}
+
+
+# Backwards-compatible health path used by some probes
+@app.get('/health')
+async def health_plain():
     return {"status": "ok"}
 
 

@@ -1,0 +1,80 @@
+name: Staging Verify and Promote
+
+on:
+  push:
+    branches: [ staging ]
+  # Allow manual runs from the Actions UI or `gh workflow run`
+  workflow_dispatch: {}
+
+jobs:
+  build_and_verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend deps & build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Check required secrets
+        run: |
+          MISSING=0
+          for v in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_ALIAS; do
+            if [ -z "${{ secrets.$v }}" ]; then
+              echo "Missing secret: $v"
+              MISSING=1
+            fi
+          done
+          if [ "$MISSING" -eq 1 ]; then
+            echo "Required secrets are missing. Aborting."
+            exit 1
+          fi
+
+      - name: Deploy to Vercel (preview)
+        uses: amondnet/vercel-action@v20
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--confirm'
+          working-directory: .
+
+      - name: Wait for deployment stabilization
+        run: sleep 10
+
+      - name: Run verifier
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SKIP_PROMOTE: ${{ env.SKIP_PROMOTE }}
+          AUTO_MERGE: ${{ secrets.AUTO_MERGE }}
+          ALLOW_AUTO_MERGE: ${{ secrets.ALLOW_AUTO_MERGE }}
+        run: |
+          # Construct VERCEL_ALIAS with bypass token if provided
+          if [ -n "${{ secrets.VERCEL_BYPASS_TOKEN }}" ] && [ -n "${{ secrets.VERCEL_ALIAS }}" ]; then
+            export VERCEL_ALIAS="${{ secrets.VERCEL_ALIAS }}?__vercel_bypass_token=${{ secrets.VERCEL_BYPASS_TOKEN }}"
+          else
+            export VERCEL_ALIAS="${{ secrets.VERCEL_ALIAS }}"
+          fi
+          python3 scripts/verify_and_promote.py

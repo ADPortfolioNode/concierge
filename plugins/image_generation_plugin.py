@@ -271,17 +271,22 @@ class ImageGenerationPlugin(BasePlugin):
 
     # ----------------- helpers -------------------------------------------
     def _save_bytes_to_media(self, content: bytes, prompt: str, metadata: Optional[dict] = None) -> str:
-        """Save bytes into project media/images and return filename. Also writes a .json sidecar."""
+        """Save bytes into the writable media directory and return filename (or empty on fail)."""
         try:
+            # Prefer configured media path (e.g. /tmp/media on serverless), else project media.
             root = Path(__file__).resolve().parent.parent
-            media_dir = (root / "media" / "images")
+            media_root = Path(os.getenv("MEDIA_DIR", str(root / "media")))
+            media_dir = media_root / "images"
             media_dir.mkdir(parents=True, exist_ok=True)
-            # create filename from prompt hash + short ts
             h = hashlib.md5(prompt.encode()).hexdigest()[:10]
-            fname = f"img_{h}_{int(__import__('time').time())}.jpg"
+            fname = f"img_{h}_{int(time.time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
-            # write sidecar metadata file (JSON) next to the image
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
+            # write sidecar metadata file
             try:
                 meta = metadata or {}
                 meta.setdefault("filename", fname)
@@ -295,17 +300,13 @@ class ImageGenerationPlugin(BasePlugin):
             except Exception:
                 logger.exception("Failed to write sidecar metadata for %s", fname)
             try:
-                # increment media saved metric if available
                 from core.observability import MEDIA_SAVED
-                try:
-                    MEDIA_SAVED.inc()
-                except Exception:
-                    pass
+                MEDIA_SAVED.inc()
             except Exception:
                 pass
             return fname
-        except Exception:
-            # as a best-effort fallback return an empty name
+        except Exception as exc:
+            logger.warning("Unable to write image to media directory: %s", exc)
             return ""
 
     @staticmethod
@@ -313,13 +314,17 @@ class ImageGenerationPlugin(BasePlugin):
         """Static helper usable from staticmethods to persist bytes. Also writes a .json sidecar."""
         try:
             root = Path(__file__).resolve().parent.parent
-            media_dir = (root / "media" / "images")
+            media_root = Path(os.getenv("MEDIA_DIR", str(root / "media")))
+            media_dir = media_root / "images"
             media_dir.mkdir(parents=True, exist_ok=True)
             h = hashlib.md5(prompt.encode()).hexdigest()[:10]
-            fname = f"img_{h}_{int(__import__('time').time())}.jpg"
+            fname = f"img_{h}_{int(time.time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
-            # write sidecar metadata
+            try:
+                dest.chmod(0o755)
+            except Exception:
+                pass
             try:
                 meta = metadata or {}
                 meta.setdefault("filename", fname)
@@ -333,5 +338,6 @@ class ImageGenerationPlugin(BasePlugin):
             except Exception:
                 logger.exception("Failed to write static sidecar metadata for %s", fname)
             return fname
-        except Exception:
+        except Exception as exc:
+            logger.warning("Unable to write static image to media directory: %s", exc)
             return ""

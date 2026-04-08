@@ -87,11 +87,12 @@ def is_allowed(filename: str) -> bool:
 # Text extraction                                                               #
 # --------------------------------------------------------------------------- #
 
-def extract_text(path: Path, mime: str) -> Tuple[str, Dict[str, Any]]:
+def extract_text(path: Path | str, mime: str) -> Tuple[str, Dict[str, Any]]:
     """Extract text and metadata from *path*.
 
     Returns ``(extracted_text, metadata_dict)``.
     """
+    path = Path(path)
     size = path.stat().st_size
     meta: Dict[str, Any] = {"size": size, "mime": mime}
 
