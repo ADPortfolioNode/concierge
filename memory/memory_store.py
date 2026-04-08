@@ -105,11 +105,26 @@ class MemoryStore:
         if self._vector_db == "chroma":
             if chromadb is not None and _ONNX_AVAILABLE:
                 try:
+                    # Industry-standard hybrid memory pattern:
+                    # Use PersistentClient with CHROMA_PATH env var so embeddings
+                    # survive container restarts and never hit a read-only file
+                    # system error inside the Docker image layer.
+                    chroma_path = os.getenv("CHROMA_PATH", "/app/chroma")
                     try:
-                        self._client = chromadb.Client()
+                        os.makedirs(chroma_path, exist_ok=True)
+                    except OSError as _mk_err:
+                        # Directory may already exist or be read-only; the
+                        # PersistentClient call below will surface a clearer
+                        # error if the path is truly unusable.
+                        logger.warning("Could not create ChromaDB directory %s: %s", chroma_path, _mk_err)
+
+                    try:
+                        self._client = chromadb.PersistentClient(path=chroma_path)
+                        logger.info("ChromaDB PersistentClient initialised at %s", chroma_path)
                     except Exception:
                         try:
                             self._client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+                            logger.info("ChromaDB PersistentClient failed; using HttpClient at %s:%s", chroma_host, chroma_port)
                         except Exception:
                             self._client = None
 

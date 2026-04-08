@@ -369,6 +369,10 @@ class ConciergeMessagePayload(BaseModel):
     # `message` for the rest of the code.
     message: Optional[str] = None
     input: Optional[str] = None
+    # Optional full conversation history from the browser (IndexedDB-backed).
+    # This enables the hybrid memory pattern: browser stores the chat thread;
+    # backend receives full context on every call for richer RAG retrieval.
+    history: Optional[list] = None
 
     @model_validator(mode='before')
     @classmethod
@@ -873,6 +877,29 @@ async def health_logs(limit: int = 100):
     except Exception:
         lines = []
     return JSONResponse(content={'lines': lines})
+
+
+# Industry-standard hybrid memory pattern: dedicated health endpoint for
+# ChromaDB so monitoring tools can verify the persistent collection is
+# reachable and report how many documents are stored.
+@app.get('/memory/health')
+async def memory_health():
+    """Return ChromaDB collection health and document count.
+
+    Response: {"status": "ok"|"unavailable"|"error", "chroma_count": int}
+    """
+    try:
+        mem = app.state.memory
+        collection = getattr(mem, '_collection', None)
+        if collection is None:
+            return JSONResponse(content={"status": "unavailable", "chroma_count": 0})
+        count = collection.count()
+        return JSONResponse(content={"status": "ok", "chroma_count": count})
+    except Exception as exc:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "chroma_count": 0, "detail": str(exc)},
+        )
 
 
 if __name__ == "__main__":
