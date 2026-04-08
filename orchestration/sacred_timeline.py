@@ -983,46 +983,6 @@ class SacredTimeline:
         except Exception:
             # As a last resort, return a 1x1 transparent PNG (avoid 500)
             return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc``\x00\x00\x00\x04\x00\x01\x0e\x11\x02\xb5\x00\x00\x00\x00IEND\xaeB`\x82'
-        if 'last_evaluation' in locals() and last_evaluation is not None:
-            if isinstance(last_evaluation, dict):
-                eval_out = last_evaluation
-            else:
-                eval_out = {"decision": last_evaluation}
-        result_out: Dict[str, Any] = {"status": status_out if 'status_out' in locals() else "success", "goal": goal, "task_map": serializable_map, "final": final_result, "evaluation": eval_out}
-        # append any information about the LLM provider that was used, as well
-        # as any fallback notice (error message).  This makes it easy for
-        # callers (and the frontend) to display which service generated the
-        # text and whether a failover occurred.
-        llm_provider = getattr(self._llm, "last_provider", None)
-        if llm_provider:
-            result_out["llm_provider"] = llm_provider
-        if getattr(self._llm, "last_fallback", None):
-            result_out["llm_error"] = self._llm.last_fallback
-        # attach reflection flag if available
-        if 'context' in locals():
-            result_out["reflection_reused"] = context.get("reflection_reused", False)
-        # queued notice override if present (should generally be None)
-        if queued_notice:
-            result_out.setdefault("notice", queued_notice)
-        # add any user notices collected by the LLM tool
-        if getattr(self._llm, "last_fallback", None):
-            notice = f"Note: {self._llm.last_fallback}."
-            result_out.setdefault("notice", notice)
-            # track that we had to fail over
-            self.metrics.failovers += 1
-
-        # surface the final summary as a top-level "response" field so app.py
-        # and other callers don't need to dig into the nested "final" dict.
-        _final_summary = ""
-        if isinstance(final_result, dict):
-            _final_summary = final_result.get("summary") or ""
-        result_out["response"] = _final_summary or str(final_result)
-        # housekeeping: prune low-confidence graph entries after run
-        try:
-            self._memory.prune_graph()
-        except Exception:
-            logger.exception("Pruning graph failed")
-        return result_out
 
     async def stream_user_input(self, user_input: str):
         """Stream a response to *user_input* as an async generator of SSE-ready strings.
