@@ -17,6 +17,10 @@ services:
       - "8001:8000"
     volumes:
       - .:/app
+      # Industry-standard hybrid memory pattern: persist ChromaDB data on a
+      # named Docker volume so embeddings survive container restarts and never
+      # hit a read-only file system inside the image layer.
+      - chroma_data:/app/chroma
     depends_on:
       - chroma
       - qdrant
@@ -30,6 +34,8 @@ services:
       - MEMORY_COMPRESS_THRESHOLD=999999
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      # ChromaDB persistence directory — mapped to the chroma_data named volume
+      - CHROMA_PATH=/app/chroma
       # forward AI service keys from host .env or environment
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -109,6 +115,9 @@ volumes:
   qdrant_data:
   redis_data:
   frontend_node_modules:
+  # Named volume for ChromaDB persistence — prevents "[Errno 30] Read-only
+  # file system" errors that occur when writing to the image layer.
+  chroma_data:
 
 networks:
   default:

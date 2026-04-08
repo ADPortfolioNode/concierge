@@ -1,12 +1,18 @@
 import apiClient from './client';
 import { ApiResponse } from '../types/api';
 import { makeApiUrl } from '@/config/activeServer';
+import { ConversationMessage } from '../types/domain';
 
-export const sendMessage = async (message: string) => {
+// A single turn in the conversation history sent to the backend.
+// Industry-standard hybrid memory: the browser keeps the full thread in
+// IndexedDB and forwards it on every call so the backend has full context.
+type HistoryEntry = Pick<ConversationMessage, 'role' | 'content'>;
+
+export const sendMessage = async (message: string, history?: HistoryEntry[]) => {
   if (!message || !message.trim()) {
     throw new Error('message must be a nonempty string');
   }
-  const res = await apiClient.post<ApiResponse>('/concierge/message', { message });
+  const res = await apiClient.post<ApiResponse>('/concierge/message', { message, history });
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
@@ -53,14 +59,17 @@ export type StreamEvent =
  *
  * Uses the native Fetch API + ReadableStream so there is no Axios timeout on
  * the streaming leg (Axios cannot stream SSE natively).
+ *
+ * Pass the optional `history` array (prior conversation turns) so the backend
+ * receives full context on every call (hybrid memory pattern).
  */
-export async function* streamMessage(message: string): AsyncGenerator<StreamEvent> {
+export async function* streamMessage(message: string, history?: HistoryEntry[]): AsyncGenerator<StreamEvent> {
   const streamUrl = makeApiUrl('/api/v1/concierge/stream');
 
   const response = await fetch(streamUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history }),
   });
 
   if (!response.ok || !response.body) {
