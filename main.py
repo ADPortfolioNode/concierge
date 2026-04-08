@@ -77,11 +77,6 @@ async def debug_tasks():
     })
 
 
-@app.get('/openapi.json')
-async def openapi():
-    return JSONResponse(content=app.openapi())
-
-
 @app.get('/assets/{path:path}', include_in_schema=False)
 async def serve_asset(path: str):
     candidates = [
@@ -112,18 +107,6 @@ async def serve_spa_file(path: str):
 
 @app.get('/_health')
 async def _health():
-    return {"status": "ok", "server_url": SERVER_URL}
-
-
-# Alias health endpoint for Vercel route that forwards under /api/
-@app.get('/api/_health')
-async def _health_api():
-    return {"status": "ok", "server_url": SERVER_URL}
-
-
-# Backwards-compatible health path used by some probes
-@app.get('/health')
-async def health_plain():
     return {"status": "ok", "server_url": SERVER_URL}
 
 
