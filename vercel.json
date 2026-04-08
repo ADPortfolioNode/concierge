@@ -1,13 +1,12 @@
 {
   "version": 2,
-   
 
   "routes": [
     { "src": "^/api/_health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/__files$", "dest": "/main.py" },
-    { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
-    { "src": "^/index.html$", "dest": "/index.html" },
-    { "src": "^/(.*)$", "dest": "/index.html" }
+    { "src": "^/assets/(.*)$", "dest": "/main.py" },
+    { "src": "^/index.html$", "dest": "/main.py" },
+    { "src": "^/(.*)$", "dest": "/main.py" }
   ]
 }
