@@ -12,6 +12,11 @@ from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.responses import HTMLResponse, FileResponse
 
+# SERVER_URL is used by the lightweight /health endpoint for ngrok
+# tunneling and Vercel frontend checks. It defaults to the local backend
+# address but can be overridden in deployment.
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8001")
+
 from app import app as app
 from fastapi.staticfiles import StaticFiles
 
@@ -72,11 +77,6 @@ async def debug_tasks():
     })
 
 
-@app.get('/api/_health')
-async def api_health():
-    return JSONResponse(content={"status": "ok"})
-
-
 @app.get('/openapi.json')
 async def openapi():
     return JSONResponse(content=app.openapi())
@@ -112,19 +112,19 @@ async def serve_spa_file(path: str):
 
 @app.get('/_health')
 async def _health():
-    return {"status": "ok"}
+    return {"status": "ok", "server_url": SERVER_URL}
 
 
 # Alias health endpoint for Vercel route that forwards under /api/
 @app.get('/api/_health')
 async def _health_api():
-    return {"status": "ok"}
+    return {"status": "ok", "server_url": SERVER_URL}
 
 
 # Backwards-compatible health path used by some probes
 @app.get('/health')
 async def health_plain():
-    return {"status": "ok"}
+    return {"status": "ok", "server_url": SERVER_URL}
 
 
 # Temporary debug endpoint to list deployed files. Remove after debugging.

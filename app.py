@@ -88,6 +88,10 @@ try:
 except Exception:
     VERSION = "unknown"
 
+# SERVER_URL is used for ngrok/Vercel staging checks and should be overridable
+# in deployment environments; default to local backend port for CLI/dev.
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:8001")
+
 logging.basicConfig(level=logging.INFO)
 # --- recent-log handler ----------------------------------------------------
 class _RecentLogHandler(logging.Handler):
@@ -549,101 +553,8 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
         'timestamp': now,
     }
 
-    # Persist any remote images found in the assistant response and rewrite
-    # their URLs to point at our local `/media/images/` mount so the frontend
-    # always renders a stable, local copy.
-    async def _persist_and_rewrite_images(text: str, request: Request) -> str:
-        if not text or not isinstance(text, str):
-            return text
-        session_owner = _session_id_from_request(request)
-        # simple heuristic: match http/https URLs that likely point to images
-        url_re = re.compile(r"(https?://[^\s\)\"]+\.(?:png|jpe?g|gif|webp))", re.IGNORECASE)
-        found = list(url_re.finditer(text))
-        if not found:
-            # try a looser match (no extension) and check content-type
-            url_re2 = re.compile(r"(https?://[^\s\)\"]+)")
-            candidates = [m.group(1) for m in url_re2.finditer(text)]
-        else:
-            candidates = [m.group(1) for m in found]
-
-        media_dir = Path(__file__).parent / 'media' / 'images'
-        media_dir.mkdir(parents=True, exist_ok=True)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for url in candidates:
-                try:
-                    # HEAD first to check content-type quickly
-                    head = await client.head(url, follow_redirects=True)
-                    ctype = head.headers.get('content-type', '') if head is not None else ''
-                    if not ctype.startswith('image'):
-                        # try GET anyway for some hosts that don't respond to HEAD
-                        resp = await client.get(url, follow_redirects=True)
-                        if resp.status_code != 200 or not resp.headers.get('content-type', '').startswith('image'):
-                            continue
-                    else:
-                        resp = await client.get(url, follow_redirects=True)
-                    if resp.status_code != 200:
-                        continue
-                    img_bytes = resp.content
-                    # derive extension from content-type or url
-                    ext = None
-                    if 'jpeg' in resp.headers.get('content-type', ''):
-                        ext = 'jpg'
-                    elif 'png' in resp.headers.get('content-type', ''):
-                        ext = 'png'
-                    elif 'gif' in resp.headers.get('content-type', ''):
-                        ext = 'gif'
-                    elif 'webp' in resp.headers.get('content-type', ''):
-                        ext = 'webp'
-                    else:
-                        # fallback: try to take extension from URL
-                        parsed = url.split('?')[0]
-                        if '.' in parsed:
-                            ext = parsed.rsplit('.', 1)[-1][:4]
-                        else:
-                            ext = 'png'
-                    # filename deterministic-ish
-                    sha = hashlib.sha1(img_bytes).hexdigest()[:12]
-                    ts = int(time.time())
-                    fname = f"img_{sha}_{ts}.{ext}"
-                    fpath = media_dir / fname
-                    fpath.write_bytes(img_bytes)
-                    try:
-                        fpath.chmod(0o755)
-                    except Exception:
-                        pass
-                    # sidecar metadata
-                    sidecar = {
-                        'filename': fname,
-                        'owner': session_owner,
-                        'prompt': None,
-                        'mime_type': resp.headers.get('content-type', ''),
-                        'created_at': datetime.utcnow().isoformat() + 'Z',
-                        'size': len(img_bytes),
-                        'source': 'remote',
-                        'remote_url': url,
-                    }
-                    try:
-                        (media_dir / (fname + '.json')).write_text(json.dumps(sidecar))
-                    except Exception:
-                        logger.exception('Failed to write sidecar for %s', fname)
-                    # replace occurrences of the original URL with our local path
-                    if is_enabled('media_absolute_urls'):
-                        try:
-                            base = str(request.base_url).rstrip('/')
-                            local_url = f"{base}/media/images/{fname}"
-                        except Exception:
-                            local_url = f"/media/images/{fname}"
-                    else:
-                        local_url = f"/media/images/{fname}"
-                    text = text.replace(url, local_url)
-                except Exception:
-                    logger.exception('Failed to fetch or persist image %s', url)
-                    continue
-        return text
-
     # Media output is retired from message content; any media should be consumed via /api/v1/concierge/media.
     # We do not rewrite image URLs in the response content. The message content remains the same as LM output.
-    # Optionally, persistent media can still be updated using a dedicated media ingestion path if needed.
     data['content'] = content_val
 
     # append entries to conversation state (used by /conversation endpoint)
@@ -982,7 +893,9 @@ async def logo_optimized_svg():
 
 @app.get('/health')
 async def health():
-    return JSONResponse(content={"status": "ok", "version": VERSION})
+    # Lightweight health endpoint for free ngrok tunneling and Vercel frontend
+    # checks. Returns the configured SERVER_URL so the tunnel target is obvious.
+    return JSONResponse(content={"status": "ok", "server_url": SERVER_URL})
 
 @app.get('/health/system')
 async def health_system():

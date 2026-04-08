@@ -217,6 +217,23 @@ Over time `start.sh` has been hardened; it now:
 These improvements make the helper robust enough for daily development and
 CI usage.
 
+## Free Deployment
+
+For a quick free tunnel to test the Vercel frontend against your local backend,
+use ngrok and the backend health endpoint. Set `SERVER_URL` in your environment
+as needed, then run:
+
+```bash
+ngrok http 8001 --host-header=rewrite
+```
+
+Once ngrok is running, hit the local backend health check at
+`http://127.0.0.1:8001/health` to confirm the backend is reachable and that
+`server_url` is correctly configured.
+
+This setup is intended for free tunneling during Vercel frontend development
+and avoids hardcoding any URL in the source.
+
 ## Build & Docker
 
 The repository includes a `Dockerfile` and `docker-compose.yml` to
