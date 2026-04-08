@@ -14,3 +14,4 @@ python-dotenv>=1.0.0
 openai
 redis
 starlette
+pytest>=7.0.0
