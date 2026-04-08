@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import { ConversationMessage } from '../types/domain';
 import * as ConciergeAPI from '@/api/conciergeService';
 import { ACTIVE_API_BASE, makeApiUrl } from '@/config/activeServer';
+// Industry-standard hybrid memory pattern: persist conversation history in
+// browser storage (IndexedDB with localStorage fallback) so the full chat
+// thread survives page refreshes and can be sent to the backend on every call.
+import { loadHistory, saveHistory, clearHistory } from '@/utils/conversationHistory';
 
 export interface MediaItem {
   id: string;
@@ -86,6 +90,8 @@ interface AppState {
   fetchMedia: () => Promise<void>;
   selectTimelineTask: (task: any) => void;
   sendMessage: (input: string) => Promise<void>;
+  /** Wipe browser-stored conversation history (IndexedDB + localStorage). */
+  clearMemory: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -105,9 +111,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   textHighlights: [],
   setError: (msg) => set({ error: msg }),
   setDraft: (text) => set({ draftMessage: text }),
-  setConversation: (msgs) => set({ conversation: Array.isArray(msgs) ? msgs.map((m) => _normalizeUrlsInObject(m)) : [] }),
+  setConversation: (msgs) => {
+    const normalized = Array.isArray(msgs) ? msgs.map((m) => _normalizeUrlsInObject(m)) : [];
+    set({ conversation: normalized });
+    // Persist to IndexedDB/localStorage so history survives page refreshes
+    saveHistory(normalized).catch(() => { /* best-effort */ });
+  },
   setActiveMedia: (url) => set({ activeMedia: url }),
-  appendMessage: (msg) => set((s) => ({ conversation: [...s.conversation, _normalizeUrlsInObject(msg)] })),
+  appendMessage: (msg) => set((s) => {
+    const updated = [...s.conversation, _normalizeUrlsInObject(msg)];
+    saveHistory(updated).catch(() => { /* best-effort */ });
+    return { conversation: updated };
+  }),
   // timeline actions
   setTimelinePlan: (plan) => set({ timelinePlan: plan }),
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
@@ -219,12 +234,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       meta: null,
     };
 
-    set((s) => ({
-      conversation: [...s.conversation, userMsg, placeholderMsg],
-      loading: true,
-      streamingId: assistantMsgId,
-      error: null,
-    }));
+    // Capture the history BEFORE adding the new messages so we only send
+    // prior turns to the backend (hybrid memory: full context per call).
+    const priorHistory = get().conversation.map((m) => ({ role: m.role, content: m.content }));
+
+    set((s) => {
+      const updated = [...s.conversation, userMsg, placeholderMsg];
+      saveHistory(updated).catch(() => { /* best-effort */ });
+      return { conversation: updated, loading: true, streamingId: assistantMsgId, error: null };
+    });
 
     // if tests want to bypass SSE they can set window.USE_POST = true
     const usePost = (window as any).USE_POST;
@@ -235,14 +253,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     console.log('sendMessage called, usePost=', usePost);
     if (usePost) {
       try {
-        const res = await ConciergeAPI.sendMessage(input);
+        const res = await ConciergeAPI.sendMessage(input, priorHistory);
         const result = res.data as any;
         const finalText = (result.response || '') as string;
         const confidence = result.confidence;
         const critic_score = result.critic_score;
         // update the placeholder message just like in stream event
-        set((s) => ({
-          conversation: s.conversation.map((m) =>
+        set((s) => {
+          const updated = s.conversation.map((m) =>
             m.id === assistantMsgId
               ? { ...m, content: finalText, meta: {
                   confidence: typeof confidence === 'number' ? confidence : undefined,
@@ -251,8 +269,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                   llm: { provider: result.meta?.llm?.provider, error: result.meta?.llm?.error },
                 } }
               : m,
-          ),
-        }));
+          );
+          saveHistory(updated).catch(() => { /* best-effort */ });
+          return { conversation: updated };
+        });
       } catch (e) {
         const errText = e instanceof Error ? e.message : String(e);
         set((s) => ({
@@ -270,7 +290,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       let accumulated = '';
 
-      for await (const evt of ConciergeAPI.streamMessage(input)) {
+      for await (const evt of ConciergeAPI.streamMessage(input, priorHistory)) {
         if (evt.type === 'token' || evt.type === 'progress') {
           accumulated += evt.text;
           // Patch the placeholder bubble with the accumulated text
@@ -304,8 +324,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             if (accumulated.trim()) return accumulated.trim();
             return 'Sorry, I could not generate a response right now.';
           })();
-          set((s) => ({
-            conversation: s.conversation.map((m) =>
+          set((s) => {
+            const updated = s.conversation.map((m) =>
               m.id === assistantMsgId
                 ? { ...m, content: finalText, meta: {
                     confidence: typeof confidence === 'number' ? confidence : undefined,
@@ -314,8 +334,10 @@ export const useAppStore = create<AppState>((set, get) => ({
                     llm: { provider, error: errorMsg },
                   } }
                 : m,
-            ),
-          }));
+            );
+            saveHistory(updated).catch(() => { /* best-effort */ });
+            return { conversation: updated };
+          });
           // ── Auto-route content to media layers ───────────────────────
           const content = finalText || accumulated;
           _IMG_RE.lastIndex = 0; _VID_RE.lastIndex = 0; _AUD_RE.lastIndex = 0;
@@ -352,7 +374,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ loading: false, streamingId: null });
     }
   },
+
+  // Wipe the browser-side conversation history from IndexedDB and localStorage,
+  // and reset the in-memory conversation list (hybrid memory — browser side).
+  clearMemory: async () => {
+    await clearHistory();
+    set({ conversation: [] });
+  },
 }));
+
+// Restore conversation history from IndexedDB/localStorage on startup so the
+// chat thread is preserved across page refreshes (hybrid memory — browser side).
+if (typeof window !== 'undefined') {
+  loadHistory().then((msgs) => {
+    if (msgs.length > 0) {
+      useAppStore.getState().setConversation(msgs);
+    }
+  }).catch(() => { /* best-effort — ignore storage errors */ });
+}
 
 // expose helper for tests to inspect store state
 if (typeof window !== 'undefined') {

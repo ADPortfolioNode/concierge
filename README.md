@@ -502,3 +502,51 @@ POST /agent with JSON `{"prompt":"..."}` to run the agent.
 - **v0.7.0-phase7a**: Added SynthesizerAgent for final aggregation, multi-root task orchestration support, and expanded harness checks to validate final synthesis. Persistence now stores structured synthesis results.
 
 POST /agent with JSON `{"prompt":"..."}` to run the agent.
+
+## Memory Architecture — ChromaDB on workstation volume + browser IndexedDB for conversation history
+
+Concierge uses an **industry-standard hybrid memory pattern** that combines two complementary storage layers:
+
+### Server side — ChromaDB on a named Docker volume
+
+ChromaDB stores long-term vector embeddings (RAG) that give the agent persistent, semantic memory across sessions.
+
+| Component | Detail |
+|-----------|--------|
+| Client type | `chromadb.PersistentClient` |
+| Path | Controlled by `CHROMA_PATH` env var (default `/app/chroma`) |
+| Docker storage | Named volume `chroma_data` → mounted at `/app/chroma` inside the container |
+| Why a named volume? | Prevents the `[Errno 30] Read-only file system` error that occurs when ChromaDB tries to write inside the image layer |
+
+The `app` service in `docker-compose.yml` declares:
+
+```yaml
+volumes:
+  - chroma_data:/app/chroma
+environment:
+  - CHROMA_PATH=/app/chroma
+```
+
+And the `volumes:` top-level section declares `chroma_data:` so Docker manages the lifecycle independently of the container.
+
+**Health check**: `GET /memory/health` returns `{"status": "ok", "chroma_count": <n>}` where `chroma_count` is the number of documents currently in the collection.
+
+### Browser side — IndexedDB (+ localStorage fallback) for conversation history
+
+The React/Vite frontend stores the full chat thread in **IndexedDB** (with a `localStorage` fallback for browsers that restrict IndexedDB) so the conversation is restored automatically after a page refresh.
+
+| Feature | Detail |
+|---------|--------|
+| Storage | IndexedDB database `concierge_memory`, object store `conversation` |
+| Fallback | `localStorage` key `concierge_conversation_history` |
+| On every API call | The full prior conversation history is forwarded to the backend in the `history` field of the request payload so the server always has full context |
+| Clear memory | The **🗑 Clear memory** button in the chat input wipes both IndexedDB and localStorage and resets the in-memory conversation list |
+
+The browser-side helpers live in `frontend/src/utils/conversationHistory.ts` and are called from `frontend/src/state/appStore.ts`.
+
+### Why hybrid?
+
+- The **server** (ChromaDB) handles semantic similarity search, RAG retrieval, and long-term knowledge that should persist across devices and browser resets.
+- The **browser** (IndexedDB) handles the per-session chat thread, giving instant restore without a server round-trip and enabling the frontend to attach full conversational context to each request.
+
+Together they ensure the agent never loses context whether the user refreshes the page, restarts the Docker stack, or switches between devices.
