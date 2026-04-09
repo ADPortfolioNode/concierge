@@ -29,11 +29,12 @@ ARG BUILD_FRONTEND=0
 ARG VITE_API_URL=""
 FROM node:18-alpine AS frontend-build
 WORKDIR /build
-ENV NODE_ENV=production
+# Ensure devDependencies like Vite are installed for the frontend build
+ENV NODE_ENV=development
 # copy only frontend sources for better cache
 COPY frontend/package.json frontend/package-lock.json ./
-# Install deps based on package.json, then copy remaining frontend files
-RUN npm ci --no-audit --no-fund
+# Ensure devDependencies like Vite are installed for the frontend build
+RUN npm ci --no-audit --no-fund --include=dev
 COPY frontend ./
 # pass VITE_API_URL as an env var during build so Vite picks it up
 ARG VITE_API_URL
