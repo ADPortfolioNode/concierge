@@ -71,6 +71,15 @@ async def serve_asset(path: str):
     return JSONResponse(content={"detail": "Not Found"}, status_code=404)
 
 
+@app.get('/{path:path}', include_in_schema=False)
+async def serve_spa(path: str):
+    # Serve the SPA entrypoint for client-side routes such as /detail.
+    # Do not shadow explicit API or health routes.
+    if path.startswith('api/') or path.startswith('_health') or path.startswith('assets/') or path == 'index.html':
+        return JSONResponse(content={"detail": "Not Found"}, status_code=404)
+    return await serve_index()
+
+
 @app.get('/_health')
 async def _health():
     return {"status": "ok"}
