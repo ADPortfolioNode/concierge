@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
@@ -264,6 +265,8 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
 };
 
 const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
+  const navigate = useNavigate();
+  const setActiveMedia = useAppStore((s) => s.setActiveMedia);
   const isUser = msg.role === 'user';
   const isSystem = msg.role === 'system';
   const streamingId = useAppStore((s) => s.streamingId);
@@ -320,6 +323,23 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
         {msg.media && msg.media.type !== 'none' && msg.media.url && (
           <div style={{ marginTop: 8 }}>
             <MediaRenderer media={{ type: msg.media.type, url: msg.media.url }} />
+            <button
+              onClick={() => {
+                setActiveMedia(msg.media?.url || null);
+                navigate('/media');
+              }}
+              style={{
+                marginTop: 8,
+                background: 'rgba(124,106,247,0.18)',
+                border: '1px solid rgba(124,106,247,0.35)',
+                color: '#dfe6ff',
+                borderRadius: 6,
+                padding: '8px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              Open media page
+            </button>
           </div>
         )}
         {!isSystem && !isStreaming && <MetaPanel meta={msg.meta} />}

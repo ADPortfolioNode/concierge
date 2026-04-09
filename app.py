@@ -41,7 +41,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -900,6 +900,24 @@ async def memory_health():
             status_code=503,
             content={"status": "error", "chroma_count": 0, "detail": str(exc)},
         )
+
+
+@app.get('/{path:path}', include_in_schema=False)
+async def spa_fallback(path: str):
+    # Serve the SPA entrypoint for client-side routes like /detail.
+    # Do not override explicit API, health, or media routes handled elsewhere.
+    if path.startswith('api/') or path.startswith('health') or path.startswith('memory') or path.startswith('media/'):
+        raise HTTPException(status_code=404, detail='Not Found')
+
+    candidates = [
+        Path(__file__).parent / 'frontend' / 'dist' / 'index.html',
+        Path(__file__).parent / 'index.html',
+        Path(__file__).parent / 'frontend_index.html',
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return HTMLResponse(content=candidate.read_text(encoding='utf-8'), status_code=200)
+    raise HTTPException(status_code=404, detail='Not Found')
 
 
 if __name__ == "__main__":

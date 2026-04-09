@@ -261,6 +261,72 @@ wait_for_backend() {
     return 1
 }
 
+get_ngrok_public_url() {
+    local attempt=0
+    local body
+    local url
+
+    while [ "$attempt" -lt 10 ]; do
+        if command -v curl >/dev/null 2>&1; then
+            body=$(curl -s http://127.0.0.1:4040/api/tunnels || true)
+        else
+            body=""
+        fi
+
+        if [ -n "$body" ]; then
+            if command -v python3 >/dev/null 2>&1; then
+                url=$(printf '%s' "$body" | python3 -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+    print(next((t.get("public_url","") for t in data.get("tunnels",[]) if t.get("proto") == "https"), ""))
+except Exception:
+    pass' 2>/dev/null)
+            elif command -v python >/dev/null 2>&1; then
+                url=$(printf '%s' "$body" | python -c 'import json,sys
+try:
+    data=json.load(sys.stdin)
+    print(next((t.get("public_url","") for t in data.get("tunnels",[]) if t.get("proto") == "https"), ""))
+except Exception:
+    pass' 2>/dev/null)
+            else
+                url=$(printf '%s' "$body" | grep -oE '"public_url"\s*:\s*"https?://[^"]+"' | sed -E 's/.*"(https?:\/\/[^\"]+)".*/\1/' | head -n 1)
+            fi
+            if [ -n "$url" ]; then
+                printf '%s' "$url"
+                return 0
+            fi
+        fi
+
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+
+    return 1
+}
+
+write_frontend_env() {
+    local ngrok_url="$1"
+    local env_file="frontend/.env.local"
+    local tmp_file
+
+    if [ -z "$ngrok_url" ]; then
+        return 1
+    fi
+
+    mkdir -p "frontend"
+    tmp_file=$(mktemp)
+
+    if [ -f "$env_file" ]; then
+        grep -vE '^(VITE_API_URL|BACKEND_URL)=' "$env_file" > "$tmp_file" || true
+    fi
+
+    printf 'VITE_API_URL=%s\nBACKEND_URL=%s\n' "$ngrok_url" "$ngrok_url" >> "$tmp_file"
+    mv "$tmp_file" "$env_file"
+    echo "Written frontend environment file: ${env_file}"
+    echo "  VITE_API_URL=${ngrok_url}"
+    return 0
+}
+
 start_ngrok() {
     if ! $NGROK; then
         echo "Skipping ngrok startup (--no-ngrok specified)."
@@ -272,13 +338,20 @@ start_ngrok() {
     fi
     if pgrep -f 'ngrok http 8001' >/dev/null 2>&1; then
         echo "ngrok tunnel already running for port 8001."
-        return
+    else
+        echo "Starting ngrok tunnel for backend on port 8001..."
+        nohup ngrok http 8001 > ngrok.log 2>&1 &
+        NGROK_PID=$!
+        echo "ngrok started with PID ${NGROK_PID}; logs are in ngrok.log"
     fi
 
-    echo "Starting ngrok tunnel for backend on port 8001..."
-    nohup ngrok http 8001 > ngrok.log 2>&1 &
-    NGROK_PID=$!
-    echo "ngrok started with PID ${NGROK_PID}; logs are in ngrok.log"
+    local ngrok_url
+    if ngrok_url=$(get_ngrok_public_url); then
+        echo "Detected ngrok public URL: ${ngrok_url}"
+        write_frontend_env "$ngrok_url" || echo "Warning: failed to write frontend env file." >&2
+    else
+        echo "Warning: could not detect ngrok public URL." >&2
+    fi
 }
 
 if $PRUNE; then
