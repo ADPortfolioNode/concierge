@@ -41,7 +41,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -902,6 +902,29 @@ async def memory_health():
         )
 
 
+@app.get('/_health')
+async def _health():
+    return JSONResponse(content={"status": "ok"})
+
+
+@app.get('/api/_health')
+async def _health_api():
+    return JSONResponse(content={"status": "ok"})
+
+
+@app.get('/assets/{path:path}', include_in_schema=False)
+async def serve_asset(path: str):
+    candidates = [
+        Path(__file__).parent / 'frontend' / 'dist' / 'assets' / path,
+        Path('/vercel/output') / 'frontend' / 'dist' / 'assets' / path,
+        Path('/vercel/output') / 'assets' / path,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return FileResponse(candidate)
+    raise HTTPException(status_code=404, detail='Not Found')
+
+
 @app.get('/{path:path}', include_in_schema=False)
 async def spa_fallback(path: str):
     # Serve the SPA entrypoint for client-side routes like /detail.
@@ -910,6 +933,8 @@ async def spa_fallback(path: str):
         raise HTTPException(status_code=404, detail='Not Found')
 
     candidates = [
+        Path('/vercel/output') / 'frontend' / 'dist' / 'index.html',
+        Path('/vercel/output') / 'index.html',
         Path(__file__).parent / 'frontend' / 'dist' / 'index.html',
         Path(__file__).parent / 'index.html',
         Path(__file__).parent / 'frontend_index.html',
