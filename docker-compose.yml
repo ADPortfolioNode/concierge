@@ -10,7 +10,10 @@ services:
     command: redis-server --appendonly yes
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_FULL_REQUIREMENTS: "1"
     container_name: quesarc_app
     # avoid port clash with chroma service; expose on 8001 host port instead
     ports:
@@ -41,7 +44,10 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
 
   quesarc_worker:
-    build: .
+    build:
+      context: .
+      args:
+        INSTALL_FULL_REQUIREMENTS: "1"
     container_name: quesarc_worker
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=4
     volumes:

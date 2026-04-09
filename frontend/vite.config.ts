@@ -5,6 +5,8 @@ import path from 'path'
 // Prefer explicit BACKEND_URL (or VITE_API_URL) for proxy target; fall back
 // to Docker service name when running inside container, otherwise localhost
 // is only used as a last-resort for local development.
+// NOTE: frontend runtime also reads BACKEND_URL as a VITE_API_URL alias so
+// the dev proxy and client request URL are consistent.
 const backendTarget = process.env.BACKEND_URL ?? process.env.VITE_API_URL ?? (process.env.IN_DOCKER === 'true' ? 'http://app:8000' : 'http://localhost:8001')
 const basePath = process.env.VITE_BASE_URL ?? '/'
 

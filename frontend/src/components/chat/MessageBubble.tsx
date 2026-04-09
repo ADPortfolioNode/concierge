@@ -374,27 +374,20 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
       {/* expanded overlay */}
       {expanded && (
         <div
-          role="dialog"
-          aria-modal="true"
           style={{
-            position: 'fixed',
-            left: 12,
-            right: 12,
-            top: 68,
-            bottom: 40,
-            zIndex: 800,
-            background: 'rgba(6,6,12,0.96)',
-            border: '1px solid rgba(255,255,255,0.06)',
+            marginTop: 12,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
             borderRadius: 10,
-            padding: 18,
-            overflow: 'auto',
+            padding: 14,
+            color: 'rgba(255,255,255,0.92)',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{expanded.title || expanded.name}</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{expanded.title || expanded.name}</div>
               {expanded.estimated_use_cases && (
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.46)', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>
                   Estimated use cases: {(expanded.estimated_use_cases || []).join(', ')}
                 </div>
               )}
@@ -408,7 +401,9 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
                   Open media
                 </button>
               )}
-              <button onClick={() => setExpanded(null)} style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer' }}>Close</button>
+              <button onClick={() => setExpanded(null)} style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer' }}>
+                Close
+              </button>
             </div>
           </div>
 

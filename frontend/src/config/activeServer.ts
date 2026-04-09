@@ -2,7 +2,7 @@
 const env = (import.meta as any).env || {};
 
 const MODE = env.MODE || (env.DEV ? 'development' : env.PROD ? 'production' : 'production');
-const VITE_API_URL = (env.VITE_API_URL || '').replace(/\/$/, '');
+const VITE_API_URL = (env.VITE_API_URL || env.BACKEND_URL || '').replace(/\/$/, '');
 const VITE_LOCAL_API_URL = (env.VITE_LOCAL_API_URL || '').replace(/\/$/, '');
 
 // Support a runtime-self placeholder: if the build-time env is set to
