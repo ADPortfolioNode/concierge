@@ -215,6 +215,39 @@ confirm() {
     esac
 }
 
+wait_for_backend() {
+    local host=${1:-127.0.0.1}
+    local port=${2:-8001}
+    local timeout=${3:-30}
+    local ticks=0
+
+    echo "Waiting for backend to become available on ${host}:${port}..."
+    while [ "$ticks" -lt "$timeout" ]; do
+        if command -v curl >/dev/null 2>&1; then
+            if curl -s "http://${host}:${port}/_health" >/dev/null 2>&1; then
+                echo "Backend is available."
+                return 0
+            fi
+        elif command -v nc >/dev/null 2>&1; then
+            if nc -z "$host" "$port" >/dev/null 2>&1; then
+                echo "Backend is available."
+                return 0
+            fi
+        else
+            if (exec 3<>/dev/tcp/${host}/${port}) >/dev/null 2>&1; then
+                exec 3>&-
+                echo "Backend is available."
+                return 0
+            fi
+        fi
+        sleep 1
+        ticks=$((ticks + 1))
+    done
+
+    echo "Warning: backend did not become available on ${host}:${port} after ${timeout}s." >&2
+    return 1
+}
+
 start_ngrok() {
     if ! $NGROK; then
         echo "Skipping ngrok startup (--no-ngrok specified)."
@@ -379,6 +412,11 @@ if $CLEAR; then
     clear_ports
     compose down || true
     compose up -d --build || die "compose up failed"
+    if wait_for_backend 127.0.0.1 8001 30; then
+        echo "Backend ready; starting ngrok."
+    else
+        echo "Backend did not become healthy; starting ngrok anyway." >&2
+    fi
     start_ngrok
 else
     # always attempt to tear down first to avoid port conflicts, then bring up
@@ -399,6 +437,11 @@ else
         echo "-- initial backend log snapshot --" >> start.log
         compose logs --no-color app --tail=50 >> start.log || true
         echo "-- end snapshot --" >> start.log
+    fi
+    if wait_for_backend 127.0.0.1 8001 30; then
+        echo "Backend ready; starting ngrok."
+    else
+        echo "Backend did not become healthy; starting ngrok anyway." >&2
     fi
     start_ngrok
 fi
