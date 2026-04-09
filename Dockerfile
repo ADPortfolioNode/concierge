@@ -48,7 +48,7 @@ ARG INSTALL_FULL_REQUIREMENTS=0
 
 # Copy requirements
 COPY requirements.txt ./
-COPY requirements.full.txt ./ || true
+COPY requirements.full.txt ./
 
 # Upgrade pip and install requirements; prefer full if requested and present
 RUN pip install --upgrade pip

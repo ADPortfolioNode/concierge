@@ -21,7 +21,7 @@ const App: React.FC = () => {
 
   return (
     <React.StrictMode>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes />
       </BrowserRouter>
     </React.StrictMode>

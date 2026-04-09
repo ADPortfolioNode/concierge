@@ -6,8 +6,10 @@ import path from 'path'
 // to Docker service name when running inside container, otherwise localhost
 // is only used as a last-resort for local development.
 const backendTarget = process.env.BACKEND_URL ?? process.env.VITE_API_URL ?? (process.env.IN_DOCKER === 'true' ? 'http://app:8000' : 'http://localhost:8001')
+const basePath = process.env.VITE_BASE_URL ?? '/'
 
 export default defineConfig({
+  base: basePath,
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, 'src'), react: path.resolve(__dirname, 'node_modules/react'), 'react-dom': path.resolve(__dirname, 'node_modules/react-dom') } },
   server: {
