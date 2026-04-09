@@ -360,8 +360,24 @@ async def _stream_text_as_tokens(text: str, delay: float = 0.01) -> AsyncIterato
 def _conversational_reply(user_msg: str) -> str:
     """Return a natural reply for a conversational user message."""
     msg = user_msg.lower().strip()
+    has_openai = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEYS"))
 
     if any(k in msg for k in ("capabilit", "what can you", "what do you do", "help me with", "what are you", "features")):
+        if has_openai:
+            return (
+                "I'm **Concierge**, an AI-powered multi-agent assistant. Here's what I can do:\n\n"
+                "• **Conversation** — Answer questions and guide you through tasks.\n"
+                "• **Planning** — Decompose complex goals into structured, ordered subtasks.\n"
+                "• **Research** — Gather and synthesize information on any topic.\n"
+                "• **Code generation** — Scaffold code in Python, JavaScript, TypeScript, and Bash.\n"
+                "• **Text summarization** — Condense long documents into concise summaries.\n"
+                "• **File analysis** — Process uploaded PDFs, documents, images, and audio.\n"
+                "• **Image generation** — Create images from text prompts (requires `OPENAI_API_KEY`).\n"
+                "• **Distributed jobs** — Run long-running tasks asynchronously via Celery + Redis.\n"
+                "• **Memory** — Retain context across sessions using vector-backed memory.\n\n"
+                "I can use your configured OpenAI key for full generative responses. "
+                "What would you like to work on today?"
+            )
         return (
             "I'm **Concierge**, an AI-powered multi-agent assistant. Here's what I can do:\n\n"
             "• **Conversation** — Answer questions and guide you through tasks.\n"
@@ -381,6 +397,12 @@ def _conversational_reply(user_msg: str) -> str:
         return "Hello! I'm Concierge, your AI-powered assistant. I can help you plan tasks, research topics, generate code, analyze files, and more. What would you like to tackle today?"
 
     if any(k in msg for k in ("image", "picture", "photo", "generate an image", "draw", "create an image", "flaming", "teddy bear", "dall")):
+        if has_openai:
+            return (
+                "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
+                "Your OpenAI key is configured, so I can create detailed images from any text description. "
+                "What would you like me to generate?"
+            )
         return (
             "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
             "Once `OPENAI_API_KEY` is set, I can create detailed images from any text description. "
