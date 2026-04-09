@@ -6,6 +6,7 @@ const HomePage = lazy(() => import('../features/concierge/HomePage'));
 const TasksPage = lazy(() => import('../features/tasks/TasksPage'));
 const GoalsPage = lazy(() => import('../features/goals/GoalsPage'));
 const WorkspacePage = lazy(() => import('../features/workspace/WorkspacePage'));
+const MediaPage = lazy(() => import('../features/media/MediaPage'));
 const StrategyPage = lazy(() => import('../features/strategy/StrategyPage'));
 const HowToPage = lazy(() => import('../features/concierge/HowToPage'));
 const CapabilitiesPage = lazy(() => import('../features/capabilities/CapabilitiesPage'));
@@ -21,6 +22,7 @@ const Routes: React.FC = () => {
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
+          <Route path="/media" element={<MediaPage />} />
           <Route path="/strategy" element={<StrategyPage />} />
           <Route path="/howto" element={<HowToPage />} />
           <Route path="/capabilities" element={<CapabilitiesPage />} />

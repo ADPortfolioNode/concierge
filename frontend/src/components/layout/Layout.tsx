@@ -2,7 +2,6 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import ChatContainer from '../chat/ChatContainer';
 import ErrorBanner from '../ui/ErrorBanner';
-import MediaStage from '../media/MediaStage';
 
 // ── nav group separator ───────────────────────────────────────────────────
 const NavSep: React.FC = () => (
@@ -38,6 +37,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             {/* execute / do */}
             <NavLink to="/tasks"     title="Automate and run background tasks">Tasks</NavLink>
             <NavLink to="/workspace" title="Files, projects and context">Workspace</NavLink>
+            <NavLink to="/media" title="View multimedia output">Media</NavLink>
 
             <NavSep />
 
@@ -56,9 +56,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <ErrorBanner />
 
       <main className="context-panel">{children}</main>
-
-      {/* Floating, draggable media stage — renders itself when store has content */}
-      <MediaStage />
     </div>
   );
 };
