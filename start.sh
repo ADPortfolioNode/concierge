@@ -220,23 +220,36 @@ wait_for_backend() {
     local port=${2:-8001}
     local timeout=${3:-30}
     local ticks=0
+    local preferred_path=${HEALTH_PATH:-/health}
+    local health_paths=()
+
+    # Normalize paths and allow back compatible health endpoints.
+    if [ -n "$preferred_path" ]; then
+        if [[ "$preferred_path" != /* ]]; then
+            preferred_path="/${preferred_path}"
+        fi
+        health_paths+=("$preferred_path")
+    fi
+    health_paths+=("/_health" "/api/_health")
 
     echo "Waiting for backend to become available on ${host}:${port}..."
     while [ "$ticks" -lt "$timeout" ]; do
         if command -v curl >/dev/null 2>&1; then
-            if curl -s "http://${host}:${port}/_health" >/dev/null 2>&1; then
-                echo "Backend is available."
-                return 0
-            fi
+            for path in "${health_paths[@]}"; do
+                if curl -fs "http://${host}:${port}${path}" >/dev/null 2>&1; then
+                    echo "Backend is available via ${path}."
+                    return 0
+                fi
+            done
         elif command -v nc >/dev/null 2>&1; then
             if nc -z "$host" "$port" >/dev/null 2>&1; then
-                echo "Backend is available."
+                echo "Backend port ${port} is open."
                 return 0
             fi
         else
             if (exec 3<>/dev/tcp/${host}/${port}) >/dev/null 2>&1; then
                 exec 3>&-
-                echo "Backend is available."
+                echo "Backend port ${port} is open."
                 return 0
             fi
         fi
