@@ -132,6 +132,7 @@ Options:
   --clear    stop and remove running compose services (docker-compose down)
   --frontend      start the React frontend dev server (npm run dev) and log output (default)
   --no-frontend   do not attempt to start the frontend service
+  --no-ngrok      do not start ngrok tunnel even if ngrok is installed
     --docker-build    run `docker build` for the repository root Dockerfile
     --buildx          use `docker buildx build` (supports --platform)
     --push-image      push the built image to the configured registry (requires `--image-tag`)
@@ -167,6 +168,8 @@ INSTALL_FULL_REQUIREMENTS=false
 VITE_API_URL_ARG=""
 # frontend will be started by default; use --no-frontend to skip
 FRONTEND=true
+# ngrok will be started automatically if available; use --no-ngrok to skip
+NGROK=true
 CLEAR=false
 
 for arg in "$@"; do
@@ -187,8 +190,11 @@ for arg in "$@"; do
         --vite-api-url=*) VITE_API_URL_ARG="${arg#--vite-api-url=}" ;;
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
-        --clear) CLEAR=true ;;
-        -h|--help) print_usage; exit 0 ;;
+        --no-ngrok) NGROK=false ;;
+        -h|--help)
+            print_usage
+            exit 0
+            ;;
         *)
             echo "Unknown option: $arg" >&2
             print_usage
@@ -207,6 +213,26 @@ confirm() {
         [Yy]*) return 0 ;; 
         *) return 1 ;;
     esac
+}
+
+start_ngrok() {
+    if ! $NGROK; then
+        echo "Skipping ngrok startup (--no-ngrok specified)."
+        return
+    fi
+    if ! command -v ngrok >/dev/null 2>&1; then
+        echo "ngrok not found on PATH; skipping ngrok startup." >&2
+        return
+    fi
+    if pgrep -f 'ngrok http 8001' >/dev/null 2>&1; then
+        echo "ngrok tunnel already running for port 8001."
+        return
+    fi
+
+    echo "Starting ngrok tunnel for backend on port 8001..."
+    nohup ngrok http 8001 > ngrok.log 2>&1 &
+    NGROK_PID=$!
+    echo "ngrok started with PID ${NGROK_PID}; logs are in ngrok.log"
 }
 
 if $PRUNE; then
@@ -353,6 +379,7 @@ if $CLEAR; then
     clear_ports
     compose down || true
     compose up -d --build || die "compose up failed"
+    start_ngrok
 else
     # always attempt to tear down first to avoid port conflicts, then bring up
     echo "freeing known ports before tear down/start"
@@ -373,6 +400,7 @@ else
         compose logs --no-color app --tail=50 >> start.log || true
         echo "-- end snapshot --" >> start.log
     fi
+    start_ngrok
 fi
 
 # if --test was requested, kick off Playwright and tail backend logs
