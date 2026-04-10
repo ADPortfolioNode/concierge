@@ -29,14 +29,6 @@
     "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION",
     "VITE_API_URL_AUTO_DETECT": "true"
   },
-  "preview": {
-    "env": {
-      "VITE_API_URL_SET": "staging",
-      "VITE_API_URL": "@VITE_API_URL_STAGING",
-      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
-      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION"
-    }
-  },
   "production": {
     "env": {
       "VITE_API_URL_SET": "production",
