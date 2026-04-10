@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from config.settings import get_settings
 from plugins.image_generation_plugin import ImageGenerationPlugin
 
 
@@ -23,9 +24,9 @@ def test_save_bytes_to_media_static_creates_files(tmp_path):
 
     assert fname, "filename should be returned"
 
-    root = Path(__file__).resolve().parent.parent
-    img_path = root / "media" / "images" / fname
-    meta_path = root / "media" / "images" / (fname + ".json")
+    media_images = get_settings().media_images_dir
+    img_path = media_images / fname
+    meta_path = media_images / (fname + ".json")
 
     assert img_path.exists(), f"image file {img_path} should exist"
     assert meta_path.exists(), f"sidecar {meta_path} should exist"

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from config.settings import get_settings
 from plugins.image_generation_plugin import ImageGenerationPlugin
 
 
@@ -17,8 +18,8 @@ def test_sidecar_contains_expected_fields():
         content, "contract-prompt", metadata={"prompt": "contract-prompt", "source": "test", "mime_type": "image/png"}
     )
 
-    root = Path(__file__).resolve().parent.parent
-    meta_path = root / "media" / "images" / (fname + ".json")
+    media_images = get_settings().media_images_dir
+    meta_path = media_images / (fname + ".json")
     assert meta_path.exists(), "sidecar metadata must exist"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
 

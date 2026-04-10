@@ -3,6 +3,8 @@ import time
 import requests
 from pathlib import Path
 
+from config.settings import get_settings
+
 
 def test_post_message_persists_remote_image():
     # Allow override from environment for CI or non-standard hosts
@@ -10,8 +12,7 @@ def test_post_message_persists_remote_image():
     url = f"{base}/api/v1/concierge/message"
     # Use an existing local media file as the "remote" resource to avoid
     # external network dependence in CI. Pick the newest file under media/images
-    root = Path(__file__).resolve().parent.parent
-    media_dir = root / 'media' / 'images'
+    media_dir = get_settings().media_images_dir
     # Accept common image suffixes so tests stay stable if default format changes
     exts = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
     imgs = sorted([p for p in media_dir.iterdir() if p.suffix.lower() in exts], key=lambda p: p.stat().st_mtime, reverse=True)
@@ -37,7 +38,7 @@ def test_post_message_persists_remote_image():
         # parse URL and get the basename
         parsed = urlparse(p)
         name = Path(parsed.path).name
-        fpath = root / 'media' / 'images' / name
+        fpath = get_settings().media_images_dir / name
         assert fpath.exists(), f'persisted image not found: {fpath}'
         # sidecar next to the image
         sidecar = fpath.with_suffix(fpath.suffix + '.json')

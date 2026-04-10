@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import app
+from config.settings import get_settings
 
 
 def _ensure_sample_image():
@@ -13,7 +14,7 @@ def _ensure_sample_image():
         "ASsJTYQAAAAASUVORK5CYII="
     )
     content = base64.b64decode(tiny_png_b64)
-    media_dir = Path(__file__).resolve().parent.parent / "media" / "images"
+    media_dir = get_settings().media_images_dir
     media_dir.mkdir(parents=True, exist_ok=True)
     fname = f"test_img_{int(Path(__file__).stat().st_mtime)}.png"
     img_path = media_dir / fname
