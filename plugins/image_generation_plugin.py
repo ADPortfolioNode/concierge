@@ -17,10 +17,18 @@ import time
 from pathlib import Path
 from typing import Optional
 import httpx
+from config.settings import get_settings
 
 from plugins.base_plugin import BasePlugin
 
 logger = logging.getLogger(__name__)
+
+
+def _get_media_images_dir() -> Path:
+    settings = get_settings()
+    media_dir = settings.media_images_dir
+    media_dir.mkdir(parents=True, exist_ok=True)
+    return media_dir
 
 
 class ImageGenerationPlugin(BasePlugin):
@@ -273,9 +281,7 @@ class ImageGenerationPlugin(BasePlugin):
     def _save_bytes_to_media(self, content: bytes, prompt: str, metadata: Optional[dict] = None) -> str:
         """Save bytes into project media/images and return filename. Also writes a .json sidecar."""
         try:
-            root = Path(__file__).resolve().parent.parent
-            media_dir = (root / "media" / "images")
-            media_dir.mkdir(parents=True, exist_ok=True)
+            media_dir = _get_media_images_dir()
             # create filename from prompt hash + short ts
             h = hashlib.md5(prompt.encode()).hexdigest()[:10]
             fname = f"img_{h}_{int(__import__('time').time())}.jpg"
@@ -312,9 +318,7 @@ class ImageGenerationPlugin(BasePlugin):
     def _save_bytes_to_media_static(content: bytes, prompt: str, metadata: Optional[dict] = None) -> str:
         """Static helper usable from staticmethods to persist bytes. Also writes a .json sidecar."""
         try:
-            root = Path(__file__).resolve().parent.parent
-            media_dir = (root / "media" / "images")
-            media_dir.mkdir(parents=True, exist_ok=True)
+            media_dir = _get_media_images_dir()
             h = hashlib.md5(prompt.encode()).hexdigest()[:10]
             fname = f"img_{h}_{int(__import__('time').time())}.jpg"
             dest = media_dir / fname

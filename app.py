@@ -13,6 +13,7 @@ import time
 import traceback
 from typing import Any, Optional, Deque
 from pathlib import Path
+from config.settings import get_settings
 import collections
 
 # Load .env before any os.getenv calls so keys are available to all modules.
@@ -55,7 +56,6 @@ from datetime import datetime
 SacredTimeline = None
 AsyncConcurrencyManager = None
 MemoryStore = None
-get_settings = None
 
 # capability layers placeholders
 load_default_plugins = None
@@ -114,6 +114,8 @@ logger.info(f"OPENAI_API_KEY set: {_openai_set}; GEMINI_API_KEY set: {_gemini_se
 if not _jobs_available and _jobs_import_err_msg:
     logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
+settings = get_settings()
+
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
@@ -124,8 +126,7 @@ async def _lifespan(application: FastAPI):
     global is_enabled
     # late-import configuration and core components
     cfg_mod = importlib.import_module('config.settings')
-    get_settings = getattr(cfg_mod, 'get_settings')
-    settings = get_settings()
+    settings = cfg_mod.get_settings()
 
     concurrency_mod = importlib.import_module('core.concurrency')
     AsyncConcurrencyManager = getattr(concurrency_mod, 'AsyncConcurrencyManager')
@@ -153,8 +154,8 @@ async def _lifespan(application: FastAPI):
     # start background media cleanup task
     async def _media_cleanup_loop():
         try:
-            media_images = Path(__file__).parent / 'media' / 'images'
-            max_age = int(os.getenv('MEDIA_MAX_AGE_SECONDS', str(60 * 60 * 24 * 7)))
+            media_images = settings.media_images_dir
+            max_age = settings.media_max_age_seconds
             while True:
                 try:
                     now = time.time()
@@ -282,18 +283,23 @@ app = FastAPI(lifespan=_lifespan)
 
 # Serve generated media (images/audio/video) from /media
 try:
-    media_path = Path(__file__).parent / "media"
+    media_path = settings.media_dir
     try:
-        media_path.mkdir(exist_ok=True)
+        media_path.mkdir(parents=True, exist_ok=True)
         app.mount("/media", StaticFiles(directory=str(media_path)), name="media")
     except OSError as _err:
         import errno as _errno
         # On serverless platforms the package directory may be read-only.
-        # Fall back to a writable temporary directory (e.g. /tmp/media).
+        # Fall back to a writable temporary directory, preferably explicit
+        # MEDIA_DIR_FALLBACK or `/tmp/media`.
         if getattr(_err, 'errno', None) == _errno.EROFS or getattr(_err, 'errno', None) == 30:
-            tmp_media = Path(os.getenv('MEDIA_DIR', '/tmp/media'))
+            tmp_media = settings.media_fallback_dir
+            if not tmp_media.is_absolute():
+                tmp_media = Path('/tmp') / tmp_media
             try:
                 tmp_media.mkdir(parents=True, exist_ok=True)
+                settings.media_dir = tmp_media
+                settings.media_images_dir = tmp_media / 'images'
                 app.mount("/media", StaticFiles(directory=str(tmp_media)), name="media")
                 logger.warning("Read-only filesystem; using fallback media dir: %s", tmp_media)
             except Exception:
@@ -496,7 +502,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
         else:
             candidates = [m.group(1) for m in found]
 
-        media_dir = Path(__file__).parent / 'media' / 'images'
+        media_dir = settings.media_images_dir
         media_dir.mkdir(parents=True, exist_ok=True)
         async with httpx.AsyncClient(timeout=30.0) as client:
             for url in candidates:
@@ -714,7 +720,7 @@ async def concierge_conversation():
 async def concierge_media_list(request: Request):
     """Admin listing of saved media files (media/images)."""
     try:
-        media_images = Path(__file__).parent / 'media' / 'images'
+        media_images = settings.media_images_dir
         items = []
         if media_images.exists():
             # Only include image files (skip sidecar JSON files)
