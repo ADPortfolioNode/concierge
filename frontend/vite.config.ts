@@ -7,7 +7,32 @@ import path from 'path'
 // is only used as a last-resort for local development.
 // NOTE: frontend runtime also reads BACKEND_URL as a VITE_API_URL alias so
 // the dev proxy and client request URL are consistent.
-const backendTarget = process.env.BACKEND_URL ?? process.env.VITE_API_URL ?? (process.env.IN_DOCKER === 'true' ? 'http://app:8000' : 'http://localhost:8001')
+const getEnv = (key: string) => (process.env[key] || '').replace(/\/$/, '');
+const VITE_API_URL = getEnv('VITE_API_URL') || getEnv('BACKEND_URL');
+const VITE_API_URL_LOCAL = getEnv('VITE_API_URL_LOCAL');
+const VITE_API_URL_DOCKER = getEnv('VITE_API_URL_DOCKER');
+const VITE_API_URL_STAGING = getEnv('VITE_API_URL_STAGING');
+const VITE_API_URL_PRODUCTION = getEnv('VITE_API_URL_PRODUCTION');
+const VITE_API_URL_SET = (process.env.VITE_API_URL_SET || process.env.VITE_API_SERVER_SET || '').trim().toLowerCase();
+const VITE_API_URL_AUTO_DETECT = (process.env.VITE_API_URL_AUTO_DETECT || 'true').toLowerCase() !== 'false';
+
+const SERVER_URLS: Record<string, string> = {
+  local: VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001',
+  docker: VITE_API_URL_DOCKER || VITE_API_URL || 'http://app:8000',
+  staging: VITE_API_URL_STAGING || VITE_API_URL || '',
+  production: VITE_API_URL_PRODUCTION || VITE_API_URL || '',
+  auto: VITE_API_URL || '',
+};
+
+const backendTarget = (() => {
+  if (VITE_API_URL_SET) {
+    return SERVER_URLS[VITE_API_URL_SET] || SERVER_URLS.local;
+  }
+  if (!VITE_API_URL_AUTO_DETECT) {
+    return process.env.IN_DOCKER === 'true' ? SERVER_URLS.docker : SERVER_URLS.local;
+  }
+  return process.env.IN_DOCKER === 'true' ? SERVER_URLS.docker : SERVER_URLS.local;
+})();
 const basePath = process.env.VITE_BASE_URL ?? '/'
 
 export default defineConfig({

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
@@ -121,10 +121,27 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
 
 /** Render message content, turning embedded image URLs into <img> elements */
 const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
-  const segments = splitContentIntoSegments(content);
+  const segments = useMemo(() => splitContentIntoSegments(content), [content]);
   const hasImages = segments.some((s) => s.kind === 'image');
   const pushImage = useAppStore((s) => s.pushImage);
   const pushedRef = useRef<Record<string, boolean>>({});
+  const localMediaImages = useMemo(
+    () => segments.filter((s) => s.kind === 'image' && s.value.includes('/media/images/')).map((s) => s.value),
+    [segments]
+  );
+
+  useEffect(() => {
+    localMediaImages.forEach((src) => {
+      if (pushImage && !pushedRef.current[src]) {
+        try {
+          pushImage(src);
+          pushedRef.current[src] = true;
+        } catch {
+          // ignore
+        }
+      }
+    });
+  }, [localMediaImages, pushImage]);
 
   if (!hasImages) {
     return (
