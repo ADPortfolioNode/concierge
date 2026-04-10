@@ -1,6 +1,16 @@
 {
   "version": 2,
-
+  "builds": [
+    { "src": "main.py", "use": "@vercel/python" },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist",
+        "buildCommand": "npm install && npm run build"
+      }
+    }
+  ],
   "routes": [
     { "src": "^/api/_health$", "dest": "/main.py" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },

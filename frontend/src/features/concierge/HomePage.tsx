@@ -165,6 +165,27 @@ const OutcomeCard: React.FC<(typeof USE_CASES)[0]> = ({
 );
 
 // ── main page ─────────────────────────────────────────────────────────────
+const VISUAL_CARDS = [
+  {
+    src: '/workflow-collaboration.svg',
+    alt: 'Collaboration workflow illustration',
+    label: 'Collaboration',
+    title: 'Work together on AI-driven planning',
+  },
+  {
+    src: '/workflow-insights.svg',
+    alt: 'Insights workflow illustration',
+    label: 'Insights',
+    title: 'Monitor progress with clear metrics',
+  },
+  {
+    src: '/workflow-design.svg',
+    alt: 'Design workflow illustration',
+    label: 'Design',
+    title: 'Visualise strategy, tasks, and outcomes',
+  },
+];
+
 const HomePage: React.FC = () => (
   <div
     style={{
@@ -175,20 +196,90 @@ const HomePage: React.FC = () => (
     }}
   >
     {/* hero */}
-    <div style={{ marginBottom: 40 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
-          AI Ops Concierge
-        </span>
+    <div
+      style={{
+        marginBottom: 40,
+        display: 'grid',
+        gridTemplateColumns: '1.2fr 0.9fr',
+        gap: 24,
+        alignItems: 'center',
+      }}
+    >
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
+            AI Ops Concierge
+          </span>
+        </div>
+        <h1 style={{ fontSize: 38, fontWeight: 800, margin: '0 0 14px', letterSpacing: '-0.02em', lineHeight: 1.08 }}>
+          Build smarter workflows,
+          <br />
+          <span style={{ color: '#7c6af7' }}>see results visually.</span>
+        </h1>
+        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', margin: 0, maxWidth: 600, lineHeight: 1.75 }}>
+          Jump into the chat or browse the visual workspace. Use AI to plan, execute,
+          and monitor tasks, then surface photo-driven insights and media outputs.
+        </p>
+        <div style={{ marginTop: 24, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          <SamplePrompt text="Show me my current roadmap" variant="chip" />
+          <SamplePrompt text="Create a visual status update" variant="chip" />
+          <SamplePrompt text="Generate a media summary" variant="chip" />
+        </div>
       </div>
-      <h1 style={{ fontSize: 30, fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-        What do you want to{' '}
-        <span style={{ color: '#7c6af7' }}>achieve today?</span>
-      </h1>
-      <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: 0, maxWidth: 560, lineHeight: 1.7 }}>
-        Your AI operations concierge — type anything in the chat panel, or choose a
-        use case below to get started.
-      </p>
+
+      <div
+        style={{
+          position: 'relative',
+          minHeight: 360,
+          borderRadius: 24,
+          overflow: 'hidden',
+          boxShadow: '0 40px 90px rgba(15, 23, 42, 0.35)',
+          background: 'linear-gradient(135deg, rgba(18,18,36,0.92) 0%, rgba(30,16,56,0.98) 100%)',
+          border: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(circle at 30% 20%, rgba(124,106,247,0.25), transparent 28%), radial-gradient(circle at 75% 15%, rgba(14,165,233,0.18), transparent 22%), radial-gradient(circle at 50% 80%, rgba(34,197,94,0.18), transparent 26%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backdropFilter: 'blur(14px)',
+            mixBlendMode: 'screen',
+          }}
+        />
+
+        <div style={{ position: 'relative', height: '100%', padding: 22, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {VISUAL_CARDS.slice(0, 2).map((card) => (
+            <div key={card.label} style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)' }}>
+              <img src={card.src} alt={card.alt} style={{ width: '100%', height: 168, objectFit: 'cover' }} />
+              <div style={{ padding: '14px 12px' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#c4b8ff', marginBottom: 6 }}>{card.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', lineHeight: 1.3 }}>{card.title}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)', display: 'grid', alignContent: 'space-between', padding: 18 }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', marginBottom: 10 }}>Visual summary</div>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>Photos, charts, and media previews</h2>
+              <p style={{ margin: '14px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>
+                Browse your content library and preview image-based deliverables without leaving the dashboard.
+              </p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+              {VISUAL_CARDS.slice(2).map((card) => (
+                <img key={card.label} src={card.src} alt={card.alt} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 12 }} />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     {/* quick-start chips */}

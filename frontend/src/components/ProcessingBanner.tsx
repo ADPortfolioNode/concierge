@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { makeApiUrl } from '@/config/activeServer';
 
 interface Job {
   id: string;
@@ -17,7 +18,7 @@ const ProcessingBanner: React.FC = () => {
     let mounted = true;
     const fetchJobs = async () => {
       try {
-        const resp = await fetch('/api/v1/tasks');
+        const resp = await fetch(makeApiUrl('/api/v1/tasks'));
         if (!resp.ok) return;
         const body = await resp.json();
         const data: Job[] = (body.data as any) || [];

@@ -1,0 +1,27 @@
+<svg viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Collaboration workflow illustration">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c6af7"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="#111827"/>
+  <g fill="none" stroke="#64748b" stroke-width="3" stroke-linecap="round">
+    <path d="M68 170 C110 130 170 130 210 170"/>
+    <path d="M140 80 L140 160"/>
+    <path d="M70 70 L110 110"/>
+    <path d="M250 90 L210 130"/>
+  </g>
+  <circle cx="70" cy="70" r="22" fill="url(#grad1)" stroke="#f8fafc" stroke-width="3"/>
+  <circle cx="250" cy="90" r="22" fill="#38bdf8" stroke="#e2e8f0" stroke-width="3"/>
+  <circle cx="140" cy="80" r="22" fill="#a855f7" stroke="#f8fafc" stroke-width="3"/>
+  <circle cx="110" cy="170" r="22" fill="#0ea5e9" stroke="#e2e8f0" stroke-width="3"/>
+  <circle cx="210" cy="170" r="22" fill="#7c3aed" stroke="#f8fafc" stroke-width="3"/>
+  <g fill="#e2e8f0" font-family="Inter, sans-serif" font-size="16" font-weight="700" text-anchor="middle">
+    <text x="70" y="75">A</text>
+    <text x="250" y="95">B</text>
+    <text x="140" y="85">C</text>
+    <text x="110" y="175">D</text>
+    <text x="210" y="175">E</text>
+  </g>
+</svg>
