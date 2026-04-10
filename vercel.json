@@ -11,12 +11,43 @@
       }
     }
   ],
+  "build": {
+    "env": {
+      "VITE_API_URL": "@VITE_API_URL",
+      "VITE_API_URL_LOCAL": "@VITE_API_URL_LOCAL",
+      "VITE_API_URL_DOCKER": "@VITE_API_URL_DOCKER",
+      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
+      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION",
+      "VITE_API_URL_SET": "@VITE_API_URL_SET",
+      "VITE_API_URL_AUTO_DETECT": "@VITE_API_URL_AUTO_DETECT"
+    }
+  },
+  "env": {
+    "VITE_API_URL_LOCAL": "@VITE_API_URL_LOCAL",
+    "VITE_API_URL_DOCKER": "@VITE_API_URL_DOCKER",
+    "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
+    "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION",
+    "VITE_API_URL_AUTO_DETECT": "true"
+  },
+  "preview": {
+    "env": {
+      "VITE_API_URL_SET": "staging",
+      "VITE_API_URL": "@VITE_API_URL_STAGING",
+      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
+      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION"
+    }
+  },
+  "production": {
+    "env": {
+      "VITE_API_URL_SET": "production",
+      "VITE_API_URL": "@VITE_API_URL_PRODUCTION",
+      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
+      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION"
+    }
+  },
   "routes": [
-    { "src": "^/api/_health$", "dest": "/main.py" },
+    { "handle": "filesystem" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
-    { "src": "^/__files$", "dest": "/main.py" },
-    { "src": "^/assets/(.*)$", "dest": "/main.py" },
-    { "src": "^/index.html$", "dest": "/main.py" },
-    { "src": "^/(.*)$", "dest": "/main.py" }
+    { "src": "^/.*$", "dest": "/index.html" }
   ]
 }
