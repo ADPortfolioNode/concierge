@@ -13,33 +13,25 @@
   ],
   "build": {
     "env": {
-      "VITE_API_URL": "@VITE_API_URL",
-      "VITE_API_URL_LOCAL": "@VITE_API_URL_LOCAL",
-      "VITE_API_URL_DOCKER": "@VITE_API_URL_DOCKER",
-      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
-      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION",
-      "VITE_API_URL_SET": "@VITE_API_URL_SET",
-      "VITE_API_URL_AUTO_DETECT": "@VITE_API_URL_AUTO_DETECT"
+      "VITE_API_URL": "https://deoismconcierge.vercel.app/",
+      "VITE_API_URL_LOCAL": "http://localhost:8000",
+      "VITE_API_URL_DOCKER": "http://app:8000",
+      "VITE_API_URL_STAGING": "https://deoismconcierge-adportfolionodes-projects.vercel.app/",
+      "VITE_API_URL_PRODUCTION": "https://deoismconcierge.vercel.app/",
+      "VITE_API_URL_SET": "production",
+      "VITE_API_URL_AUTO_DETECT": "true"
     }
   },
   "env": {
-    "VITE_API_URL_LOCAL": "@VITE_API_URL_LOCAL",
-    "VITE_API_URL_DOCKER": "@VITE_API_URL_DOCKER",
-    "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
-    "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION",
+    "VITE_API_URL_LOCAL": "http://localhost:8000",
+    "VITE_API_URL_DOCKER": "http://app:8000",
+    "VITE_API_URL_STAGING": "https://deoismconcierge-adportfolionodes-projects.vercel.app/",
+    "VITE_API_URL_PRODUCTION": "https://deoismconcierge.vercel.app/",
     "VITE_API_URL_AUTO_DETECT": "true"
-  },
-  "production": {
-    "env": {
-      "VITE_API_URL_SET": "production",
-      "VITE_API_URL": "@VITE_API_URL_PRODUCTION",
-      "VITE_API_URL_STAGING": "@VITE_API_URL_STAGING",
-      "VITE_API_URL_PRODUCTION": "@VITE_API_URL_PRODUCTION"
-    }
   },
   "routes": [
     { "handle": "filesystem" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
-    { "src": "^/.*$", "dest": "/index.html" }
+    { "src": "^/.*$", "dest": "/main.py" }
   ]
 }
