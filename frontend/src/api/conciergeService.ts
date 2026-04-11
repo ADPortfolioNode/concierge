@@ -66,15 +66,24 @@ export type StreamEvent =
 export async function* streamMessage(message: string, history?: HistoryEntry[]): AsyncGenerator<StreamEvent> {
   const streamUrl = makeApiUrl('/api/v1/concierge/stream');
 
-  const response = await fetch(streamUrl, {
+  async function openStream(url: string, options: RequestInit) {
+    const res = await fetch(url, options);
+    if (res.ok && res.body) return res;
+    if (res.status === 405 && options.method === 'POST') {
+      // Some proxies or server platforms reject POST-based SSE. Retry with
+      // a GET-compatible stream endpoint when available.
+      const fallbackUrl = makeApiUrl(`/api/v1/concierge/stream?message=${encodeURIComponent(message)}`);
+      const fallbackRes = await fetch(fallbackUrl, { method: 'GET' });
+      if (fallbackRes.ok && fallbackRes.body) return fallbackRes;
+    }
+    throw new Error(`Stream request failed: ${res.status} ${res.statusText}`);
+  }
+
+  const response = await openStream(streamUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
   });
-
-  if (!response.ok || !response.body) {
-    throw new Error(`Stream request failed: ${response.status} ${response.statusText}`);
-  }
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
