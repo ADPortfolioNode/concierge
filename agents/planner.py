@@ -88,6 +88,7 @@ class Planner:
 
 if __name__ == "__main__":
     import asyncio
+    import json
     logging.basicConfig(level=logging.INFO)
 
     async def _demo():

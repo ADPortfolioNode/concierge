@@ -99,6 +99,11 @@ clear_ports() {
     done
 }
 
+die() {
+    echo "$*" >&2
+    exit 1
+}
+
 # verify prerequisites early
 if ! command -v docker >/dev/null 2>&1; then
     die "docker CLI not found; please install Docker"
@@ -113,11 +118,6 @@ if ! compose version >/dev/null 2>&1; then
 fi
 
 default_answer="N"
-
-die() {
-    echo "$*" >&2
-    exit 1
-}
 
 print_usage() {
     cat <<'USAGE'
