@@ -14,10 +14,21 @@
 
 import { ConversationMessage } from '../types/domain';
 
-const DB_NAME = 'concierge_memory';
-const STORE_NAME = 'conversation';
-const KEY = 'history';
-const LS_KEY = 'concierge_conversation_history';
+function dbName() {
+  return 'concierge_memory';
+}
+
+function storeName() {
+  return 'conversation';
+}
+
+function historyKey() {
+  return 'history';
+}
+
+function localStorageKey() {
+  return 'concierge_conversation_history';
+}
 
 // ── IndexedDB helpers ──────────────────────────────────────────────────────
 
@@ -28,9 +39,9 @@ let _dbPromise: Promise<IDBDatabase> | null = null;
 function openDB(): Promise<IDBDatabase> {
   if (_dbPromise) return _dbPromise;
   _dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(dbName(), 1);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE_NAME);
+      req.result.createObjectStore(storeName());
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => {
@@ -43,8 +54,8 @@ function openDB(): Promise<IDBDatabase> {
 
 async function idbGet(db: IDBDatabase): Promise<ConversationMessage[]> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).get(KEY);
+    const tx = db.transaction(storeName(), 'readonly');
+    const req = tx.objectStore(storeName()).get(historyKey());
     req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
     req.onerror = () => reject(req.error);
   });
@@ -52,8 +63,8 @@ async function idbGet(db: IDBDatabase): Promise<ConversationMessage[]> {
 
 async function idbPut(db: IDBDatabase, messages: ConversationMessage[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const req = tx.objectStore(STORE_NAME).put(messages, KEY);
+    const tx = db.transaction(storeName(), 'readwrite');
+    const req = tx.objectStore(storeName()).put(messages, historyKey());
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
@@ -61,8 +72,8 @@ async function idbPut(db: IDBDatabase, messages: ConversationMessage[]): Promise
 
 async function idbClear(db: IDBDatabase): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const req = tx.objectStore(STORE_NAME).delete(KEY);
+    const tx = db.transaction(storeName(), 'readwrite');
+    const req = tx.objectStore(storeName()).delete(historyKey());
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
@@ -72,7 +83,7 @@ async function idbClear(db: IDBDatabase): Promise<void> {
 
 function lsGet(): ConversationMessage[] {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(localStorageKey());
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -81,7 +92,7 @@ function lsGet(): ConversationMessage[] {
 
 function lsPut(messages: ConversationMessage[]): void {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(messages));
+    localStorage.setItem(localStorageKey(), JSON.stringify(messages));
   } catch {
     // storage quota exceeded — silently ignore
   }
@@ -89,7 +100,7 @@ function lsPut(messages: ConversationMessage[]): void {
 
 function lsClear(): void {
   try {
-    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(localStorageKey());
   } catch {
     // ignore
   }
