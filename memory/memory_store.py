@@ -103,46 +103,75 @@ class MemoryStore:
         # configured, otherwise attempt Qdrant. If optional libraries are
         # missing fall back to the in-memory JSONL-backed store.
         if self._vector_db == "chroma":
-            if chromadb is not None and _ONNX_AVAILABLE:
-                try:
-                    # Industry-standard hybrid memory pattern:
-                    # Use PersistentClient with CHROMA_PATH env var so embeddings
-                    # survive container restarts and never hit a read-only file
-                    # system error inside the Docker image layer.
-                    chroma_path = os.getenv("CHROMA_PATH", "/app/chroma")
+            if chromadb is not None:
+                def _init_chroma_http_client(host: str, port: str):
                     try:
-                        os.makedirs(chroma_path, exist_ok=True)
-                    except OSError as _mk_err:
-                        # Directory may already exist or be read-only; the
-                        # PersistentClient call below will surface a clearer
-                        # error if the path is truly unusable.
-                        logger.warning("Could not create ChromaDB directory %s: %s", chroma_path, _mk_err)
+                        return chromadb.HttpClient(host=host, port=port)
+                    except TypeError:
+                        return chromadb.HttpClient(url=f"http://{host}:{port}")
 
+                def _ensure_collection(client):
+                    if hasattr(client, "get_or_create_collection"):
+                        return client.get_or_create_collection(name=self._collection_name)
+                    return client.create_collection(name=self._collection_name)
+
+                use_remote_chroma = False
+                if _ONNX_AVAILABLE:
                     try:
-                        self._client = chromadb.PersistentClient(path=chroma_path)
-                        logger.info("ChromaDB PersistentClient initialised at %s", chroma_path)
+                        chroma_path = os.getenv("CHROMA_PATH", "/app/chroma")
+                        try:
+                            os.makedirs(chroma_path, exist_ok=True)
+                        except OSError as _mk_err:
+                            logger.warning("Could not create ChromaDB directory %s: %s", chroma_path, _mk_err)
+
+                        try:
+                            self._client = chromadb.PersistentClient(path=chroma_path)
+                            logger.info("ChromaDB PersistentClient initialised at %s", chroma_path)
+                        except Exception as exc:
+                            logger.warning("ChromaDB PersistentClient failed; trying HTTP fallback at %s:%s (%s)", chroma_host, chroma_port, exc)
+                            use_remote_chroma = True
                     except Exception:
-                        try:
-                            self._client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
-                            logger.info("ChromaDB PersistentClient failed; using HttpClient at %s:%s", chroma_host, chroma_port)
-                        except Exception:
-                            self._client = None
+                        logger.exception("Failed to initialize chromadb persistent client; using in-memory fallback")
+                        self._client = None
 
-                    if self._client is not None:
+                    if self._client is None:
+                        use_remote_chroma = True
+
+                    if use_remote_chroma:
                         try:
-                            if hasattr(self._client, "get_or_create_collection"):
-                                self._collection = self._client.get_or_create_collection(name=self._collection_name)
-                            else:
-                                self._collection = self._client.create_collection(name=self._collection_name)
+                            self._client = _init_chroma_http_client(chroma_host, chroma_port)
+                            logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
                         except Exception:
-                            logger.exception("Failed to create/get chroma collection; disabling chroma")
+                            logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
                             self._client = None
-                except Exception:
-                    logger.exception("Failed to initialize chromadb client; using in-memory fallback")
-                    self._client = None
+                else:
+                    logger.warning("onnxruntime not available; attempting remote Chroma HTTP client at %s:%s", chroma_host, chroma_port)
+                    try:
+                        self._client = _init_chroma_http_client(chroma_host, chroma_port)
+                        logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
+                    except Exception:
+                        logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
+                        self._client = None
+
+                if self._client is not None:
+                    try:
+                        self._collection = _ensure_collection(self._client)
+                    except Exception:
+                        logger.exception("Failed to create/get chroma collection; disabling chroma")
+                        if _ONNX_AVAILABLE and not use_remote_chroma:
+                            try:
+                                self._client = _init_chroma_http_client(chroma_host, chroma_port)
+                                self._collection = _ensure_collection(self._client)
+                                logger.info("ChromaDB HttpClient initialised after PersistentClient failure")
+                            except Exception:
+                                logger.exception("Failed to create/get chroma collection via HTTP fallback; disabling chroma")
+                                self._client = None
+                                self._collection = None
+                        else:
+                            self._client = None
+                            self._collection = None
             else:
-                if chromadb is not None:
-                    logger.warning("onnxruntime not available; skipping Chroma initialization and using in-memory fallback")
+                logger.warning("chromadb package is unavailable; skipping Chroma initialization and using in-memory fallback")
 
         elif self._vector_db == "qdrant":
             if QdrantClient is not None:
