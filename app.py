@@ -675,23 +675,12 @@ async def concierge_timeline_stream():
     return StreamingResponse(event_generator(), media_type='text/event-stream')
 
 
-@app.post('/api/v1/concierge/stream')
-async def concierge_stream(payload: ConciergeMessagePayload):
-    """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.
-
-    Each SSE event carries a JSON-encoded dict.  See
-    ``SacredTimeline.stream_user_input`` for the event shapes.
-
-    The client should open this with ``fetch`` + ``ReadableStream`` (or
-    an ``EventSource`` that supports POST — most libraries do).
-    """
-    msg = payload.message
-
+async def _create_concierge_stream_response(message: str) -> StreamingResponse:
     _ensure_timeline_available()
 
     async def _event_gen():
         try:
-            async for evt_json in app.state.timeline.stream_user_input(msg):
+            async for evt_json in app.state.timeline.stream_user_input(message):
                 yield f"data: {evt_json}\n\n"
         except Exception as exc:
             logger.exception("SSE stream error")
@@ -709,6 +698,31 @@ async def concierge_stream(payload: ConciergeMessagePayload):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post('/api/v1/concierge/stream')
+async def concierge_stream(payload: ConciergeMessagePayload):
+    """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.
+
+    Each SSE event carries a JSON-encoded dict.  See
+    ``SacredTimeline.stream_user_input`` for the event shapes.
+
+    The client should open this with ``fetch`` + ``ReadableStream`` (or
+    an ``EventSource`` that supports POST — most libraries do).
+    """
+    return await _create_concierge_stream_response(payload.message)
+
+
+@app.get('/api/v1/concierge/stream')
+async def concierge_stream_get(message: str):
+    """Compatibility GET endpoint for stream clients that cannot POST."""
+    return await _create_concierge_stream_response(message)
+
+
+@app.options('/api/v1/concierge/stream')
+async def concierge_stream_options():
+    """Support preflight checks for streaming clients."""
+    return Response(status_code=200)
 
 
 @app.get('/api/v1/concierge/conversation')
