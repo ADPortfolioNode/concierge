@@ -922,6 +922,26 @@ async def memory_health():
         )
 
 
+@app.get('/api/memory/health')
+async def api_memory_health():
+    return await memory_health()
+
+
+@app.get('/api/health')
+async def api_health():
+    return await health()
+
+
+@app.get('/api/health/system')
+async def api_health_system():
+    return await health_system()
+
+
+@app.get('/api/health/logs')
+async def api_health_logs(limit: int = 100):
+    return await health_logs(limit)
+
+
 @app.get('/_health')
 async def _health():
     return JSONResponse(content={"status": "ok"})
