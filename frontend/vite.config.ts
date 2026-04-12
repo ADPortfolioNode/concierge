@@ -15,6 +15,7 @@ const VITE_API_URL_STAGING = getEnv('VITE_API_URL_STAGING');
 const VITE_API_URL_PRODUCTION = getEnv('VITE_API_URL_PRODUCTION');
 const VITE_API_URL_SET = (process.env.VITE_API_URL_SET || process.env.VITE_API_SERVER_SET || '').trim().toLowerCase();
 const VITE_API_URL_AUTO_DETECT = (process.env.VITE_API_URL_AUTO_DETECT || 'true').toLowerCase() !== 'false';
+const MODE = (process.env.MODE || process.env.NODE_ENV || '').toLowerCase() || 'development';
 
 const SERVER_URLS: Record<string, string> = {
   local: VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001',
@@ -26,7 +27,7 @@ const SERVER_URLS: Record<string, string> = {
 
 const backendTarget = (() => {
   const isLocalDev = process.env.DEV === 'true' || MODE === 'development';
-  if (isLocalDev && VITE_API_URL_AUTO_DETECT) {
+  if (isLocalDev) {
     return process.env.IN_DOCKER === 'true' ? SERVER_URLS.docker : SERVER_URLS.local;
   }
   if (VITE_API_URL_SET) {
