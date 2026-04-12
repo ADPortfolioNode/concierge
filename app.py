@@ -137,6 +137,15 @@ async def _lifespan(application: FastAPI):
     orches_mod = importlib.import_module('orchestration.sacred_timeline')
     SacredTimeline = getattr(orches_mod, 'SacredTimeline')
 
+    # optional LLM wrapper for memory embedding support
+    llm_tool = None
+    try:
+        llm_mod = importlib.import_module('tools.llm_tool')
+        llm_cls = getattr(llm_mod, 'LLMTool')
+        llm_tool = llm_cls()
+    except Exception:
+        llm_tool = None
+
     # feature flag helper (populate module-level `is_enabled` so route handlers
     # can call it without requiring imports)
     try:
@@ -146,7 +155,7 @@ async def _lifespan(application: FastAPI):
         is_enabled = lambda name: False
 
     application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
-    application.state.memory = MemoryStore(collection_name=settings.memory_collection)
+    application.state.memory = MemoryStore(collection_name=settings.memory_collection, llm_tool=llm_tool)
     application.state.timeline = SacredTimeline(
         concurrency_manager=application.state.concurrency,
         memory_store=application.state.memory,

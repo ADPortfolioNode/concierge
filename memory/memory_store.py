@@ -503,7 +503,21 @@ class MemoryStore:
             def _add_chroma():
                 try:
                     safe_meta = _sanitize_for_chroma(metadata)
-                    self._collection.add(documents=[summary], metadatas=[safe_meta], ids=[rec_id])
+                    embeddings = None
+                    if self._llm is not None and hasattr(self._llm, "embed"):
+                        try:
+                            embeddings = self._llm.embed(summary)
+                        except Exception:
+                            embeddings = None
+                    if embeddings is not None:
+                        self._collection.add(
+                            documents=[summary],
+                            embeddings=[embeddings],
+                            metadatas=[safe_meta],
+                            ids=[rec_id],
+                        )
+                    else:
+                        self._collection.add(documents=[summary], metadatas=[safe_meta], ids=[rec_id])
                 except Exception as e:
                     # Detect common missing-native-dependency errors (onnxruntime)
                     err_text = str(e) or ''

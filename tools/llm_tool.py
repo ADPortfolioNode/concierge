@@ -718,6 +718,39 @@ class LLMTool:
         raise RuntimeError("Gemini call failed: no models configured")
 
     # Backwards-compat alias used by some agent subclasses
+    def embed(self, text: str, model: Optional[str] = None) -> list[float]:
+        """Return a dense text embedding using OpenAI.
+
+        This is a synchronous method to support callers that need embeddings
+        without an async event loop. It will try all configured API keys and
+        raise if no key is available or the request fails.
+        """
+        model = model or os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
+        if not self._api_keys:
+            raise RuntimeError("No OpenAI API key configured for embeddings")
+
+        payload = {"input": text, "model": model}
+        for key in self._api_keys:
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json",
+            }
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    resp = client.post(f"{self._base_url}/embeddings", json=payload, headers=headers)
+                    if resp.status_code == 429:
+                        continue
+                    resp.raise_for_status()
+                    data = resp.json()
+                    emb = data.get("data", [])
+                    if emb and isinstance(emb[0], dict) and "embedding" in emb[0]:
+                        return emb[0]["embedding"]
+            except Exception as exc:
+                logger.warning("LLMTool.embed failed on key %s: %s", key, exc)
+                continue
+
+        raise RuntimeError("Embedding request failed for all OpenAI API keys")
+
     async def arun(self, prompt: str, context: Optional[str] = None) -> str:
         return await self.generate(prompt, context=context)
 
