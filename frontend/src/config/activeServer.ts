@@ -53,6 +53,8 @@ const ACTIVE_SERVER = (() => {
   return detectServerSet();
 })();
 
+export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
+
 const SERVER_URLS: Record<string, string> = {
   local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001'),
   docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://app:8000'),
@@ -86,6 +88,5 @@ export function makeApiUrl(path: string) {
 }
 
 export const ACTIVE_API_BASE_URL = ACTIVE_API_BASE;
-export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 export default { ACTIVE_API_BASE, ACTIVE_API_BASE_URL, ACTIVE_SERVER_SET, makeApiUrl };
