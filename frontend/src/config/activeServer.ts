@@ -17,6 +17,18 @@ const VITE_API_URL_AUTO_DETECT = (env.VITE_API_URL_AUTO_DETECT || 'true').toLowe
 // `window.location.origin`.
 const normalizeServerUrl = (url: string) => url.replace(/\/$/, '');
 
+const parseHostname = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
+const PRODUCTION_HOST = parseHostname(VITE_API_URL_PRODUCTION);
+const STAGING_HOST = parseHostname(VITE_API_URL_STAGING);
+
 const detectServerSet = (): string => {
   if (typeof window === 'undefined' || !window.location) {
     return MODE === 'development' ? 'local' : 'production';
@@ -32,12 +44,20 @@ const detectServerSet = (): string => {
     return 'docker';
   }
 
+  if (STAGING_HOST && host === STAGING_HOST) {
+    return 'staging';
+  }
+
+  if (PRODUCTION_HOST && host === PRODUCTION_HOST) {
+    return 'production';
+  }
+
   if (host.includes('ngrok') || host.endsWith('.ngrok-free.app') || host.endsWith('.ngrok-free.dev') || host.endsWith('.ngrok.io')) {
     return 'staging';
   }
 
   if (host.endsWith('.vercel.app') || host.endsWith('.vercel.sh') || host.endsWith('.now.sh')) {
-    return 'production';
+    return 'staging';
   }
 
   return 'production';
