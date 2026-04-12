@@ -26,6 +26,9 @@ const parseHostname = (url: string) => {
   }
 };
 
+const BROWSER_HOSTNAME = typeof window !== 'undefined' && window.location ? window.location.hostname.toLowerCase() : '';
+const isBrowserLocalHost = BROWSER_HOSTNAME === 'localhost' || BROWSER_HOSTNAME === '127.0.0.1' || BROWSER_HOSTNAME === '0.0.0.0';
+
 const PRODUCTION_HOST = parseHostname(VITE_API_URL_PRODUCTION);
 const STAGING_HOST = parseHostname(VITE_API_URL_STAGING);
 
@@ -91,6 +94,9 @@ const SERVER_URLS: Record<string, string> = {
 };
 
 export const ACTIVE_API_BASE: string = (() => {
+  if (isBrowserLocalHost) {
+    return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8000');
+  }
   const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? SERVER_URLS.local;
   if (MODE === 'production') {
     return candidate === '<self.server>' ? '' : candidate;
