@@ -25,6 +25,10 @@ const SERVER_URLS: Record<string, string> = {
 };
 
 const backendTarget = (() => {
+  const isLocalDev = process.env.DEV === 'true' || MODE === 'development';
+  if (isLocalDev && VITE_API_URL_AUTO_DETECT) {
+    return process.env.IN_DOCKER === 'true' ? SERVER_URLS.docker : SERVER_URLS.local;
+  }
   if (VITE_API_URL_SET) {
     return SERVER_URLS[VITE_API_URL_SET] || SERVER_URLS.local;
   }
