@@ -8,11 +8,12 @@ restart-safe testing.
 
 import os
 import asyncio
+import json
 import logging
+import tempfile
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import json
 
 # local import to avoid hard dependency for environments that don't need LLM
 try:
@@ -50,6 +51,30 @@ except Exception:  # pragma: no cover - optional
     PointStruct = None
 
 logger = logging.getLogger(__name__)
+
+
+def _backup_path() -> str:
+    raw_path = os.getenv("MEMORY_BACKUP_FILE")
+    if raw_path:
+        path = os.path.abspath(raw_path)
+    else:
+        path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+    try:
+        parent = os.path.dirname(path) or "."
+        os.makedirs(parent, exist_ok=True)
+        test_file = os.path.join(parent, ".write_test")
+        with open(test_file, "w", encoding="utf-8") as fh:
+            fh.write("x")
+        os.remove(test_file)
+        return path
+    except Exception:
+        fallback = os.path.join(tempfile.gettempdir(), os.path.basename(path))
+        try:
+            os.makedirs(os.path.dirname(fallback), exist_ok=True)
+        except Exception:
+            pass
+        logger.warning("MemoryStore backup path %s is not writable; using fallback %s", path, fallback)
+        return fallback
 
 
 from dataclasses import dataclass, field
@@ -254,7 +279,7 @@ class MemoryStore:
         # vector DB upserts fail. This provides a best-effort persistence fallback
         # for tests and development.
         try:
-            backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+            backup_path = _backup_path()
             if os.path.exists(backup_path):
                 with open(backup_path, "r", encoding="utf-8") as fh:
                     for line in fh:
@@ -281,7 +306,7 @@ class MemoryStore:
         # Ensure backup loader is available for explicit reloads (used by tests)
         def _load_backup() -> None:
             try:
-                path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+                path = _backup_path()
                 if not os.path.exists(path):
                     return
                 with open(path, "r", encoding="utf-8") as fh:
@@ -427,7 +452,7 @@ class MemoryStore:
             logger.exception("Failed to update intelligence graph")
         # Always append a local backup record to support restart-safe tests
         try:
-            backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+            backup_path = _backup_path()
             with open(backup_path, "a", encoding="utf-8") as fh:
                 # persist node structure rather than raw summary
                 backup_obj = {"id": rec_id, "node": node.__dict__}
@@ -441,7 +466,7 @@ class MemoryStore:
             logger.debug("MemoryStore (in-memory) stored %s", rec_id)
             # append to local backup for restart-safety
             try:
-                backup_path = os.path.join(os.getcwd(), "memory_backup.jsonl")
+                backup_path = _backup_path()
                 with open(backup_path, "a", encoding="utf-8") as fh:
                     fh.write(__import__("json").dumps({"id": rec_id, "summary": summary, "metadata": metadata}) + "\n")
             except Exception:

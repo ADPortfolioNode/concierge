@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -18,7 +19,30 @@ from .project_model import CreateProjectRequest, Project, ProjectFile
 
 logger = logging.getLogger(__name__)
 
-_STORE_PATH = Path(os.getenv("PROJECTS_FILE", "data/projects.jsonl"))
+
+def _resolve_store_path() -> Path:
+    raw_path = os.getenv("PROJECTS_FILE", "data/projects.jsonl")
+    path = Path(raw_path)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parent.parent / path
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        test_file = path.parent / ".write_test"
+        with test_file.open("w", encoding="utf-8") as fh:
+            fh.write("x")
+        test_file.unlink(missing_ok=True)
+        return path
+    except Exception:
+        fallback = Path(tempfile.gettempdir()) / path.name
+        try:
+            fallback.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        logger.warning("Could not use project storage path %s; falling back to %s", path, fallback)
+        return fallback
+
+
+_STORE_PATH = _resolve_store_path()
 _projects: Dict[str, Project] = {}
 _lock = threading.RLock()
 

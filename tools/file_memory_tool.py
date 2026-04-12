@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import tempfile
 from typing import Any, Optional
 
 from .base_tool import BaseTool
@@ -30,8 +31,14 @@ class FileMemoryTool(BaseTool):
     description = "Store and retrieve structured JSON-like data on disk (./data)."
 
     def __init__(self, base_dir: Optional[str] = None) -> None:
+        fallback_dir = os.path.join(tempfile.gettempdir(), "concierge_file_memory")
         self.base_dir = os.path.abspath(base_dir or os.path.join(os.getcwd(), "data"))
-        os.makedirs(self.base_dir, exist_ok=True)
+        try:
+            os.makedirs(self.base_dir, exist_ok=True)
+        except Exception:
+            self.base_dir = fallback_dir
+            os.makedirs(self.base_dir, exist_ok=True)
+            logger.warning("FileMemoryTool base directory is not writable; using fallback %s", self.base_dir)
 
     def _safe_key(self, key: str) -> Optional[str]:
         key = key.strip()
