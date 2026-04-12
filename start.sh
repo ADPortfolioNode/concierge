@@ -356,7 +356,7 @@ write_frontend_env_for_local() {
         grep -vE '^(VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=true\n' >> "$tmp_file"
+    printf 'VITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written local frontend environment file: ${env_file}"
     echo "  VITE_API_URL=http://localhost:8000"
@@ -375,7 +375,7 @@ write_frontend_env_for_docker() {
         grep -vE '^(VITE_API_URL_DOCKER|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL_DOCKER=http://app:8000\nVITE_API_URL_SET=docker\nVITE_API_URL_AUTO_DETECT=true\n' >> "$tmp_file"
+    printf 'VITE_API_URL_DOCKER=http://app:8000\nVITE_API_URL_SET=docker\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written docker frontend environment file: ${env_file}"
     echo "  VITE_API_URL_DOCKER=http://app:8000"
