@@ -99,18 +99,8 @@ clear_ports() {
     done
 }
 
-# verify prerequisites early
-if ! command -v docker >/dev/null 2>&1; then
-    die "docker CLI not found; please install Docker"
-fi
-if ! docker info >/dev/null 2>&1; then
-    die "docker daemon not running or not accessible"
-fi
-
-# ensure we have a compose implementation
-if ! compose version >/dev/null 2>&1; then
-    die "docker compose not available (install docker-compose or use newer Docker)"
-fi
+# verify prerequisites are available when Docker is required
+# (Docker is not mandatory for --no-docker/--local mode.)
 
 default_answer="N"
 
@@ -141,9 +131,12 @@ Options:
     --build-frontend        build frontend during Docker build (passes BUILD_FRONTEND=1)
     --install-full-reqs     install `requirements.full.txt` instead of `requirements.txt`
     --vite-api-url=<url>    pass VITE_API_URL build-arg into frontend build
+    --no-docker, --local    start backend/frontend locally without Docker
   -h, --help display this message
 
 Examples:
+  start.sh --no-docker       start backend and frontend locally without Docker
+  start.sh --local           same as --no-docker
   start.sh --prune --yes --build --diag  # full clean, build, and log then up
   start.sh                               # bring up compose services
   start.sh --clear                       # tear down compose services
@@ -171,6 +164,7 @@ FRONTEND=true
 # ngrok will be started automatically if available; use --no-ngrok to skip
 NGROK=true
 CLEAR=false
+NO_DOCKER=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -191,6 +185,7 @@ for arg in "$@"; do
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
         --no-ngrok) NGROK=false ;;
+        --no-docker|--local) NO_DOCKER=true ;;
         -h|--help)
             print_usage
             exit 0
@@ -202,6 +197,18 @@ for arg in "$@"; do
             ;;
     esac
 done
+
+if ! $NO_DOCKER; then
+    if ! command -v docker >/dev/null 2>&1; then
+        die "docker CLI not found; please install Docker"
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        die "docker daemon not running or not accessible"
+    fi
+    if ! compose version >/dev/null 2>&1; then
+        die "docker compose not available (install docker-compose or use newer Docker)"
+    fi
+fi
 
 confirm() {
     local prompt="$1"
@@ -327,6 +334,76 @@ write_frontend_env() {
     return 0
 }
 
+find_python() {
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s' "python3"
+        return 0
+    elif command -v python >/dev/null 2>&1; then
+        printf '%s' "python"
+        return 0
+    fi
+    return 1
+}
+
+write_frontend_env_for_local() {
+    local env_file="frontend/.env.local"
+    local tmp_file
+
+    mkdir -p "frontend"
+    tmp_file=$(mktemp)
+
+    if [ -f "$env_file" ]; then
+        grep -vE '^(VITE_API_URL|BACKEND_URL)=' "$env_file" > "$tmp_file" || true
+    fi
+
+    printf 'VITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\n' >> "$tmp_file"
+    mv "$tmp_file" "$env_file"
+    echo "Written local frontend environment file: ${env_file}"
+    echo "  VITE_API_URL=http://localhost:8000"
+    return 0
+}
+
+write_frontend_env_for_docker() {
+    local env_file="frontend/.env.local"
+    local tmp_file
+
+    mkdir -p "frontend"
+    tmp_file=$(mktemp)
+
+    if [ -f "$env_file" ]; then
+        grep -vE '^(VITE_API_URL_DOCKER)=' "$env_file" > "$tmp_file" || true
+    fi
+
+    printf 'VITE_API_URL_DOCKER=http://app:8000\n' >> "$tmp_file"
+    mv "$tmp_file" "$env_file"
+    echo "Written docker frontend environment file: ${env_file}"
+    echo "  VITE_API_URL_DOCKER=http://app:8000"
+    return 0
+}
+
+start_local_backend() {
+    local py
+    py=$(find_python) || die "Python 3 is required for local backend startup"
+    mkdir -p logs
+    echo "Starting local backend with ${py}"
+    nohup "${py}" app.py > logs/backend.log 2>&1 &
+    BACKEND_PID=$!
+    echo "Local backend started with PID ${BACKEND_PID}; logs are in logs/backend.log"
+}
+
+start_local_frontend() {
+    echo "Starting local frontend dev server"
+    if [ -f "frontend/package-lock.json" ]; then
+        npm --prefix frontend ci --no-audit --no-fund || die "npm ci failed"
+    else
+        npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
+    fi
+    mkdir -p logs
+    nohup npm --prefix frontend run dev -- --host > logs/frontend.log 2>&1 &
+    FRONTEND_PID=$!
+    echo "Local frontend started with PID ${FRONTEND_PID}; logs are in logs/frontend.log"
+}
+
 start_ngrok() {
     if ! $NGROK; then
         echo "Skipping ngrok startup (--no-ngrok specified)."
@@ -353,6 +430,26 @@ start_ngrok() {
         echo "Warning: could not detect ngrok public URL." >&2
     fi
 }
+
+if $NO_DOCKER; then
+    echo "Starting local services without Docker"
+    echo "freeing known ports before local startup"
+    clear_ports
+    if $FRONTEND; then
+        write_frontend_env_for_local || true
+    fi
+    start_local_backend
+    if wait_for_backend 127.0.0.1 8000 30; then
+        echo "Local backend ready."
+    else
+        echo "Warning: local backend did not become healthy on 127.0.0.1:8000." >&2
+    fi
+    if $FRONTEND; then
+        start_local_frontend
+    fi
+    echo "Local startup complete."
+    exit 0
+fi
 
 if $PRUNE; then
     if confirm "Prune docker system (containers/images/networks/volumes)?"; then
@@ -546,6 +643,7 @@ if $TEST; then
 fi
 
 if $FRONTEND; then
+    write_frontend_env_for_docker || true
     if [ -d "frontend" ]; then
         if [ -f "frontend/package-lock.json" ]; then
             if ! npm --prefix frontend ci --no-audit --no-fund; then
