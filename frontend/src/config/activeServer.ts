@@ -67,6 +67,9 @@ const ACTIVE_SERVER = (() => {
   if (VITE_API_URL_SET) {
     return VITE_API_URL_SET;
   }
+  if (VITE_API_URL && VITE_API_URL !== '<self.server>') {
+    return 'auto';
+  }
   if (!VITE_API_URL_AUTO_DETECT) {
     return MODE === 'development' ? 'local' : 'production';
   }
