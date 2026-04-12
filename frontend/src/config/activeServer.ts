@@ -57,7 +57,7 @@ const detectServerSet = (): string => {
   }
 
   if (host.endsWith('.vercel.app') || host.endsWith('.vercel.sh') || host.endsWith('.now.sh')) {
-    return 'staging';
+    return 'production';
   }
 
   return 'production';
