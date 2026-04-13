@@ -58,6 +58,31 @@ const PROMPT_GROUPS = [
   },
 ];
 
+const TASK_SUBNAV = [
+  { label: 'Overview', key: 'overview' },
+  { label: 'Sample tasks', key: 'samples' },
+  { label: 'Job history', key: 'history' },
+  { label: 'Quick prompts', key: 'prompts' },
+];
+
+const SAMPLE_LAYOUT_CARDS = [
+  {
+    title: 'Photo review workflow',
+    caption: 'Use image-based tasks to summarize, tag, or clean up photos with realistic output.',
+    src: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=864&q=80',
+  },
+  {
+    title: 'Report generation',
+    caption: 'Extract insights from uploads, create polished summaries, and generate final deliverables.',
+    src: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=864&q=80',
+  },
+  {
+    title: 'Data-driven decisions',
+    caption: 'Turn spreadsheets and logs into actionable business recommendations.',
+    src: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=864&q=80',
+  },
+];
+
 type Task = { id: string; type: string; status: string; created_at?: string };
 
 const statusColor: Record<string, string> = {
@@ -90,6 +115,7 @@ const TasksPage: React.FC = () => {
   const [jobContext, setJobContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Active jobs being polled
   const [activeJobs, setActiveJobs] = useState<ActiveJob[]>([]);
@@ -160,13 +186,52 @@ const TasksPage: React.FC = () => {
     <div style={{ padding: '28px 28px 60px', maxWidth: 950, margin: '0 auto', color: '#e2e8f0' }}>
       <ProcessingBanner />
       <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>✅ Tasks</h1>
-      <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 28px', lineHeight: 1.7 }}>
+      <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 24px', lineHeight: 1.7 }}>
         Tasks run in the background — read files, generate code, analyse datasets. Enqueue via chat
         or the Postman collection, then poll for results. Click any prompt to try one now.
       </p>
 
-      {/* Timeline hero area */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+        {TASK_SUBNAV.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setActiveTab(item.key)}
+            style={{
+              border: '1px solid rgba(255,255,255,0.14)',
+              background: activeTab === item.key ? 'rgba(124,106,247,0.25)' : 'rgba(255,255,255,0.03)',
+              color: '#e2e8f0',
+              padding: '10px 16px',
+              borderRadius: 999,
+              fontSize: 13,
+              cursor: 'pointer',
+              transition: 'background 0.15s ease',
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ marginBottom: 28, color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 1.7 }}>
+        {activeTab === 'overview' && 'Overview: check the current task queue, review active jobs, and explore task examples for common automations.'}
+        {activeTab === 'samples' && 'Sample tasks: explore curated task examples and launching patterns for reading files, generating code, and analysing datasets.'}
+        {activeTab === 'history' && 'Job history: monitor queue status, inspect active jobs, and review past task activity across your session.'}
+        {activeTab === 'prompts' && 'Quick prompts: use these prompt templates to get started with task automation and accelerate your workflow.'}
+      </div>
+
       <TimelineHero />
+
+      <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', marginBottom: 28 }}>
+        {SAMPLE_LAYOUT_CARDS.map((card) => (
+          <div key={card.title} style={{ borderRadius: 18, overflow: 'hidden', boxShadow: '0 18px 45px rgba(0,0,0,0.18)', background: '#0f172a' }}>
+            <img src={card.src} alt={card.title} style={{ width: '100%', height: 190, objectFit: 'cover', display: 'block' }} />
+            <div style={{ padding: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff' }}>{card.title}</h3>
+              <p style={{ margin: '10px 0 0', color: 'rgba(255,255,255,0.68)', fontSize: 13, lineHeight: 1.65 }}>{card.caption}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* backend offline notice */}
       {!loading && offline && (
