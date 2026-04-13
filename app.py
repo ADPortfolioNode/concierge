@@ -501,6 +501,16 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     # Persist any remote images found in the assistant response and rewrite
     # their URLs to point at our local `/media/images/` mount so the frontend
     # always renders a stable, local copy.
+    def _request_base_url(request: Request) -> str:
+        forwarded_proto = request.headers.get('x-forwarded-proto') or request.headers.get('x-forwarded-protocol')
+        forwarded_host = request.headers.get('x-forwarded-host') or request.headers.get('host')
+        if forwarded_proto and forwarded_host:
+            return f"{forwarded_proto.rstrip('://')}://{forwarded_host}"
+        if forwarded_host:
+            scheme = request.url.scheme or 'https'
+            return f"{scheme}://{forwarded_host}"
+        return str(request.base_url).rstrip('/')
+
     async def _persist_and_rewrite_images(text: str, request: Request) -> str:
         if not text or not isinstance(text, str):
             return text
@@ -572,7 +582,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
                     # replace occurrences of the original URL with our local path
                     if is_enabled('media_absolute_urls'):
                         try:
-                            base = str(request.base_url).rstrip('/')
+                            base = _request_base_url(request)
                             local_url = f"{base}/media/images/{fname}"
                         except Exception:
                             local_url = f"/media/images/{fname}"
@@ -763,7 +773,7 @@ async def concierge_media_list(request: Request):
                         base_url = ''
                     # build absolute or relative URL depending on flag
                     if is_enabled('media_absolute_urls'):
-                        base = str(request.base_url).rstrip('/')
+                        base = _request_base_url(request)
                         url = f"{base}/media/images/{p.name}"
                     else:
                         url = f"/media/images/{p.name}"
