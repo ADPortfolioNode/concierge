@@ -67,12 +67,12 @@ const detectServerSet = (): string => {
 };
 
 const ACTIVE_SERVER = (() => {
+  if (VITE_API_URL_SET) {
+    return VITE_API_URL_SET;
+  }
   const isLocalHost = typeof window !== 'undefined' && window.location && ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname.toLowerCase());
   if (isLocalHost) {
     return 'local';
-  }
-  if (VITE_API_URL_SET) {
-    return VITE_API_URL_SET;
   }
   if (VITE_API_URL && VITE_API_URL !== '<self.server>') {
     return 'auto';

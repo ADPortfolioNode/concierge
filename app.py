@@ -324,16 +324,33 @@ except Exception:
 # The frontend commonly runs on localhost:5173 during development, so allow
 # that origin explicitly when configured. Automation tests and automated
 # environments may set CORS_ALLOW_ORIGINS as a comma-separated list.
+# If `CORS_ALLOW_ORIGINS` is blank or set to `*`, we allow any origin and
+# let the middleware reflect the request origin dynamically.
 from fastapi.middleware.cors import CORSMiddleware
 
 raw_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
-allow_origins = [origin.strip() for origin in raw_allow_origins.split(",") if origin.strip()]
-if not allow_origins:
+allow_origins = []
+allow_origin_regex = []
+for origin in raw_allow_origins.split(","):
+    origin = origin.strip()
+    if not origin:
+        continue
+    if origin.lower().startswith("regex:"):
+        allow_origin_regex.append(origin.split(":", 1)[1])
+    elif origin == "*":
+        allow_origins = ["*"]
+        allow_origin_regex = []
+        break
+    else:
+        allow_origins.append(origin)
+
+if not allow_origins and not allow_origin_regex:
     allow_origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
+    allow_origin_regex=allow_origin_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
