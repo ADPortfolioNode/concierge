@@ -22,7 +22,7 @@ const TimelineHeader: React.FC = () => {
   const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
   const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
   const graphSrc = makeApiUrl(graphPath);
-  const placeholderPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+  const placeholderPath = `${import.meta.env.BASE_URL || '/'}timeline-graph-placeholder.svg`;
 
   return (
     <div style={{ background: '#111827', color: '#9ca3af', padding: '6px 10px', fontSize: 12, position: 'relative' }}>
@@ -34,7 +34,7 @@ const TimelineHeader: React.FC = () => {
           loading="lazy"
           decoding="async"
           onClick={() => setOpen((v) => !v)}
-          onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
         />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {(timelinePlan?.tasks || []).slice(0, 4).map((t: any, idx: number) => (
@@ -68,7 +68,7 @@ const TimelineHeader: React.FC = () => {
                 style={{ width: '100%', borderRadius: 6 }}
                 loading="lazy"
                 decoding="async"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
               />
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>

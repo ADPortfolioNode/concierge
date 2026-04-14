@@ -38,7 +38,7 @@ const TimelineHero: React.FC = () => {
   const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
   const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
   const graphSrc = makeApiUrl(graphPath);
-  const placeholderPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
+  const placeholderPath = `${import.meta.env.BASE_URL || '/'}timeline-graph-placeholder.svg`;
   const graphUrl = graphSrc;
 
   useEffect(() => {
@@ -64,7 +64,7 @@ const TimelineHero: React.FC = () => {
                 style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
                 loading="lazy"
                 decoding="async"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
               />
             </button>
 
@@ -95,7 +95,7 @@ const TimelineHero: React.FC = () => {
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                   loading="lazy"
                   decoding="async"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPng; }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
                 />
               </div>
             <div style={{ flex: 1, height: '100%', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>

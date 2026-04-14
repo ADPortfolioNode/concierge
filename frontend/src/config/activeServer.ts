@@ -117,12 +117,9 @@ export function makeApiUrl(path: string) {
   if (!path) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
   if (!ACTIVE_API_BASE) {
-    // If no build-time API base was provided, prefer the current page origin
-    // when running in a browser so the app automatically targets the
-    // server that served the frontend (works for same-origin deploys).
-    if (typeof window !== 'undefined' && window.location && window.location.origin) {
-      return `${window.location.origin}${p}`;
-    }
+    // Use a root-relative URL when no explicit API base is configured.
+    // This avoids depending on window.location.origin for same-origin requests
+    // and keeps the path valid when the app is mounted under a client-side base URL.
     return p;
   }
   return `${ACTIVE_API_BASE}${p}`;
