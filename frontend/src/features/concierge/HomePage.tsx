@@ -257,9 +257,13 @@ const HomePage: React.FC = () => (
           }}
         />
 
-        <div style={{ position: 'relative', height: '100%', padding: 22, display: 'grid', gridTemplateRows: 'auto 1fr', gap: 16 }}>
-          <div style={{ borderRadius: 18, overflow: 'hidden', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <TimelineHero />
+        <div style={{ position: 'relative', height: '100%', padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 18 }}>
+          <div style={{ borderRadius: 20, padding: '28px 24px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7dd3fc', marginBottom: 10 }}>Live concierge preview</div>
+            <h2 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#ffffff', lineHeight: 1.05 }}>Realtime planning and execution insights</h2>
+            <p style={{ margin: '16px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.72)', lineHeight: 1.8 }}>
+              Track the current plan, task updates, and AI-generated strategy — then review the full timeline in its own card below.
+            </p>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             {VISUAL_CARDS.slice(0, 2).map((card) => (
@@ -287,6 +291,13 @@ const HomePage: React.FC = () => (
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div style={{ marginBottom: 40 }}>
+      <SectionHeading>Live timeline</SectionHeading>
+      <div style={{ borderRadius: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.95)', boxShadow: '0 30px 80px rgba(15, 23, 42, 0.18)' }}>
+        <TimelineHero />
       </div>
     </div>
 
