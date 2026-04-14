@@ -32,7 +32,6 @@
   },
   "routes": [
     { "handle": "filesystem" },
-    { "src": "^/assets/(.*)$", "dest": "/frontend/dist/assets/$1" },
     { "src": "^/(logo-optimized\\.svg|logo\\.svg|logo-dark\\.svg|logo-mono\\.svg|logo_README\\.md|task-layout-1\\.svg|task-layout-2\\.svg|task-layout-3\\.svg|workflow-collaboration\\.svg|workflow-insights\\.svg|workflow-design\\.svg|favicon\\.ico)$", "dest": "/frontend/dist/$1" },
     { "src": "^/api/(.*)$", "dest": "/main.py" },
     { "src": "^/.*$", "dest": "/main.py" }
