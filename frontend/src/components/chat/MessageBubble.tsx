@@ -121,6 +121,7 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
 
 /** Render message content, turning embedded image URLs into <img> elements */
 const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
+  const navigate = useNavigate();
   const segments = useMemo(() => splitContentIntoSegments(content), [content]);
   const hasImages = segments.some((s) => s.kind === 'image');
   const pushImage = useAppStore((s) => s.pushImage);
@@ -170,7 +171,10 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
             return (
               <div key={i} style={{ margin: '8px 0' }}>
                 <button
-                  onClick={() => pushImage && pushImage(src)}
+                  onClick={() => {
+                    pushImage && pushImage(src);
+                    navigate('/media');
+                  }}
                   style={{ background: 'rgba(17,24,39,0.9)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.04)', padding: '8px 10px', borderRadius: 6, cursor: 'pointer' }}
                 >
                   Open image in media viewer
