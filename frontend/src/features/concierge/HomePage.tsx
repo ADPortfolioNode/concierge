@@ -165,21 +165,23 @@ const OutcomeCard: React.FC<(typeof USE_CASES)[0]> = ({
 );
 
 // ── main page ─────────────────────────────────────────────────────────────
+const baseAssetUrl = import.meta.env.BASE_URL || '/';
+
 const VISUAL_CARDS = [
   {
-    src: '/workflow-collaboration.svg',
+    src: `${baseAssetUrl}workflow-collaboration.svg`,
     alt: 'Collaboration workflow illustration',
     label: 'Collaboration',
     title: 'Work together on AI-driven planning',
   },
   {
-    src: '/workflow-insights.svg',
+    src: `${baseAssetUrl}workflow-insights.svg`,
     alt: 'Insights workflow illustration',
     label: 'Insights',
     title: 'Monitor progress with clear metrics',
   },
   {
-    src: '/workflow-design.svg',
+    src: `${baseAssetUrl}workflow-design.svg`,
     alt: 'Design workflow illustration',
     label: 'Design',
     title: 'Visualise strategy, tasks, and outcomes',

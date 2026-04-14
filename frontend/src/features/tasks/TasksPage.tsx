@@ -65,21 +65,23 @@ const TASK_SUBNAV = [
   { label: 'Quick prompts', key: 'prompts' },
 ];
 
+const assetBase = import.meta.env.BASE_URL || '/';
+
 const SAMPLE_LAYOUT_CARDS = [
   {
     title: 'Photo review workflow',
     caption: 'Use image-based tasks to summarize, tag, or clean up photos with realistic output.',
-    src: '/task-layout-1.svg',
+    src: `${assetBase}task-layout-1.svg`,
   },
   {
     title: 'Report generation',
     caption: 'Extract insights from uploads, create polished summaries, and generate final deliverables.',
-    src: '/task-layout-2.svg',
+    src: `${assetBase}task-layout-2.svg`,
   },
   {
     title: 'Data-driven decisions',
     caption: 'Turn spreadsheets and logs into actionable business recommendations.',
-    src: '/task-layout-3.svg',
+    src: `${assetBase}task-layout-3.svg`,
   },
 ];
 
