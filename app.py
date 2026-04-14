@@ -1007,7 +1007,20 @@ async def serve_asset(path: str):
 
 @app.get('/{path:path}', include_in_schema=False)
 async def spa_fallback(path: str):
-    # Serve the SPA entrypoint for client-side routes like /detail.
+    # Serve static frontend files directly when they exist, then fall back
+    # to the SPA entrypoint for client-side routes.
+    if path and not path.startswith('api/') and not path.startswith('health') and not path.startswith('memory') and not path.startswith('media/'):
+        static_candidates = [
+            Path('/vercel/output') / 'frontend' / 'dist' / path,
+            Path('/vercel/output') / 'dist' / path,
+            Path('/vercel/output') / path,
+            Path(__file__).parent / 'frontend' / 'dist' / path,
+            Path(__file__).parent / path,
+        ]
+        for candidate in static_candidates:
+            if candidate.exists() and candidate.is_file():
+                return FileResponse(candidate)
+
     # Do not override explicit API, health, or media routes handled elsewhere.
     if path.startswith('api/') or path.startswith('health') or path.startswith('memory') or path.startswith('media/'):
         raise HTTPException(status_code=404, detail='Not Found')
