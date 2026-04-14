@@ -29,7 +29,7 @@ const parseHostname = (url: string) => {
 const BROWSER_HOSTNAME = typeof window !== 'undefined' && window.location ? window.location.hostname.toLowerCase() : '';
 const isBrowserLocalHost = BROWSER_HOSTNAME === 'localhost' || BROWSER_HOSTNAME === '127.0.0.1' || BROWSER_HOSTNAME === '0.0.0.0';
 const DEV_MODE = env.DEV || MODE === 'development';
-const USE_RELATIVE_DEV_API = DEV_MODE && isBrowserLocalHost;
+const USE_RELATIVE_DEV_API = DEV_MODE && isBrowserLocalHost && !VITE_API_URL_LOCAL && !VITE_API_URL;
 
 const PRODUCTION_HOST = parseHostname(VITE_API_URL_PRODUCTION);
 const STAGING_HOST = parseHostname(VITE_API_URL_STAGING);
@@ -107,7 +107,7 @@ export const ACTIVE_API_BASE: string = (() => {
     return candidate || 'http://localhost:8001';
   }
   if (DEV_MODE && isBrowserLocalHost) {
-    return '';
+    return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8000');
   }
   return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8001');
 })();
