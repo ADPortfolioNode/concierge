@@ -69,17 +69,17 @@ const SAMPLE_LAYOUT_CARDS = [
   {
     title: 'Photo review workflow',
     caption: 'Use image-based tasks to summarize, tag, or clean up photos with realistic output.',
-    src: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=864&q=80',
+    src: '/task-layout-1.svg',
   },
   {
     title: 'Report generation',
     caption: 'Extract insights from uploads, create polished summaries, and generate final deliverables.',
-    src: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=864&q=80',
+    src: '/task-layout-2.svg',
   },
   {
     title: 'Data-driven decisions',
     caption: 'Turn spreadsheets and logs into actionable business recommendations.',
-    src: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=864&q=80',
+    src: '/task-layout-3.svg',
   },
 ];
 
