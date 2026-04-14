@@ -128,8 +128,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
   fetchTimeline: async () => {
     try {
-      const res = await ConciergeAPI.getTimeline();
-      const plan = res.data;
+      const plan = await ConciergeAPI.getTimeline();
       set({ timelinePlan: plan });
     } catch {
       // ignore
