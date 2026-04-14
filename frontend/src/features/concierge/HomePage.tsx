@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
+import TimelineHero from '@/components/TimelineHero';
 
 // ── use-case outcome definitions ─────────────────────────────────────────
 const USE_CASES = [
@@ -256,28 +257,33 @@ const HomePage: React.FC = () => (
           }}
         />
 
-        <div style={{ position: 'relative', height: '100%', padding: 22, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {VISUAL_CARDS.slice(0, 2).map((card) => (
-            <div key={card.label} style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)' }}>
-              <img src={card.src} alt={card.alt} style={{ width: '100%', height: 168, objectFit: 'cover' }} />
-              <div style={{ padding: '14px 12px' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#c4b8ff', marginBottom: 6 }}>{card.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', lineHeight: 1.3 }}>{card.title}</div>
+        <div style={{ position: 'relative', height: '100%', padding: 22, display: 'grid', gridTemplateRows: 'auto 1fr', gap: 16 }}>
+          <div style={{ borderRadius: 18, overflow: 'hidden', background: 'rgba(0,0,0,0.12)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <TimelineHero />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {VISUAL_CARDS.slice(0, 2).map((card) => (
+              <div key={card.label} style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)' }}>
+                <img src={card.src} alt={card.alt} style={{ width: '100%', height: 168, objectFit: 'cover' }} />
+                <div style={{ padding: '14px 12px' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#c4b8ff', marginBottom: 6 }}>{card.label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', lineHeight: 1.3 }}>{card.title}</div>
+                </div>
               </div>
-            </div>
-          ))}
-          <div style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)', display: 'grid', alignContent: 'space-between', padding: 18 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', marginBottom: 10 }}>Visual summary</div>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>Photos, charts, and media previews</h2>
-              <p style={{ margin: '14px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>
-                Browse your content library and preview image-based deliverables without leaving the dashboard.
-              </p>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-              {VISUAL_CARDS.slice(2).map((card) => (
-                <img key={card.label} src={card.src} alt={card.alt} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 12 }} />
-              ))}
+            ))}
+            <div style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)', display: 'grid', alignContent: 'space-between', padding: 18 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', marginBottom: 10 }}>Visual summary</div>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>Photos, charts, and media previews</h2>
+                <p style={{ margin: '14px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>
+                  Browse your content library and preview image-based deliverables without leaving the dashboard.
+                </p>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                {VISUAL_CARDS.slice(2).map((card) => (
+                  <img key={card.label} src={card.src} alt={card.alt} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 12 }} />
+                ))}
+              </div>
             </div>
           </div>
         </div>
