@@ -32,7 +32,12 @@ export const getTimeline = async () => {
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
-  return res;
+  // Support both direct plan responses and wrapped API envelopes.
+  const payload = res.data;
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return (payload as any).data;
+  }
+  return payload;
 };
 
 export const getMedia = async () => {
