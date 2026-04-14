@@ -86,8 +86,8 @@ const TimelineHero: React.FC = () => {
 
       {/* Expanded overlay (unchanged) */}
       {expanded && (
-        <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }} onClick={() => setExpanded(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '92%', height: '86%', display: 'flex', gap: 18, borderRadius: 12 }}>
+        <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.95)', display: 'flex', alignItems: 'stretch', justifyContent: 'center', padding: 16 }} onClick={() => setExpanded(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%', display: 'flex', gap: 18, borderRadius: 12, maxWidth: '100%' }}>
               <div style={{ flex: '0 0 64%', height: '100%', borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <img
                   src={graphUrl}
