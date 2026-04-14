@@ -996,6 +996,7 @@ async def serve_asset(path: str):
     candidates = [
         Path(__file__).parent / 'frontend' / 'dist' / 'assets' / path,
         Path('/vercel/output') / 'frontend' / 'dist' / 'assets' / path,
+        Path('/vercel/output') / 'dist' / 'assets' / path,
         Path('/vercel/output') / 'assets' / path,
     ]
     for candidate in candidates:
@@ -1013,6 +1014,7 @@ async def spa_fallback(path: str):
 
     candidates = [
         Path('/vercel/output') / 'frontend' / 'dist' / 'index.html',
+        Path('/vercel/output') / 'dist' / 'index.html',
         Path('/vercel/output') / 'index.html',
         Path(__file__).parent / 'frontend' / 'dist' / 'index.html',
         Path(__file__).parent / 'index.html',
