@@ -300,13 +300,14 @@ def _task_execution_reply(prompt: str) -> str:
             )
 
     # ── Research / information tasks ──────────────────────────────────────────
+    # ── Research / information tasks ──────────────────────────────────────────
     # ── File / attachment / CSV tasks ─────────────────────────────────────────
     if any(k in core for k in ("attach", "upload", "csv", "spreadsheet", "financial model", "project")):
         return (
             "File attachment plan: Locate the Q2 Planning project workspace, open the attachments or uploads panel, "
             "select the financial model CSV file, and attach it to the project. "
             "Verify the upload completes successfully and confirm the file is referenced in the project plan or task details. "
-            "If necessary, update the Q2 Planning project notes to mention the attached financial model CSV."
+            "If necessary, update the project notes to mention the attached financial model CSV."
         )
     if any(k in core for k in ("research", "gather", "information", "find", "search", "facts", "investigate", "explore")):
         goal_match = re.search(r"(?:about:|regarding|for:|topic:)\s*(.+?)(?:\n|Provide|$)", prompt, re.IGNORECASE)
