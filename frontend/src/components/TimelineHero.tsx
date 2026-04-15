@@ -2,6 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import { makeApiUrl } from '@/config/activeServer';
 
+const PLACEHOLDER_SVG_DATA_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#0ea5e9" />
+    </linearGradient>
+  </defs>
+  <rect width="320" height="180" rx="20" fill="#111827" />
+  <rect x="24" y="38" width="42" height="96" rx="12" fill="rgba(255,255,255,0.12)" />
+  <rect x="88" y="18" width="42" height="116" rx="12" fill="rgba(255,255,255,0.18)" />
+  <rect x="152" y="60" width="42" height="74" rx="12" fill="rgba(255,255,255,0.14)" />
+  <rect x="216" y="24" width="42" height="110" rx="12" fill="rgba(255,255,255,0.16)" />
+  <path d="M26 150 Q90 90 154 118 T292 70" fill="none" stroke="url(#grad)" stroke-width="10" stroke-linecap="round" />
+  <text x="160" y="165" fill="#e2e8f0" font-family="Inter,system-ui,sans-serif" font-size="16" text-anchor="middle">Timeline unavailable</text>
+</svg>
+`)} `;
+
 const TimelineHero: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
   const fetchTimeline = useAppStore((s) => s.fetchTimeline);
@@ -42,8 +60,9 @@ const TimelineHero: React.FC = () => {
   const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
   const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
   const graphSrc = makeApiUrl(graphPath);
-  const placeholderPath = `${import.meta.env.BASE_URL || '/'}timeline-graph-placeholder.svg`;
+  const [graphLoadFailed, setGraphLoadFailed] = useState(false);
   const graphUrl = graphSrc;
+  const fallbackGraphUrl = graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl;
 
   useEffect(() => {
     // bump the graph version whenever timelinePlan changes so the browser
@@ -62,12 +81,12 @@ const TimelineHero: React.FC = () => {
         <div className="timeline-hero-preview">
           <button onClick={() => setExpanded(true)} className="timeline-hero-image-button">
             <img
-              src={graphUrl}
+              src={fallbackGraphUrl}
               alt="timeline hero"
               className="timeline-hero-image"
               loading="lazy"
               decoding="async"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
+              onError={() => { setGraphLoadFailed(true); }}
             />
           </button>
 
@@ -94,12 +113,12 @@ const TimelineHero: React.FC = () => {
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', gap: 18, borderRadius: 12 }}>
             <div style={{ width: '100%', flex: '0 0 auto', minHeight: 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
-                src={graphUrl}
+                src={graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl}
                 alt="timeline large"
                 style={{ width: '100%', height: '100%', minHeight: 260, objectFit: 'contain' }}
                 loading="lazy"
                 decoding="async"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
+                onError={() => { setGraphLoadFailed(true); }}
               />
             </div>
             <div style={{ width: '100%', flex: '1 1 auto', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>

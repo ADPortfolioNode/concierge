@@ -682,15 +682,22 @@ async def concierge_metrics():
 @app.get('/api/v1/concierge/timeline')
 async def concierge_timeline():
     _ensure_timeline_available()
-    plan = app.state.timeline.get_last_plan()
-    return _api_response(plan or {})
+    try:
+        plan = app.state.timeline.get_last_plan()
+        return _api_response(plan or {})
+    except Exception:
+        logger.exception('Failed to fetch timeline plan')
+        return _api_response({'error': 'timeline plan unavailable'}, status='error')
 
 @app.get('/api/v1/concierge/timeline/graph')
 async def concierge_timeline_graph():
     _ensure_timeline_available()
-    png = app.state.timeline.get_plan_graph_png()
-    # return as a streaming response of raw PNG bytes
-    return StreamingResponse(iter([png]), media_type='image/png')
+    try:
+        png = app.state.timeline.get_plan_graph_png()
+        return StreamingResponse(iter([png]), media_type='image/png')
+    except Exception:
+        logger.exception('Failed to generate timeline graph')
+        return StreamingResponse(iter([b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc``\x00\x00\x00\x04\x00\x01\x0e\x11\x02\xb5\x00\x00\x00\x00IEND\xaeB`\x82']), media_type='image/png')
 
 
 @app.get('/api/v1/concierge/timeline/stream')
