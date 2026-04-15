@@ -3,6 +3,8 @@ import { getTasks } from '@/api/taskService';
 import { submitAgentJob, getJobStatus } from '@/api/jobService';
 import type { JobStatus } from '@/api/jobService';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
+import TimelineHero from '@/components/TimelineHero';
+import PageSection from '@/components/PageSection';
 
 // Task type reference table
 const TASK_TYPES = [
@@ -221,7 +223,9 @@ const TasksPage: React.FC = () => {
         {activeTab === 'prompts' && 'Quick prompts: use these prompt templates to get started with task automation and accelerate your workflow.'}
       </div>
 
+    <PageSection title="Live timeline">
       <TimelineHero />
+    </PageSection>
 
       <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', marginBottom: 28 }}>
         {SAMPLE_LAYOUT_CARDS.map((card) => (

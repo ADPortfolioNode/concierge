@@ -32,10 +32,14 @@ export const getTimeline = async () => {
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
-  // Support both direct plan responses and wrapped API envelopes.
   const payload = res.data;
-  if (payload && typeof payload === 'object' && 'data' in payload) {
-    return (payload as any).data;
+  if (payload && typeof payload === 'object') {
+    if ('data' in payload) {
+      return (payload as any).data;
+    }
+    if ('plan' in payload && payload.plan && typeof payload.plan === 'object') {
+      return payload.plan;
+    }
   }
   return payload;
 };

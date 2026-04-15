@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 import TimelineHero from '@/components/TimelineHero';
+import PageSection from '@/components/PageSection';
 
 // ── use-case outcome definitions ─────────────────────────────────────────
 const USE_CASES = [
@@ -66,24 +67,6 @@ const USE_CASES = [
     ],
   },
 ];
-
-// ── section heading ───────────────────────────────────────────────────────
-const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h2
-    style={{
-      fontSize: 11,
-      fontWeight: 700,
-      textTransform: 'uppercase',
-      letterSpacing: '0.12em',
-      color: 'rgba(255,255,255,0.3)',
-      margin: '0 0 16px',
-      paddingBottom: 8,
-      borderBottom: '1px solid rgba(255,255,255,0.05)',
-    }}
-  >
-    {children}
-  </h2>
-);
 
 // ── use-case outcome card ─────────────────────────────────────────────────
 const OutcomeCard: React.FC<(typeof USE_CASES)[0]> = ({
@@ -190,24 +173,9 @@ const VISUAL_CARDS = [
 ];
 
 const HomePage: React.FC = () => (
-  <div
-    style={{
-      padding: '32px 28px 56px',
-      maxWidth: 1060,
-      margin: '0 auto',
-      color: '#e2e8f0',
-    }}
-  >
+  <div className="home-page">
     {/* hero */}
-    <div
-      style={{
-        marginBottom: 40,
-        display: 'grid',
-        gridTemplateColumns: '1.2fr 0.9fr',
-        gap: 24,
-        alignItems: 'center',
-      }}
-    >
+    <div className="home-hero">
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
           <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
@@ -230,34 +198,10 @@ const HomePage: React.FC = () => (
         </div>
       </div>
 
-      <div
-        style={{
-          position: 'relative',
-          minHeight: 360,
-          borderRadius: 24,
-          overflow: 'hidden',
-          boxShadow: '0 40px 90px rgba(15, 23, 42, 0.35)',
-          background: 'linear-gradient(135deg, rgba(18,18,36,0.92) 0%, rgba(30,16,56,0.98) 100%)',
-          border: '1px solid rgba(255,255,255,0.06)',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'radial-gradient(circle at 30% 20%, rgba(124,106,247,0.25), transparent 28%), radial-gradient(circle at 75% 15%, rgba(14,165,233,0.18), transparent 22%), radial-gradient(circle at 50% 80%, rgba(34,197,94,0.18), transparent 26%)',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backdropFilter: 'blur(14px)',
-            mixBlendMode: 'screen',
-          }}
-        />
-
-        <div style={{ position: 'relative', height: '100%', padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 18 }}>
+      <div className="home-hero-preview">
+        <div className="home-hero-backdrop" />
+        <div className="home-hero-overlay" />
+        <div className="home-hero-content">
           <div style={{ borderRadius: 20, padding: '28px 24px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7dd3fc', marginBottom: 10 }}>Live concierge preview</div>
             <h2 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#ffffff', lineHeight: 1.05 }}>Realtime planning and execution insights</h2>
@@ -265,27 +209,27 @@ const HomePage: React.FC = () => (
               Track the current plan, task updates, and AI-generated strategy — then review the full timeline in its own card below.
             </p>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div className="home-hero-cards">
             {VISUAL_CARDS.slice(0, 2).map((card) => (
-              <div key={card.label} style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)' }}>
-                <img src={card.src} alt={card.alt} style={{ width: '100%', height: 168, objectFit: 'cover' }} />
-                <div style={{ padding: '14px 12px' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#c4b8ff', marginBottom: 6 }}>{card.label}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', lineHeight: 1.3 }}>{card.title}</div>
+              <div key={card.label} className="home-card-panel">
+                <img src={card.src} alt={card.alt} className="home-card-image" />
+                <div className="home-card-body">
+                  <div className="home-card-label">{card.label}</div>
+                  <div className="home-card-title">{card.title}</div>
                 </div>
               </div>
             ))}
-            <div style={{ borderRadius: 18, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.9)', display: 'grid', alignContent: 'space-between', padding: 18 }}>
+            <div className="home-card-panel home-card-panel--visual">
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#7dd3fc', marginBottom: 10 }}>Visual summary</div>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>Photos, charts, and media previews</h2>
-                <p style={{ margin: '14px 0 0', fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.7 }}>
+                <div className="home-card-visual-label">Visual summary</div>
+                <h2 className="home-card-visual-title">Photos, charts, and media previews</h2>
+                <p className="home-card-visual-copy">
                   Browse your content library and preview image-based deliverables without leaving the dashboard.
                 </p>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+              <div className="home-visual-grid">
                 {VISUAL_CARDS.slice(2).map((card) => (
-                  <img key={card.label} src={card.src} alt={card.alt} style={{ width: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: 12 }} />
+                  <img key={card.label} src={card.src} alt={card.alt} className="home-visual-image" />
                 ))}
               </div>
             </div>
@@ -294,16 +238,11 @@ const HomePage: React.FC = () => (
       </div>
     </div>
 
-    <div style={{ marginBottom: 40 }}>
-      <SectionHeading>Live timeline</SectionHeading>
-      <div style={{ borderRadius: 24, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.95)', boxShadow: '0 30px 80px rgba(15, 23, 42, 0.18)' }}>
-        <TimelineHero />
-      </div>
-    </div>
+    <PageSection title="Live timeline">
+      <TimelineHero />
+    </PageSection>
 
-    {/* quick-start chips */}
-    <div style={{ marginBottom: 40 }}>
-      <SectionHeading>Quick actions</SectionHeading>
+    <PageSection title="Quick actions">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {[
           'What can you help me with?',
@@ -315,11 +254,9 @@ const HomePage: React.FC = () => (
           <SamplePrompt key={p} text={p} variant="chip" />
         ))}
       </div>
-    </div>
+    </PageSection>
 
-    {/* use-case outcome cards */}
-    <div style={{ marginBottom: 40 }}>
-      <SectionHeading>Choose your outcome</SectionHeading>
+    <PageSection title="Choose your outcome">
       <div
         style={{
           display: 'grid',
@@ -331,11 +268,9 @@ const HomePage: React.FC = () => (
           <OutcomeCard key={uc.title} {...uc} />
         ))}
       </div>
-    </div>
+    </PageSection>
 
-    {/* secondary links */}
-    <div>
-      <SectionHeading>More resources</SectionHeading>
+    <PageSection title="More resources">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {[
           { to: '/howto',        label: '📖 How-To Guide',    desc: 'Learn core workflows' },
@@ -374,7 +309,7 @@ const HomePage: React.FC = () => (
           </Link>
         ))}
       </div>
-    </div>
+    </PageSection>
   </div>
 );
 

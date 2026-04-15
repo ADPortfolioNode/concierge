@@ -45,11 +45,6 @@ const ChatContainer: React.FC = () => {
   const messages = useAppStore((s) => s.conversation);
   const setConversation = useAppStore((s) => s.setConversation);
 
-  // compute the provider/error of the most recent assistant message
-  const lastMsg = messages.length ? messages[messages.length - 1] : null;
-  const llmProvider = lastMsg?.meta?.llm?.provider;
-  const llmError = lastMsg?.meta?.llm?.error;
-
   useEffect(() => {
     fetchConversation()
       .then((res) => {
@@ -67,13 +62,6 @@ const ChatContainer: React.FC = () => {
       <ConciergeHeader />
       {/* timeline thread header */}
       <TimelineHeader />
-      {/* provider indicator */}
-      {(llmProvider || llmError) && (
-        <div style={{ padding: '4px 8px', background: '#1f2937', color: '#9ca3af', fontSize: 12, flexShrink: 0 }}>
-          Provider: {llmProvider || 'unknown'}
-          {llmError && <> – {llmError}</>}
-        </div>
-      )}
       <div style={{ flex: '1 1 auto', minHeight: 0 }}>
         <MessageList messages={messages} />
       </div>

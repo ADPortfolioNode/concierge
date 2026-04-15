@@ -129,6 +129,244 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
 }
 
+.home-page {
+  padding: 32px 28px 56px;
+  max-width: 1060px;
+  margin: 0 auto;
+  color: #e2e8f0;
+}
+
+.home-hero {
+  margin-bottom: 40px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.home-hero-preview {
+  position: relative;
+  min-height: 360px;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 40px 90px rgba(15, 23, 42, 0.35);
+  background: linear-gradient(135deg, rgba(18,18,36,0.92) 0%, rgba(30,16,56,0.98) 100%);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.home-hero-backdrop,
+.home-hero-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.home-hero-backdrop {
+  background: radial-gradient(circle at 30% 20%, rgba(124,106,247,0.25), transparent 28%),
+    radial-gradient(circle at 75% 15%, rgba(14,165,233,0.18), transparent 22%),
+    radial-gradient(circle at 50% 80%, rgba(34,197,94,0.18), transparent 26%);
+}
+
+.home-hero-overlay {
+  backdrop-filter: blur(14px);
+  mix-blend-mode: screen;
+}
+
+.home-hero-content {
+  position: relative;
+  height: 100%;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+
+.home-hero-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.home-card-panel {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.home-card-image {
+  width: 100%;
+  height: 168px;
+  object-fit: cover;
+  display: block;
+}
+
+.home-card-body {
+  padding: 14px 12px;
+}
+
+.home-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c4b8ff;
+  margin-bottom: 6px;
+}
+
+.home-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.3;
+}
+
+.home-card-panel--visual {
+  display: grid;
+  align-content: space-between;
+  padding: 18px;
+}
+
+.home-card-visual-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7dd3fc;
+  margin-bottom: 10px;
+}
+
+.home-card-visual-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.home-card-visual-copy {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: rgba(255,255,255,0.65);
+  line-height: 1.7;
+}
+
+.home-visual-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.home-visual-image {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.page-section,
+.home-section {
+  margin-bottom: 40px;
+}
+
+.section-heading,
+.home-section h2 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.3);
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.timeline-hero-card,
+.home-timeline-card {
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  width: 100%;
+}
+
+.timeline-hero-preview {
+  width: 100%;
+}
+
+.timeline-hero-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.timeline-hero-image {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.timeline-hero-task-strip {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.timeline-task-pill {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 180px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.04);
+  color: #e2e8f0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-right: 4px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.timeline-task-pill--active {
+  background: #7c6af7;
+  color: #fff;
+  border-color: rgba(124,106,247,0.55);
+}
+
+.timeline-task-title {
+  font-weight: 800;
+  font-size: 13px;
+  text-align: left;
+}
+
+.timeline-task-copy {
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .timeline-hero-task-strip {
+    padding: 10px 10px;
+  }
+}
+
+@media (min-width: 900px) {
+  .home-hero {
+    grid-template-columns: 1.2fr 0.9fr;
+  }
+
+  .home-hero-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .brand-logo {
   display: inline-block;
   height: 26px;
