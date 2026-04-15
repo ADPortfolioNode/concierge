@@ -32,7 +32,11 @@ const TimelineHero: React.FC = () => {
     };
   }, []);
 
-  const tasks = Array.isArray(timelinePlan?.tasks) ? timelinePlan.tasks : [];
+  const tasks = Array.isArray(timelinePlan?.tasks)
+    ? timelinePlan.tasks
+    : Array.isArray(timelinePlan?.plan?.tasks)
+    ? timelinePlan.plan.tasks
+    : [];
   // Use an explicit graph version token to force reload when timelinePlan changes
   // Use a relative URL so system images are requested from the current origin.
   const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
@@ -54,29 +58,29 @@ const TimelineHero: React.FC = () => {
 
   return (
     <>
-      <div style={{ marginBottom: 18 }}>
-        {/* Full-width hero row */}
-        <div style={{ width: '100%', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.03)', background: 'linear-gradient(90deg, rgba(124,106,247,0.04), rgba(79,176,198,0.01))' }}>
-            <button onClick={() => setExpanded(true)} style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'transparent', cursor: 'zoom-in' }}>
-              <img
-                src={graphUrl}
-                alt="timeline hero"
-                style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }}
-                loading="lazy"
-                decoding="async"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
-              />
-            </button>
+      <div className="timeline-hero-card">
+        <div className="timeline-hero-preview">
+          <button onClick={() => setExpanded(true)} className="timeline-hero-image-button">
+            <img
+              src={graphUrl}
+              alt="timeline hero"
+              className="timeline-hero-image"
+              loading="lazy"
+              decoding="async"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
+            />
+          </button>
 
-          {/* One-row horizontal task strip */}
-          <div style={{ display: 'flex', gap: 8, padding: '10px 12px', alignItems: 'center', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+          <div className="timeline-hero-task-strip">
             {tasks.length === 0 ? (
-              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>No plan yet — set a goal or ask the assistant to create a plan.</div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
+                No Concierge timeline tasks are available yet — ask Concierge to create a plan or add a goal.
+              </div>
             ) : (
               tasks.map((t: any) => (
-                <button key={t.task_id} onClick={() => { setSelected(t); selectTimelineTask(t); }} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', minWidth: 180, background: selected?.task_id === t.task_id ? '#7c6af7' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)', color: selected?.task_id === t.task_id ? '#fff' : '#e2e8f0', padding: '8px 12px', borderRadius: 8, cursor: 'pointer', marginRight: 4 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13, textAlign: 'left' }}>{t.title || 'Untitled'}</div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>{(t.instructions || '').slice(0, 60)}</div>
+                <button key={t.task_id} onClick={() => { setSelected(t); selectTimelineTask(t); }} className={`timeline-task-pill ${selected?.task_id === t.task_id ? 'timeline-task-pill--active' : ''}`}>
+                  <div className="timeline-task-title">{t.title || 'Untitled'}</div>
+                  <div className="timeline-task-copy">{(t.instructions || '').slice(0, 60)}</div>
                 </button>
               ))
             )}
@@ -86,19 +90,19 @@ const TimelineHero: React.FC = () => {
 
       {/* Expanded overlay (unchanged) */}
       {expanded && (
-        <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.95)', display: 'flex', alignItems: 'stretch', justifyContent: 'center', padding: 16 }} onClick={() => setExpanded(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%', display: 'flex', gap: 18, borderRadius: 12, maxWidth: '100%' }}>
-              <div style={{ flex: '0 0 64%', height: '100%', borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img
-                  src={graphUrl}
-                  alt="timeline large"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  loading="lazy"
-                  decoding="async"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
-                />
-              </div>
-            <div style={{ flex: 1, height: '100%', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>
+        <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setExpanded(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', gap: 18, borderRadius: 12 }}>
+            <div style={{ width: '100%', flex: '0 0 auto', minHeight: 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <img
+                src={graphUrl}
+                alt="timeline large"
+                style={{ width: '100%', height: '100%', minHeight: 260, objectFit: 'contain' }}
+                loading="lazy"
+                decoding="async"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
+              />
+            </div>
+            <div style={{ width: '100%', flex: '1 1 auto', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>Sacred Timeline</div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginBottom: 12 }}>Includes Concierge activity and live updates</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
