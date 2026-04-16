@@ -246,7 +246,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     // if tests want to bypass SSE they can set window.USE_POST = true
-    const usePost = (window as any).USE_POST;
+    const usePost = Boolean((window as any).USE_POST);
     // record that sendMessage was invoked; tests can check this flag
     if (typeof window !== 'undefined') {
       (window as any).__LAST_SENDMESSAGE__ = usePost;

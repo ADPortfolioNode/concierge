@@ -20,8 +20,8 @@ const ProcessingBanner: React.FC = () => {
       try {
         const resp = await fetch(makeApiUrl('/api/v1/tasks'));
         if (!resp.ok) return;
-        const body = await resp.json();
-        const data: Job[] = (body.data as any) || [];
+        const body = (await resp.json()) as { data?: Job[] } | null;
+        const data = body?.data || [];
         if (mounted) setJobs(data);
       } catch {
         // ignore network errors
