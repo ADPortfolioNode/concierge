@@ -1,0 +1,15 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .venv,
+    .venv/,
+    build_packages,
+    .vercel_tmp_env,
+    uv,
+    __pycache__,
+    *.egg-info,
+    .git,
+    node_modules,
+    frontend,
+    test-results,
+    .pytest_cache
