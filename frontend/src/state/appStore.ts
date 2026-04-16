@@ -14,8 +14,8 @@ export interface MediaItem {
 }
 
 // Regexes shared with MediaStage for routing responses to the right layer
-// Accept absolute http(s) image URLs and local `/media/images/*` paths
-const _IMG_RE = /(?:https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/media\/images\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?)/gi;
+// Accept absolute http(s) image URLs and local `/media/images/*` or `media/images/*` paths
+const _IMG_RE = /(?:https?:\/\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/?media\/images\/\S+?\.(?:png|jpg|jpeg|gif|webp|svg|avif)(?:\?\S*)?)/gi;
 const _VID_RE = /https?:\/\/\S+?\.(?:mp4|webm)(?:[?#]\S*)?/gi;
 const _AUD_RE = /https?:\/\/\S+?\.(?:mp3|wav|m4a)(?:[?#]\S*)?/gi;
 
@@ -25,11 +25,13 @@ const API_BASE = (ACTIVE_API_BASE || '').replace(/\/$/, '');
 function _normalizeMediaUrl(url: string) {
   if (!url) return url;
   try {
-    if (url.startsWith('/media')) {
-      if (API_BASE) return API_BASE + url;
+    if (url.startsWith('/media') || url.startsWith('media/')) {
+      const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+      if (API_BASE) return `${API_BASE}${normalizedPath}`;
       if (typeof window !== 'undefined' && window.location && window.location.origin) {
-        return window.location.origin.replace(/\/$/, '') + url;
+        return window.location.origin.replace(/\/$/, '') + normalizedPath;
       }
+      return normalizedPath;
     }
   } catch (e) {
     // ignore
@@ -42,7 +44,7 @@ function _normalizeUrlsInObject(obj: any) {
   if (Array.isArray(obj)) return obj.map((v) => _normalizeUrlsInObject(v));
   const out: any = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (typeof v === 'string' && v.startsWith('/media')) {
+      if (typeof v === 'string' && (v.startsWith('/media') || v.startsWith('media/'))) {
       out[k] = _normalizeMediaUrl(v);
     } else if (typeof v === 'object' && v !== null) {
       out[k] = _normalizeUrlsInObject(v);
