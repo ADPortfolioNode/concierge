@@ -350,6 +350,23 @@ h1, h2, h3, h4, h5, h6 {
   display: grid;
   gap: 14px;
   padding-left: 38px;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+
+.timeline-task-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.timeline-task-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.timeline-task-grid::-webkit-scrollbar-thumb {
+  background: rgba(124,106,247,0.35);
+  border-radius: 999px;
 }
 
 .timeline-thread-line {
@@ -358,8 +375,10 @@ h1, h2, h3, h4, h5, h6 {
   top: 16px;
   bottom: 16px;
   width: 2px;
-  background: rgba(255,255,255,0.08);
+  background: linear-gradient(180deg, rgba(124,106,247,0.75), rgba(56,189,248,0.35), rgba(255,255,255,0.1));
   border-radius: 999px;
+  box-shadow: 0 0 16px rgba(124,106,247,0.18);
+  animation: thread-glow 4.8s ease-in-out infinite alternate;
 }
 
 .timeline-task-branch {
@@ -371,7 +390,7 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(255,255,255,0.025);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 20px;
-  padding: 16px 18px 16px 24px;
+  padding: 16px 18px 16px calc(24px + var(--branch-offset, 0px));
   color: #e2e8f0;
   text-align: left;
   cursor: pointer;
@@ -387,7 +406,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .timeline-task-anchor {
   position: absolute;
-  left: -24px;
+  left: calc(-24px + var(--branch-offset, 0px));
   top: 22px;
   width: 14px;
   height: 14px;
@@ -395,12 +414,13 @@ h1, h2, h3, h4, h5, h6 {
   background: #7c6af7;
   border: 2px solid rgba(255,255,255,0.16);
   box-shadow: 0 0 0 4px rgba(124,106,247,0.12);
+  animation: pulse-anchor 2.8s ease-in-out infinite;
 }
 
 .timeline-task-branch::after {
   content: '';
   position: absolute;
-  left: -16px;
+  left: calc(-16px + var(--branch-offset, 0px));
   top: 28px;
   width: 18px;
   height: 2px;
@@ -493,6 +513,26 @@ h1, h2, h3, h4, h5, h6 {
 @keyframes progress-stripes {
   0% { background-position: 0 0; }
   100% { background-position: 40px 0; }
+}
+
+@keyframes pulse-anchor {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 4px rgba(124,106,247,0.12);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 10px rgba(124,106,247,0.08);
+  }
+}
+
+@keyframes thread-glow {
+  0% {
+    box-shadow: 0 0 18px rgba(124,106,247,0.1);
+  }
+  100% {
+    box-shadow: 0 0 28px rgba(56,189,248,0.18);
+  }
 }
 
 @media (max-width: 640px) {

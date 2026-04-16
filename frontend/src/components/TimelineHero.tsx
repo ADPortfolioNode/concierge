@@ -31,6 +31,33 @@ type TimelineTask = {
   percent?: number;
 };
 
+const computeTaskDepths = (tasks: TimelineTask[]) => {
+  const taskMap = new Map(tasks.map((task) => [task.task_id, task]));
+  const depths = new Map<string, number>();
+
+  const resolveDepth = (taskId: string, seen = new Set<string>()): number => {
+    if (depths.has(taskId)) return depths.get(taskId)!;
+    if (seen.has(taskId)) return 0;
+    seen.add(taskId);
+
+    const task = taskMap.get(taskId);
+    if (!task || !Array.isArray(task.depends_on) || task.depends_on.length === 0) {
+      depths.set(taskId, 0);
+      return 0;
+    }
+
+    const depth = Math.max(
+      0,
+      ...task.depends_on.map((dep) => resolveDepth(dep, new Set(seen)))
+    ) + 1;
+    depths.set(taskId, depth);
+    return depth;
+  };
+
+  tasks.forEach((task) => resolveDepth(task.task_id));
+  return depths;
+};
+
 const TimelineHero: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
   const fetchTimeline = useAppStore((s) => s.fetchTimeline);
@@ -116,25 +143,30 @@ const TimelineHero: React.FC = () => {
             ) : (
               <div className="timeline-task-grid" aria-label="Timeline task thread">
                 <div className="timeline-thread-line" aria-hidden="true" />
-                {tasks.map((t: TimelineTask) => {
-                  const progressValue = typeof t.progress === 'number'
-                    ? t.progress
-                    : typeof t.percent === 'number'
-                    ? t.percent
-                    : t.status === 'completed' || t.status === 'success'
-                    ? 100
-                    : t.status === 'running' || t.status === 'started'
-                    ? 46
-                    : t.status === 'queued' || t.status === 'pending'
-                    ? 18
-                    : 12;
-                  const progress = Math.min(100, Math.max(0, progressValue));
-                  return (
-                    <button
-                      key={t.task_id}
-                      onClick={() => { setSelected(t); selectTimelineTask(t); }}
-                      className={`timeline-task-branch ${selected?.task_id === t.task_id ? 'timeline-task-branch--active' : ''}`}
-                    >
+                {(() => {
+                  const depths = computeTaskDepths(tasks);
+                  return tasks.map((t: TimelineTask) => {
+                    const progressValue = typeof t.progress === 'number'
+                      ? t.progress
+                      : typeof t.percent === 'number'
+                      ? t.percent
+                      : t.status === 'completed' || t.status === 'success'
+                      ? 100
+                      : t.status === 'running' || t.status === 'started'
+                      ? 46
+                      : t.status === 'queued' || t.status === 'pending'
+                      ? 18
+                      : 12;
+                    const progress = Math.min(100, Math.max(0, progressValue));
+                    const depth = depths.get(t.task_id) ?? 0;
+                    const indent = depth * 14;
+                    return (
+                      <button
+                        key={t.task_id}
+                        onClick={() => { setSelected(t); selectTimelineTask(t); }}
+                        className={`timeline-task-branch ${selected?.task_id === t.task_id ? 'timeline-task-branch--active' : ''}`}
+                        style={{ '--branch-offset': `${indent}px` } as React.CSSProperties}
+                      >
                       <span className="timeline-task-anchor" aria-hidden="true" />
                       <div className="timeline-task-branch-content">
                         <div className="timeline-task-headline">

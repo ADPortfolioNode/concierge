@@ -828,6 +828,21 @@ async def concierge_media_list(request: Request):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@app.get('/media/images/{path:path}', include_in_schema=False)
+async def serve_media_image(path: str):
+    media_images = settings.media_images_dir
+    candidate = media_images / path
+    try:
+        candidate_resolved = candidate.resolve(strict=False)
+    except Exception:
+        raise HTTPException(status_code=404, detail='Not Found')
+    if not candidate_resolved.exists() or not candidate_resolved.is_file():
+        raise HTTPException(status_code=404, detail='Not Found')
+    if not str(candidate_resolved).startswith(str(media_images.resolve())):
+        raise HTTPException(status_code=404, detail='Not Found')
+    return FileResponse(candidate_resolved)
+
+
 # Register Phase 14-16 routers (only include if the router was loaded)
 if _upload_router is not None:
     app.include_router(_upload_router)
