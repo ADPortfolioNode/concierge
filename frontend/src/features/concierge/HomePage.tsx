@@ -238,9 +238,18 @@ const HomePage: React.FC = () => (
       </div>
     </div>
 
-    <PageSection title="Live timeline">
+    <div className="home-timeline-card">
+      <div className="home-timeline-header">
+        <div>
+          <div className="home-timeline-label">Live Timeline</div>
+          <h2 className="home-timeline-title">See Concierge planning in one responsive view</h2>
+          <p className="home-timeline-copy">
+            Your current plan updates, task progress, and visual graph are surfaced in a mobile-first timeline card that spans the full width of the landing page.
+          </p>
+        </div>
+      </div>
       <TimelineHero />
-    </PageSection>
+    </div>
 
     <PageSection title="Quick actions">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

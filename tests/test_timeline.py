@@ -133,6 +133,34 @@ def test_streaming_fallback_notice(monkeypatch):
     assert any('Gemini' in e for e in events), f"events: {events}"
 
 
+def test_streaming_plan_is_published(monkeypatch):
+    from orchestration.sacred_timeline import SacredTimeline
+    timeline = SacredTimeline()
+
+    async def fake_plan(user_input):
+        return {"tasks": [{"task_id": "t1", "title": "Create plan", "instructions": "Define the plan."}]}
+
+    async def fake_run_autonomous(user_input):
+        return {"final": {"summary": "done"}, "response": "done"}
+
+    monkeypatch.setattr(timeline._planner, 'plan', fake_plan)
+    monkeypatch.setattr(timeline, 'run_autonomous', fake_run_autonomous)
+
+    q = timeline.subscribe_timeline()
+    events = []
+
+    async def collect():
+        async for evt in timeline.stream_user_input('please build a dashboard for the analytics team'):
+            events.append(evt)
+
+    asyncio.get_event_loop().run_until_complete(collect())
+
+    plan_update = q.get_nowait()
+    assert plan_update['type'] == 'plan'
+    assert plan_update['plan']['tasks'][0]['task_id'] == 't1'
+    assert timeline.get_last_plan()['tasks'][0]['task_id'] == 't1'
+
+
 def test_metrics_endpoint_and_notice(monkeypatch):
     """Metrics endpoint should reflect request counts and produce notice on fallback."""
     try:

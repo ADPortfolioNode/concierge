@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ACTIVE_API_BASE } from '../config/activeServer';
+import { ACTIVE_API_BASE, API_PREFIX } from '../config/activeServer';
 
 // Timeout is disabled by default (0 = no limit) to accommodate slow LLM
 // inference and large file uploads.  Override via the VITE_API_TIMEOUT env
@@ -17,7 +17,7 @@ if (typeof window !== 'undefined' && window.location) {
   }
 }
 const apiClient = axios.create({
-  baseURL: `${base}/api/v1`,
+  baseURL: `${base}${API_PREFIX}`,
   timeout: defaultTimeout, // 0 = no Axios built-in timeout
 });
 
