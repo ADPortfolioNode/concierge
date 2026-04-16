@@ -1,5 +1,5 @@
 // Centralize selection of the active API server for dev, Docker, staging, and production.
-const env = (import.meta as any).env || {};
+const env = ((import.meta as unknown) as { env?: Record<string, string | undefined> }).env || {};
 
 const MODE = env.MODE || (env.DEV ? 'development' : env.PROD ? 'production' : 'production');
 const VITE_API_URL = (env.VITE_API_URL || env.BACKEND_URL || '').replace(/\/$/, '');

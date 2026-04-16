@@ -59,7 +59,7 @@ const MessageList: React.FC<Props> = ({ messages }) => {
     const m = messages[i];
     // start a new aggregate for assistant messages
     if (m.role === 'assistant') {
-      let agg = { ...m } as any;
+      const agg = { ...m } as any;
       // merge following assistant messages
       let j = i + 1;
       while (j < messages.length && messages[j].role === 'assistant') {
