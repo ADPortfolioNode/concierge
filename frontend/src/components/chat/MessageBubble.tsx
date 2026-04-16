@@ -45,9 +45,9 @@ if (typeof document !== 'undefined' && !document.getElementById('_stream-blink')
 
 /** Regex that matches http(s) URLs ending with an image extension OR known
  *  image-hosting domains (picsum.photos, i.imgur.com, etc.) */
-// Match absolute http(s) image URLs, known image hosts, or local `/media/images/...` paths
+// Match absolute http(s) image URLs, known image hosts, or local `/media/images/...` and `media/images/...` paths
 const IMAGE_URL_RE =
-  /(?:https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/media\/images\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?)/gi;
+  /(?:https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/?media\/images\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?)/gi;
 
 interface Segment {
   kind: 'text' | 'image';
@@ -127,7 +127,9 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   const pushImage = useAppStore((s) => s.pushImage);
   const pushedRef = useRef<Record<string, boolean>>({});
   const localMediaImages = useMemo(
-    () => segments.filter((s) => s.kind === 'image' && s.value.includes('/media/images/')).map((s) => s.value),
+    () => segments
+      .filter((s) => s.kind === 'image' && /\/?media\/images\//.test(s.value))
+      .map((s) => s.value),
     [segments]
   );
 
@@ -160,8 +162,8 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
           // If the image is a locally persisted media image, do NOT render
           // it inline. Instead, push it into the MediaStage store so it is
           // shown in the media player only. Recognize local media by the
-          // `/media/images/` path which is used by backend.
-          if (src.includes('/media/images/')) {
+          // `/media/images/` or `media/images/` path which may be used by backend.
+          if (src.includes('/media/images/') || src.includes('media/images/')) {
             if (!pushedRef.current[src]) {
               try {
                 pushImage && pushImage(src);
