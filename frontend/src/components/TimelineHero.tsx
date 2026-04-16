@@ -90,18 +90,48 @@ const TimelineHero: React.FC = () => {
             />
           </button>
 
-          <div className="timeline-hero-task-strip">
+          <div className="timeline-hero-task-thread">
             {tasks.length === 0 ? (
               <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
                 No Concierge timeline tasks are available yet — ask Concierge to create a plan or add a goal.
               </div>
             ) : (
-              tasks.map((t: any) => (
-                <button key={t.task_id} onClick={() => { setSelected(t); selectTimelineTask(t); }} className={`timeline-task-pill ${selected?.task_id === t.task_id ? 'timeline-task-pill--active' : ''}`}>
-                  <div className="timeline-task-title">{t.title || 'Untitled'}</div>
-                  <div className="timeline-task-copy">{(t.instructions || '').slice(0, 60)}</div>
-                </button>
-              ))
+              <div className="timeline-task-grid" aria-label="Timeline task thread">
+                <div className="timeline-thread-line" aria-hidden="true" />
+                {tasks.map((t: any) => {
+                  const progressValue = typeof t.progress === 'number'
+                    ? t.progress
+                    : typeof t.percent === 'number'
+                    ? t.percent
+                    : t.status === 'completed' || t.status === 'success'
+                    ? 100
+                    : t.status === 'running' || t.status === 'started'
+                    ? 46
+                    : t.status === 'queued' || t.status === 'pending'
+                    ? 18
+                    : 12;
+                  const progress = Math.min(100, Math.max(0, progressValue));
+                  return (
+                    <button
+                      key={t.task_id}
+                      onClick={() => { setSelected(t); selectTimelineTask(t); }}
+                      className={`timeline-task-branch ${selected?.task_id === t.task_id ? 'timeline-task-branch--active' : ''}`}
+                    >
+                      <span className="timeline-task-anchor" aria-hidden="true" />
+                      <div className="timeline-task-branch-content">
+                        <div className="timeline-task-headline">
+                          <span className="timeline-task-title">{t.title || 'Untitled'}</span>
+                          <span className={`timeline-task-status timeline-task-status--${(t.status || 'pending').toLowerCase()}`}>{t.status || 'pending'}</span>
+                        </div>
+                        <div className="timeline-task-copy">{(t.instructions || t.summary || '').slice(0, 72)}</div>
+                        <div className="timeline-task-progress">
+                          <div className="timeline-task-progress-bar" style={{ width: `${progress}%` }} />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

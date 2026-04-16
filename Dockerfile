@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ### Optional frontend build stage (Node) ###############################
 ARG BUILD_FRONTEND=0
 ARG VITE_API_URL=""
+ARG VITE_API_URL_DOCKER=""
 FROM node:18-alpine AS frontend-build
 WORKDIR /build
 # Ensure devDependencies like Vite are installed for the frontend build
@@ -36,10 +37,12 @@ COPY frontend/package.json frontend/package-lock.json ./
 # Ensure devDependencies like Vite are installed for the frontend build
 RUN npm ci --no-audit --no-fund --include=dev
 COPY frontend ./
-# pass VITE_API_URL as an env var during build so Vite picks it up
+# pass VITE_API_URL or VITE_API_URL_DOCKER as an env var during build so Vite picks it up
 ARG VITE_API_URL
+ARG VITE_API_URL_DOCKER
 ENV VITE_API_URL=${VITE_API_URL}
-RUN npm run build --if-present
+ENV VITE_API_URL_DOCKER=${VITE_API_URL_DOCKER}
+RUN if [ -z "$VITE_API_URL" ] && [ -n "$VITE_API_URL_DOCKER" ]; then export VITE_API_URL="$VITE_API_URL_DOCKER"; fi && npm run build --if-present
 
 ### Final runtime image ###############################################
 FROM base AS runtime
