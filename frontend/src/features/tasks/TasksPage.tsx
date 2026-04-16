@@ -105,7 +105,6 @@ type ActiveJob = { id: string; label: string; statusObj: JobStatus };
 
 import ProcessingBanner from '@/components/ProcessingBanner';
 import { useAppStore } from '@/state/appStore';
-import TimelineHero from '@/components/TimelineHero';
 
 const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
