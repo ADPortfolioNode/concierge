@@ -14,14 +14,7 @@ const _envTimeout = import.meta.env.VITE_API_TIMEOUT;
 const defaultTimeout = _envTimeout !== undefined ? Number(_envTimeout) : 0;
 
 // Use central ACTIVE_API_BASE (resolved from Vite envs) and append API prefix.
-let base = (ACTIVE_API_BASE || '').replace(/\/$/, '');
-if (typeof window !== 'undefined' && window.location) {
-  const host = window.location.hostname.toLowerCase();
-  const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
-  if (isLocalHost && base.includes('app:8000')) {
-    base = 'http://localhost:8000';
-  }
-}
+const base = (ACTIVE_API_BASE || '').replace(/\/$/, '');
 const apiClient = axios.create({
   baseURL: `${base}${API_PREFIX}`,
   timeout: defaultTimeout, // 0 = no Axios built-in timeout

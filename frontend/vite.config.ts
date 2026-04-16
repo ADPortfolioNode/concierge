@@ -55,6 +55,14 @@ export default defineConfig({
           });
         },
       },
+      '/media': {
+        target: backendTarget, changeOrigin: true, secure: false,
+        configure(proxy) {
+          proxy.on('error', (_err, _req, res) => {
+            try { if (!res.headersSent) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ status: 'error', message: 'Backend unavailable.' })); } } catch {}
+          });
+        },
+      },
     },
   },
 });

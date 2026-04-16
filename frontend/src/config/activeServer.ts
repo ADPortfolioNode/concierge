@@ -88,8 +88,8 @@ const ACTIVE_SERVER = (() => {
 export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
-  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8000'),
-  docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://app:8000'),
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || ''),
+  docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || ''),
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),
   auto: normalizeServerUrl(VITE_API_URL || ''),
@@ -101,17 +101,17 @@ export const ACTIVE_API_BASE: string = (() => {
   if (USE_RELATIVE_DEV_API) {
     return '';
   }
-  const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? SERVER_URLS.local;
+  const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? '';
   if (MODE === 'production') {
-    return candidate === '<self.server>' ? '' : candidate;
+    return candidate === '<self.server>' || candidate === '' ? '' : candidate;
   }
   if (ACTIVE_SERVER_SET !== 'local') {
-    return candidate || 'http://localhost:8000';
+    return candidate;
   }
   if (DEV_MODE && isBrowserLocalHost) {
-    return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8000');
+    return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || '');
   }
-  return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8000');
+  return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || '');
 })();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
