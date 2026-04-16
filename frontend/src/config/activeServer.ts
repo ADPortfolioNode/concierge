@@ -120,13 +120,24 @@ export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : AP
 export function makeApiUrl(path: string) {
   if (!path) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
-  if (!ACTIVE_API_BASE) {
-    // Use a root-relative URL when no explicit API base is configured.
-    // This avoids depending on window.location.origin for same-origin requests
-    // and keeps the path valid when the app is mounted under a client-side base URL.
-    return p;
+  if (ACTIVE_API_BASE) {
+    return `${ACTIVE_API_BASE}${p}`;
   }
-  return `${ACTIVE_API_BASE}${p}`;
+
+  if (typeof window !== 'undefined' && window.location) {
+    const host = window.location.hostname.toLowerCase();
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+    const isDockerHost = host === 'app' || host === 'backend' || host.endsWith('.internal');
+    if (isLocalHost && VITE_API_URL_LOCAL) {
+      return `${VITE_API_URL_LOCAL}${p}`;
+    }
+    if (isDockerHost && VITE_API_URL_DOCKER) {
+      return `${VITE_API_URL_DOCKER}${p}`;
+    }
+    return `${window.location.origin.replace(/\/$/, '')}${p}`;
+  }
+
+  return p;
 }
 
 export const ACTIVE_API_BASE_URL = ACTIVE_API_BASE;

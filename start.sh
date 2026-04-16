@@ -159,6 +159,7 @@ PLATFORMS="linux/amd64"
 BUILD_FRONTEND=false
 INSTALL_FULL_REQUIREMENTS=false
 VITE_API_URL_ARG=""
+VITE_API_URL_DOCKER_ARG=""
 # frontend will be started by default; use --no-frontend to skip
 FRONTEND=true
 # ngrok will be started automatically if available; use --no-ngrok to skip
@@ -182,6 +183,7 @@ for arg in "$@"; do
         --build-frontend) BUILD_FRONTEND=true ;;
         --install-full-reqs) INSTALL_FULL_REQUIREMENTS=true ;;
         --vite-api-url=*) VITE_API_URL_ARG="${arg#--vite-api-url=}" ;;
+        --vite-api-url-docker=*) VITE_API_URL_DOCKER_ARG="${arg#--vite-api-url-docker=}" ;;
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
         --no-ngrok) NGROK=false ;;
@@ -353,13 +355,13 @@ write_frontend_env_for_local() {
     tmp_file=$(mktemp)
 
     if [ -f "$env_file" ]; then
-        grep -vE '^(VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
+        grep -vE '^(VITE_API_URL_LOCAL|VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
+    printf 'VITE_API_URL_LOCAL=http://localhost:8000\nVITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written local frontend environment file: ${env_file}"
-    echo "  VITE_API_URL=http://localhost:8000"
+    echo "  VITE_API_URL_LOCAL=http://localhost:8000"
     echo "  VITE_API_URL_SET=local"
     return 0
 }
@@ -554,6 +556,9 @@ if $DOCKER_BUILD; then
                 fi
                 if [ -n "$VITE_API_URL_ARG" ]; then
                     BUILD_ARGS+=(--build-arg "VITE_API_URL=${VITE_API_URL_ARG}")
+                fi
+                if [ -n "$VITE_API_URL_DOCKER_ARG" ]; then
+                    BUILD_ARGS+=(--build-arg "VITE_API_URL_DOCKER=${VITE_API_URL_DOCKER_ARG}")
                 fi
 
                 # decide push/load flags: --push required for multi-platform

@@ -1228,7 +1228,13 @@ class SacredTimeline:
             return
 
         # Stream the final summary text token-by-token from the result
-        final = result.get("final") or {}
+        final = result.get("final")
+        if isinstance(final, str):
+            final = {"summary": final}
+        elif final is None:
+            final = {}
+        elif not isinstance(final, dict):
+            final = {"summary": str(final)}
         summary: str = final.get("summary") or str(result)
         yield _evt({"type": "progress", "text": "Generating response…"})
         # chunk the summary so the frontend renders progressively

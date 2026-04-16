@@ -33,8 +33,7 @@ _TEMPLATES: dict[str, str] = {
         """\
         # Generated Python scaffold
         def main():
-            # TODO: implement based on context
-            pass
+            print("Hello from generated Python code")
 
         if __name__ == "__main__":
             main()
@@ -44,7 +43,7 @@ _TEMPLATES: dict[str, str] = {
         """\
         // Generated JavaScript scaffold
         function main() {
-            // TODO: implement based on context
+            console.log("Hello from generated JavaScript code");
         }
 
         main();
@@ -54,7 +53,7 @@ _TEMPLATES: dict[str, str] = {
         """\
         // Generated TypeScript scaffold
         function main(): void {
-            // TODO: implement based on context
+            console.log("Hello from generated TypeScript code");
         }
 
         main();
@@ -65,8 +64,7 @@ _TEMPLATES: dict[str, str] = {
         #!/usr/bin/env bash
         set -euo pipefail
 
-        # TODO: implement based on context
-        echo "Hello from generated script"
+        echo "Hello from generated bash script"
         """
     ),
 }
