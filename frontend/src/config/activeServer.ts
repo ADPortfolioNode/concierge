@@ -88,12 +88,14 @@ const ACTIVE_SERVER = (() => {
 export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
-  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001'),
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8000'),
   docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://app:8000'),
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),
   auto: normalizeServerUrl(VITE_API_URL || ''),
 };
+
+export const API_PREFIX = '/api/v1';
 
 export const ACTIVE_API_BASE: string = (() => {
   if (USE_RELATIVE_DEV_API) {
@@ -104,13 +106,15 @@ export const ACTIVE_API_BASE: string = (() => {
     return candidate === '<self.server>' ? '' : candidate;
   }
   if (ACTIVE_SERVER_SET !== 'local') {
-    return candidate || 'http://localhost:8001';
+    return candidate || 'http://localhost:8000';
   }
   if (DEV_MODE && isBrowserLocalHost) {
     return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8000');
   }
-  return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8001');
+  return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || 'http://localhost:8000');
 })();
+
+export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
 
 // Build a full URL for API paths. If the active base is empty, return a relative path.
 export function makeApiUrl(path: string) {
@@ -127,4 +131,4 @@ export function makeApiUrl(path: string) {
 
 export const ACTIVE_API_BASE_URL = ACTIVE_API_BASE;
 
-export default { ACTIVE_API_BASE, ACTIVE_API_BASE_URL, ACTIVE_SERVER_SET, makeApiUrl };
+export default { ACTIVE_API_BASE, ACTIVE_API_BASE_URL, ACTIVE_SERVER_SET, API_PREFIX, API_ROOT, makeApiUrl };

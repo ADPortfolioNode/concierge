@@ -1138,6 +1138,16 @@ class SacredTimeline:
         try:
             plan = await self._planner.plan(user_input)
             plan = plan or {}
+            self._last_plan = plan
+            try:
+                update = {"type": "plan", "plan": plan}
+                for q in list(self._timeline_subscribers):
+                    try:
+                        q.put_nowait(update)
+                    except Exception:
+                        continue
+            except Exception:
+                logger.exception("Failed to publish timeline plan update")
         except Exception as exc:
             yield _evt({"type": "error", "text": f"Planner error: {exc}"})
             return
