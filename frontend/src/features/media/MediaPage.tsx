@@ -17,7 +17,11 @@ const MediaPage: React.FC = () => {
     ...audioLayers.map((item) => ({ ...item, type: 'audio' as const })),
   ];
 
-  const selected = mediaItems.find((item) => item.url === activeMedia) || mediaItems[0] || null;
+  const uniqueMediaItems = Array.from(
+    new Map(mediaItems.map((item) => [`${item.type}-${item.url}`, item])).values()
+  );
+
+  const selected = uniqueMediaItems.find((item) => item.url === activeMedia) || uniqueMediaItems[0] || null;
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
@@ -37,7 +41,7 @@ const MediaPage: React.FC = () => {
         </div>
       </div>
 
-      {mediaItems.length === 0 ? (
+      {uniqueMediaItems.length === 0 ? (
         <div style={{ padding: 24, background: 'rgba(255,255,255,0.02)', borderRadius: 12, textAlign: 'center', color: 'rgba(255,255,255,0.65)' }}>
           No media is currently available. Trigger a response with images, video, or audio to see them here.
         </div>
@@ -58,7 +62,7 @@ const MediaPage: React.FC = () => {
           </div>
 
           <div style={{ display: 'grid', gap: 12 }}>
-            {mediaItems.map((item) => (
+            {uniqueMediaItems.map((item) => (
               <button
                 key={`${item.type}-${item.id}-${encodeURIComponent(item.url)}`}
                 onClick={() => setActiveMedia(item.url)}
