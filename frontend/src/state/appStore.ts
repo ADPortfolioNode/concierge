@@ -197,16 +197,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   selectTimelineTask: (task) => set({ selectedTaskMeta: task }),
-  pushImage: (url) => set((s) => ({
-    imageLayers: [...s.imageLayers, { id: `img-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
-    activeMedia: _normalizeMediaUrl(url),
-  })),
-  pushVideo: (url) => set((s) => ({
-    videoLayers: [...s.videoLayers, { id: `vid-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
-  })),
-  pushAudio: (url) => set((s) => ({
-    audioLayers: [...s.audioLayers, { id: `aud-${Date.now()}`, url: _normalizeMediaUrl(url), timestamp: new Date().toISOString() }],
-  })),
+  pushImage: (url) => set((s) => {
+    const normalizedUrl = _normalizeMediaUrl(url);
+    const existing = s.imageLayers.find((item) => item.url === normalizedUrl);
+    if (existing) {
+      return { activeMedia: normalizedUrl };
+    }
+    const item = { id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, url: normalizedUrl, timestamp: new Date().toISOString() };
+    return { imageLayers: [...s.imageLayers, item], activeMedia: normalizedUrl };
+  }),
+  pushVideo: (url) => set((s) => {
+    const normalizedUrl = _normalizeMediaUrl(url);
+    const existing = s.videoLayers.find((item) => item.url === normalizedUrl);
+    if (existing) {
+      return {};
+    }
+    const item = { id: `vid-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, url: normalizedUrl, timestamp: new Date().toISOString() };
+    return { videoLayers: [...s.videoLayers, item] };
+  }),
+  pushAudio: (url) => set((s) => {
+    const normalizedUrl = _normalizeMediaUrl(url);
+    const existing = s.audioLayers.find((item) => item.url === normalizedUrl);
+    if (existing) {
+      return {};
+    }
+    const item = { id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, url: normalizedUrl, timestamp: new Date().toISOString() };
+    return { audioLayers: [...s.audioLayers, item] };
+  }),
   pushTextHighlight: (text) => set((s) => ({
     textHighlights: [...s.textHighlights.slice(-9), text],
   })),
