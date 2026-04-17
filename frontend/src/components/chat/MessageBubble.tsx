@@ -164,12 +164,6 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
           // shown in the media player only. Recognize local media by the
           // `/media/images/` or `media/images/` path which may be used by backend.
           if (src.includes('/media/images/') || src.includes('media/images/')) {
-            if (!pushedRef.current[src]) {
-              try {
-                pushImage && pushImage(src);
-                pushedRef.current[src] = true;
-              } catch (e) {}
-            }
             return (
               <div key={i} style={{ margin: '8px 0' }}>
                 <button

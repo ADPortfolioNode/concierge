@@ -60,7 +60,7 @@ const MediaPage: React.FC = () => {
           <div style={{ display: 'grid', gap: 12 }}>
             {mediaItems.map((item) => (
               <button
-                key={`${item.type}-${item.id}`}
+                key={`${item.type}-${item.id}-${encodeURIComponent(item.url)}`}
                 onClick={() => setActiveMedia(item.url)}
                 style={{
                   display: 'flex',
