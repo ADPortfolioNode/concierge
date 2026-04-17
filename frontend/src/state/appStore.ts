@@ -26,12 +26,7 @@ function _normalizeMediaUrl(url: string) {
   if (!url) return url;
   try {
     if (url.startsWith('/media') || url.startsWith('media/')) {
-      const normalizedPath = url.startsWith('/') ? url : `/${url}`;
-      if (API_BASE) return `${API_BASE}${normalizedPath}`;
-      if (typeof window !== 'undefined' && window.location && window.location.origin) {
-        return window.location.origin.replace(/\/$/, '') + normalizedPath;
-      }
-      return normalizedPath;
+      return url.startsWith('/') ? url : `/${url}`;
     }
   } catch (e) {
     // ignore

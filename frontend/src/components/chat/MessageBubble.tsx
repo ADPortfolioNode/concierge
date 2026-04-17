@@ -124,27 +124,6 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
   const navigate = useNavigate();
   const segments = useMemo(() => splitContentIntoSegments(content), [content]);
   const hasImages = segments.some((s) => s.kind === 'image');
-  const pushImage = useAppStore((s) => s.pushImage);
-  const pushedRef = useRef<Record<string, boolean>>({});
-  const localMediaImages = useMemo(
-    () => segments
-      .filter((s) => s.kind === 'image' && /\/?media\/images\//.test(s.value))
-      .map((s) => s.value),
-    [segments]
-  );
-
-  useEffect(() => {
-    localMediaImages.forEach((src) => {
-      if (pushImage && !pushedRef.current[src]) {
-        try {
-          pushImage(src);
-          pushedRef.current[src] = true;
-        } catch {
-          // ignore
-        }
-      }
-    });
-  }, [localMediaImages, pushImage]);
 
   if (!hasImages) {
     return (
@@ -164,19 +143,8 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
           // shown in the media player only. Recognize local media by the
           // `/media/images/` or `media/images/` path which may be used by backend.
           if (src.includes('/media/images/') || src.includes('media/images/')) {
-            return (
-              <div key={i} style={{ margin: '8px 0' }}>
-                <button
-                  onClick={() => {
-                    pushImage && pushImage(src);
-                    navigate('/media');
-                  }}
-                  style={{ background: 'rgba(17,24,39,0.9)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.04)', padding: '8px 10px', borderRadius: 6, cursor: 'pointer' }}
-                >
-                  Open image in media viewer
-                </button>
-              </div>
-            );
+            const normalizedSrc = src.startsWith('/') ? src : `/${src}`;
+            return <InlineImage key={i} src={normalizedSrc} />;
           }
           return <InlineImage key={i} src={src} />;
         }
