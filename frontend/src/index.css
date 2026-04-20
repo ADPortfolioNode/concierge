@@ -17,6 +17,44 @@ html, body, #root {
   50%       { opacity: 0.4; transform: scale(0.7); }
 }
 
+.app-error-boundary {
+  padding: 24px;
+  color: #f8fafc;
+  background: #111827;
+  min-height: 100vh;
+}
+
+.app-error-boundary__title {
+  color: #f87171;
+}
+
+.app-error-boundary__stack {
+  white-space: pre-wrap;
+  margin-top: 16px;
+}
+
+.media-renderer__image,
+.media-renderer__video,
+.media-renderer__audio {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.media-renderer__image {
+  max-height: 400px;
+  display: block;
+  border: 1px solid rgba(255,255,255,0.1);
+  object-fit: contain;
+}
+
+.media-renderer__video {
+  width: 100%;
+}
+
+.media-renderer__audio {
+  width: 100%;
+}
+
 /* layout panels */
 aside {
   background: #0d0d0d;
@@ -286,6 +324,11 @@ h1, h2, h3, h4, h5, h6 {
   background: rgba(15, 23, 42, 0.95);
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
   width: 100%;
+  height: auto;
+}
+
+.home-timeline-card {
+  margin-top: 24px;
 }
 
 .home-timeline-header {
@@ -350,8 +393,8 @@ h1, h2, h3, h4, h5, h6 {
   display: grid;
   gap: 14px;
   padding-left: 38px;
-  max-height: 320px;
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   overscroll-behavior: contain;
   padding-right: 6px;
 }

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import TimelineHeader from '../TimelineHeader';
+import AssistantRiver from '@/components/river/AssistantRiver';
 import { useAppStore } from '@/state/appStore';
 import { fetchConversation } from '@/api/conciergeService';
 
@@ -43,7 +44,10 @@ const ConciergeHeader: React.FC = () => (
 
 const ChatContainer: React.FC = () => {
   const messages = useAppStore((s) => s.conversation);
+  const taskTree = useAppStore((s) => s.taskTree);
+  const selectedRiverNode = useAppStore((s) => s.selectedRiverNode);
   const setConversation = useAppStore((s) => s.setConversation);
+  const setSelectedRiverNode = useAppStore((s) => s.setSelectedRiverNode);
 
   useEffect(() => {
     fetchConversation()
@@ -62,6 +66,13 @@ const ChatContainer: React.FC = () => {
       <ConciergeHeader />
       {/* timeline thread header */}
       <TimelineHeader />
+      {taskTree ? (
+        <AssistantRiver
+          tree={taskTree}
+          selectedNode={selectedRiverNode}
+          onSelectNode={setSelectedRiverNode}
+        />
+      ) : null}
       <div style={{ flex: '1 1 auto', minHeight: 0 }}>
         <MessageList messages={messages} />
       </div>

@@ -170,13 +170,21 @@ class MemoryStore:
                             logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
                             self._client = None
                 else:
-                    logger.warning("onnxruntime not available; attempting remote Chroma HTTP client at %s:%s", chroma_host, chroma_port)
-                    try:
-                        self._client = _init_chroma_http_client(chroma_host, chroma_port)
-                        logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
-                    except Exception:
-                        logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
+                    if chroma_host in ("localhost", "127.0.0.1") and chroma_port == os.getenv("PORT", "8000"):
+                        logger.warning(
+                            "onnxruntime not available and CHROMA_HOST/CHROMA_PORT point at the app itself (%s:%s); using in-memory fallback instead",
+                            chroma_host,
+                            chroma_port,
+                        )
                         self._client = None
+                    else:
+                        logger.warning("onnxruntime not available; attempting remote Chroma HTTP client at %s:%s", chroma_host, chroma_port)
+                        try:
+                            self._client = _init_chroma_http_client(chroma_host, chroma_port)
+                            logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
+                        except Exception:
+                            logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
+                            self._client = None
 
                 if self._client is not None:
                     try:

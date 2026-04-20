@@ -12,7 +12,7 @@ export const sendMessage = async (message: string, history?: HistoryEntry[]) => 
   if (!message || !message.trim()) {
     throw new Error('message must be a nonempty string');
   }
-  const res = await apiClient.post<ApiResponse>('/concierge/message', { message, history });
+  const res = await apiClient.post<ApiResponse>('/chat', { message, history });
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
@@ -57,10 +57,10 @@ export const getMedia = async () => {
 //   { type: 'done',     result: object } — final structured payload
 //   { type: 'error',    text: string }   — terminal error
 export type StreamEvent =
-  | { type: 'token';    text: string }
-  | { type: 'progress'; text: string }
-  | { type: 'done';     result: Record<string, unknown> }
-  | { type: 'error';    text: string };
+  | { type: 'token';    text: string; thread_id?: string }
+  | { type: 'progress'; text: string; thread_id?: string }
+  | { type: 'done';     result: Record<string, unknown>; thread_id?: string }
+  | { type: 'error';    text: string; thread_id?: string };
 
 /**
  * Opens an SSE connection to POST /api/v1/concierge/stream and yields each

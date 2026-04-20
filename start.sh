@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+echo "=== Concierge v1.0.0 ==="
+echo "Backend → http://localhost:8001"
+echo "Frontend → http://localhost:5173"
+echo "Flower → http://localhost:5555"
+echo "ChromaDB volume enabled for persistent memory"
+
 # make sure we actually have a bash-compatible shell; this script uses
 # bash-specific features and Unix utilities.  Running it under PowerShell or
 # Command Prompt silently returns without doing anything, which is confusing
@@ -77,26 +83,125 @@ clear_ports() {
         if command -v lsof >/dev/null 2>&1; then
             pid=$(lsof -ti tcp:"$p" 2>/dev/null || true)
             if [ -n "$pid" ]; then
-                echo "killing process $pid listening on port $p"
-                kill -9 $pid || true
+                if command -v taskkill >/dev/null 2>&1; then
+                    echo "killing process $pid listening on port $p"
+                    taskkill /PID "$pid" /F >/dev/null 2>&1 || true
+                elif kill -0 "$pid" >/dev/null 2>&1; then
+                    echo "killing process $pid listening on port $p"
+                    kill -9 "$pid" >/dev/null 2>&1 || true
+                else
+                    echo "process $pid no longer exists; skipping kill" >&2
+                fi
             fi
         elif command -v netstat >/dev/null 2>&1 || command -v ss >/dev/null 2>&1; then
-            # Try several netstat/ss/awk combinations to locate PID (Linux/macOS)
-            pid=$(netstat -tulpn 2>/dev/null | grep -E ":$p( |$)" | awk '{print $7}' | cut -d/ -f1 2>/dev/null || true)
+            # Try Linux-style netstat/ss first, fall back to Windows netstat output if needed.
+            if netstat -tulpn >/dev/null 2>&1; then
+                pid=$(netstat -tulpn 2>/dev/null | grep -E ":$p( |$)" | awk '{print $7}' | cut -d/ -f1 2>/dev/null || true)
+            else
+                pid=$(netstat -ano 2>/dev/null | grep -E ":$p( |$)" | awk '{print $NF}' | sort -u 2>/dev/null || true)
+            fi
             if [ -z "$pid" ] && command -v ss >/dev/null 2>&1; then
                 pid=$(ss -ltnp 2>/dev/null | grep -E ":$p( |$)" | awk -F',' '{print $2}' | awk '{print $2}' | cut -d/ -f1 2>/dev/null || true)
             fi
             if [ -n "$pid" ]; then
                 # ensure pid is numeric before attempting kill
                 if echo "$pid" | grep -qE '^[0-9]+$'; then
-                    echo "killing process $pid listening on port $p"
-                    kill -9 $pid || true
+                    if command -v taskkill >/dev/null 2>&1; then
+                        echo "killing process $pid listening on port $p"
+                        taskkill /PID "$pid" /F >/dev/null 2>&1 || true
+                    elif kill -0 "$pid" >/dev/null 2>&1; then
+                        echo "killing process $pid listening on port $p"
+                        kill -9 "$pid" >/dev/null 2>&1 || true
+                    else
+                        echo "process $pid no longer exists; skipping kill" >&2
+                    fi
                 fi
             fi
         else
             echo "cannot check port $p (no lsof or netstat available)" >&2
         fi
     done
+}
+
+show_port_status() {
+    ports=(8000 8001 5173 6333)
+    echo "Inspecting port usage for known service ports..."
+    for p in "${ports[@]}"; do
+        echo "--- port $p ---"
+        if command -v lsof >/dev/null 2>&1; then
+            lsof -i tcp:"$p" -Pn || true
+        elif command -v netstat >/dev/null 2>&1; then
+            if netstat -tulpn >/dev/null 2>&1; then
+                netstat -tulpn 2>/dev/null | grep -E ":$p( |$)" || true
+            else
+                netstat -ano 2>/dev/null | grep -E ":$p( |$)" || true
+            fi
+        elif command -v ss >/dev/null 2>&1; then
+            ss -ltnp 2>/dev/null | grep -E ":$p( |$)" || true
+        else
+            echo "Port inspection unavailable; install lsof, netstat or ss to diagnose port conflicts."
+        fi
+    done
+}
+
+clear_logs() {
+    echo "Resetting local logs"
+    mkdir -p logs
+    rm -f logs/backend.log logs/frontend.log logs/*.log || true
+    rm -f start.log ngrok.log playwright_backend.log || true
+}
+
+cleanup_frontend_node_modules() {
+    local node_modules_path="frontend/node_modules"
+    if [ -d "$node_modules_path" ]; then
+        echo "Cleaning stale frontend/node_modules..." >&2
+        chmod -R u+w "$node_modules_path" 2>/dev/null || true
+        rm -rf "$node_modules_path" 2>/dev/null || true
+
+        if [ -d "$node_modules_path" ]; then
+            echo "Retrying node_modules removal after first pass..." >&2
+            sleep 2 2>/dev/null || true
+            rm -rf "$node_modules_path" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ] && command -v powershell.exe >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with PowerShell..." >&2
+            powershell.exe -NoProfile -Command "Remove-Item -LiteralPath '$node_modules_path' -Recurse -Force" 2>/dev/null || true
+        elif [ -d "$node_modules_path" ] && command -v pwsh >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with pwsh..." >&2
+            pwsh -NoProfile -Command "Remove-Item -LiteralPath '$node_modules_path' -Recurse -Force" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ] && command -v cmd.exe >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with Windows cmd.exe rd /s /q..." >&2
+            win_path="$node_modules_path"
+            if command -v cygpath >/dev/null 2>&1; then
+                win_path=$(cygpath -w "$node_modules_path" 2>/dev/null || true)
+            elif command -v wslpath >/dev/null 2>&1; then
+                win_path=$(wslpath -w "$node_modules_path" 2>/dev/null || true)
+            fi
+            cmd.exe /C "rd /s /q \"$win_path\"" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ] && command -v node >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with Node.js fs.rmSync..." >&2
+            node -e "const fs=require('fs'); try { fs.rmSync(process.argv[1], { recursive: true, force: true }); } catch (e) {}" "$node_modules_path" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ] && command -v python >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with Python shutil.rmtree..." >&2
+            python -c "import shutil,sys; shutil.rmtree(sys.argv[1], ignore_errors=True)" "$node_modules_path" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ] && command -v npx >/dev/null 2>&1; then
+            echo "Retrying node_modules removal with npx rimraf..." >&2
+            npx --yes rimraf "$node_modules_path" 2>/dev/null || true
+        fi
+
+        if [ -d "$node_modules_path" ]; then
+            echo "Warning: frontend/node_modules still exists after cleanup; npm ci may still fail." >&2
+        fi
+    fi
 }
 
 # verify prerequisites are available when Docker is required
@@ -337,13 +442,23 @@ write_frontend_env() {
 }
 
 find_python() {
-    if command -v python3 >/dev/null 2>&1; then
-        printf '%s' "python3"
-        return 0
-    elif command -v python >/dev/null 2>&1; then
-        printf '%s' "python"
-        return 0
-    fi
+    local candidate
+    for candidate in python3 python py; do
+        if ! command -v "$candidate" >/dev/null 2>&1; then
+            continue
+        fi
+        if [ "$candidate" = "py" ]; then
+            if py -3 -c 'import sys' >/dev/null 2>&1; then
+                printf '%s' "py -3"
+                return 0
+            fi
+        else
+            if "$candidate" -c 'import sys' >/dev/null 2>&1; then
+                printf '%s' "$candidate"
+                return 0
+            fi
+        fi
+    done
     return 1
 }
 
@@ -358,10 +473,10 @@ write_frontend_env_for_local() {
         grep -vE '^(VITE_API_URL_LOCAL|VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL_LOCAL=http://localhost:8000\nVITE_API_URL=http://localhost:8000\nBACKEND_URL=http://localhost:8000\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
+    printf 'VITE_API_URL_LOCAL=http://localhost:8001\nVITE_API_URL=http://localhost:8001\nBACKEND_URL=http://localhost:8001\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written local frontend environment file: ${env_file}"
-    echo "  VITE_API_URL_LOCAL=http://localhost:8000"
+    echo "  VITE_API_URL_LOCAL=http://localhost:8001"
     echo "  VITE_API_URL_SET=local"
     return 0
 }
@@ -377,20 +492,31 @@ write_frontend_env_for_docker() {
         grep -vE '^(VITE_API_URL_DOCKER|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL_DOCKER=http://app:8000\nVITE_API_URL_SET=docker\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
+    printf 'VITE_API_URL_DOCKER=http://app:8001\nVITE_API_URL_SET=docker\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written docker frontend environment file: ${env_file}"
-    echo "  VITE_API_URL_DOCKER=http://app:8000"
+    echo "  VITE_API_URL_DOCKER=http://app:8001"
     echo "  VITE_API_URL_SET=docker"
     return 0
 }
 
 start_local_backend() {
     local py
+    local py_cmd
     py=$(find_python) || die "Python 3 is required for local backend startup"
+    IFS=' ' read -r -a py_cmd <<< "$py"
     mkdir -p logs
-    echo "Starting local backend with ${py}"
-    nohup "${py}" app.py > logs/backend.log 2>&1 &
+
+    export PORT=8001
+    local backend_cmd
+    if "${py_cmd[@]}" -m uvicorn --help >/dev/null 2>&1; then
+        backend_cmd=("${py_cmd[@]}" -u -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload --reload-exclude "frontend/node_modules/*" --reload-exclude "**/node_modules/*")
+    else
+        backend_cmd=("${py_cmd[@]}" -u app.py)
+    fi
+
+    echo "Starting local backend with: ${backend_cmd[*]}"
+    nohup "${backend_cmd[@]}" > logs/backend.log 2>&1 &
     BACKEND_PID=$!
     echo "Local backend started with PID ${BACKEND_PID}; logs are in logs/backend.log"
 }
@@ -398,7 +524,17 @@ start_local_backend() {
 start_local_frontend() {
     echo "Starting local frontend dev server"
     if [ -f "frontend/package-lock.json" ]; then
-        npm --prefix frontend ci --no-audit --no-fund || die "npm ci failed"
+        cleanup_frontend_node_modules
+        if ! npm --prefix frontend ci --no-audit --no-fund; then
+            echo "npm ci failed; attempting npm install fallback" >&2
+            echo "Removing stale frontend/node_modules and retrying install..." >&2
+            cleanup_frontend_node_modules
+            npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
+            if ! npm --prefix frontend install --no-audit --no-fund; then
+                echo "npm install also failed. On Windows, close editors/Explorer and remove frontend/node_modules manually before retrying." >&2
+                die "npm install failed"
+            fi
+        fi
     else
         npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
     fi
@@ -437,16 +573,30 @@ start_ngrok() {
 
 if $NO_DOCKER; then
     echo "Starting local services without Docker"
+    echo "resetting log files before local startup"
+    clear_logs
     echo "freeing known ports before local startup"
     clear_ports
     if $FRONTEND; then
         write_frontend_env_for_local || true
     fi
     start_local_backend
-    if wait_for_backend 127.0.0.1 8000 30; then
+    if wait_for_backend 127.0.0.1 8001 30; then
         echo "Local backend ready."
     else
-        echo "Warning: local backend did not become healthy on 127.0.0.1:8000." >&2
+        echo "Warning: local backend did not become healthy on 127.0.0.1:8001 after first attempt." >&2
+        if [ -n "${BACKEND_PID:-}" ]; then
+            echo "Stopping backend PID ${BACKEND_PID} and retrying after clearing ports..."
+            kill -9 "${BACKEND_PID}" >/dev/null 2>&1 || true
+        fi
+        clear_ports
+        start_local_backend
+        if wait_for_backend 127.0.0.1 8001 30; then
+            echo "Local backend ready after retry."
+        else
+            echo "Warning: local backend still did not become healthy on 127.0.0.1:8001 after retry." >&2
+            show_port_status
+        fi
     fi
     if $FRONTEND; then
         start_local_frontend
@@ -597,10 +747,11 @@ fi
 
 if $CLEAR; then
     # --clear implies restart with build to avoid stale images
-    echo "Clearing environment: compose down; up -d --build"
-    echo "freeing known ports before tear down/start"
-    clear_ports
+    echo "Clearing environment: compose down; free ports; up -d --build"
+    echo "Stopping compose services first"
     compose down || true
+    echo "Freeing known ports after compose down"
+    clear_ports
     compose up -d --build || die "compose up failed"
     if wait_for_backend 127.0.0.1 8001 30; then
         echo "Backend ready; starting ngrok."
@@ -610,10 +761,12 @@ if $CLEAR; then
     start_ngrok
 else
     # always attempt to tear down first to avoid port conflicts, then bring up
-    echo "freeing known ports before tear down/start"
-    clear_ports
+    echo "resetting logs before compose startup"
+    clear_logs
     echo "Ensuring any existing services are stopped (compose down)"
     compose down || true
+    echo "Freeing known ports after compose down"
+    clear_ports
     if $BUILD; then
         echo "Building containers before start..."
         compose build || die "compose build failed"
@@ -632,6 +785,7 @@ else
         echo "Backend ready; starting ngrok."
     else
         echo "Backend did not become healthy; starting ngrok anyway." >&2
+        show_port_status
     fi
     start_ngrok
 fi
@@ -653,8 +807,12 @@ if $FRONTEND; then
     write_frontend_env_for_docker || true
     if [ -d "frontend" ]; then
         if [ -f "frontend/package-lock.json" ]; then
+            cleanup_frontend_node_modules
             if ! npm --prefix frontend ci --no-audit --no-fund; then
                 echo "npm ci failed; attempting npm install fallback" >&2
+                echo "Removing stale frontend/node_modules and retrying install..." >&2
+                cleanup_frontend_node_modules
+                npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
                 if ! npm --prefix frontend install --no-audit --no-fund; then
                     die "npm install failed"
                 fi

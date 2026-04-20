@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 import logging
 import asyncio
+import time
 
 from agents.planner import Planner
 from agents.evaluator import Evaluator
@@ -29,6 +30,7 @@ from tools.web_search_tool import WebSearchTool
 from tools.file_memory_tool import FileMemoryTool
 from tools.code_execution_tool import CodeExecutionTool
 from tools.tool_router import ToolRouter
+from jobs.task_tree_store import append_task_logs, initialize_thread, upsert_task_node
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +75,40 @@ def _is_conversational(text: str) -> bool:
     if is_question and not has_action:
         return True
     return False
+
+
+def _normalize_result(result: Any) -> Dict[str, Any]:
+    """Normalize a result object into a safe dictionary for downstream consumers."""
+    if isinstance(result, dict):
+        return result
+    if result is None:
+        return {}
+    return {"response": str(result)}
+
+
+def _extract_result_text(result: Any) -> str:
+    """Get the most useful text from a result dict or fallback to a string."""
+    if isinstance(result, dict):
+        for key in ("output", "summary", "response"):
+            value = result.get(key)
+            if value is not None and str(value).strip():
+                return str(value)
+        return str(result)
+    return str(result)
+
+
+def _result_status(result: Any) -> str:
+    return result.get("status") if isinstance(result, dict) else "complete"
+
+
+def _result_final(result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        final = result.get("final")
+        if isinstance(final, dict):
+            return final
+        if isinstance(final, str):
+            return {"summary": final}
+    return {}
 
 
 class Metrics:
@@ -191,12 +227,7 @@ class SacredTimeline:
             logger.exception("Agent %s raised an error", manager_agent_id)
             result = {"agent_id": getattr(agent_obj, 'id', None), "status": "failed", "output": str(exc)}
 
-        # Normalize result to a string for summarization
-        output_text = ""
-        if isinstance(result, dict):
-            output_text = str(result.get("output") or result.get("summary") or result)
-        else:
-            output_text = str(result)
+        output_text = _extract_result_text(result)
 
         # Summarize the output (best-effort)
         try:
@@ -209,7 +240,7 @@ class SacredTimeline:
         metadata = {
             "task_id": task_info.get("task_id"),
             "task_name": task_info.get("title") or task_info.get("task_id"),
-            "status": result.get("status") if isinstance(result, dict) else "complete",
+            "status": _result_status(result),
             "agent_id": getattr(agent_obj, 'id', None),
             "manager_agent_id": manager_agent_id,
             "agent_type": getattr(agent_obj, 'name', getattr(agent_obj, '__class__', {}).__name__),
@@ -231,6 +262,7 @@ class SacredTimeline:
                 "manager_agent_id": manager_agent_id,
                 "agent_id": metadata.get("agent_id"),
                 "status": metadata.get("status"),
+                "progress": 100,
                 "summary_id": summary_id,
                 "summary": summary,
             }
@@ -244,6 +276,38 @@ class SacredTimeline:
             logger.exception("Failed to publish timeline task_update")
 
         return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
+
+    def _task_tree_update(self, thread_id: Optional[str], task_id: str, status: str, progress: int, color: str, metadata: Optional[Dict[str, Any]] = None, parent_id: Optional[str] = None) -> None:
+        if not thread_id:
+            return
+        try:
+            upsert_task_node(
+                thread_id=thread_id,
+                task_id=task_id,
+                parent_id=parent_id,
+                status=status,
+                progress=progress,
+                color=color,
+                metadata=metadata,
+            )
+            try:
+                update = {
+                    "type": "task_update",
+                    "task_id": task_id,
+                    "task_name": metadata.get("task_name") if isinstance(metadata, dict) else None,
+                    "status": status,
+                    "progress": progress,
+                    "summary": metadata.get("result_summary") if isinstance(metadata, dict) else None,
+                }
+                for q in list(self._timeline_subscribers):
+                    try:
+                        q.put_nowait(update)
+                    except Exception:
+                        continue
+            except Exception:
+                logger.exception('Failed to publish timeline progress update for %s/%s', thread_id, task_id)
+        except Exception:
+            logger.exception('Failed to update task tree for %s/%s', thread_id, task_id)
 
     def _compute_priority(self, task: Dict[str, Any], ctx: Any = None) -> float:
         """Score a task deterministically using settings and context.
@@ -281,7 +345,7 @@ class SacredTimeline:
         score *= (settings.priority_weight * prio)
         return score
 
-    async def run_autonomous(self, goal: str, max_depth: int = 3, max_tasks: int = 20, per_task_timeout: int = 60) -> Dict[str, Any]:
+    async def run_autonomous(self, goal: str, max_depth: int = 3, max_tasks: int = 20, per_task_timeout: int = 60, thread_id: Optional[str] = None) -> Dict[str, Any]:
         """Coordinator: plan -> assign to specialized agents -> critic loop.
 
         Assigns tasks to ResearchAgent or CodingAgent where applicable, runs
@@ -337,7 +401,9 @@ class SacredTimeline:
                     context["prior_recommendations"].append(recs)
 
         plan = await planner.plan(goal)
-        plan = plan or {}
+        if not isinstance(plan, dict):
+            logger.warning("Planner returned non-dict plan object during autonomous run; coercing to empty plan: %r", plan)
+            plan = {}
         # normalize tasks from planner to avoid None entries
         tasks = [t for t in (plan.get("tasks") or []) if isinstance(t, dict)]
 
@@ -427,6 +493,20 @@ class SacredTimeline:
                             "needs_review": True,
                             "priority": settings.autonomous_task_priority,
                         }
+                        if thread_id:
+                            self._task_tree_update(
+                                thread_id=thread_id,
+                                task_id=tid_new,
+                                status='waiting',
+                                progress=10,
+                                color='#f97316',
+                                metadata={
+                                    'task_name': 'Auto Reconcile',
+                                    'instructions': f"Reconcile contradictions related to node {node.id}",
+                                    'start_time': time.time(),
+                                },
+                                parent_id=thread_id,
+                            )
                         autonomous_count += 1
                         if autonomous_count >= MAX_AUTONOMOUS_TASKS:
                             break
@@ -449,6 +529,20 @@ class SacredTimeline:
                                 "needs_review": True,
                                 "priority": settings.autonomous_task_priority,
                             }
+                            if thread_id:
+                                self._task_tree_update(
+                                    thread_id=thread_id,
+                                    task_id=tid_new,
+                                    status='waiting',
+                                    progress=10,
+                                    color='#f59e0b',
+                                    metadata={
+                                        'task_name': 'Auto Refine',
+                                        'instructions': f"Refine low-confidence node {node.id}",
+                                        'start_time': time.time(),
+                                    },
+                                    parent_id=thread_id,
+                                )
                             autonomous_count += 1
                             if autonomous_count >= MAX_AUTONOMOUS_TASKS:
                                 break
@@ -474,6 +568,20 @@ class SacredTimeline:
                     continue
 
                 t["status"] = "running"
+                if thread_id:
+                    self._task_tree_update(
+                        thread_id=thread_id,
+                        task_id=tid,
+                        status='running',
+                        progress=50,
+                        color='#22c55e',
+                        metadata={
+                            'task_name': t.get('title') or tid,
+                            'instructions': t.get('instructions'),
+                            'start_time': time.time(),
+                        },
+                        parent_id=thread_id,
+                    )
                 agent_obj = route_task_to_agent(t)
                 # use agent.execute for BaseAgent subclasses or TaskAgent.run for TaskAgent
                 if hasattr(agent_obj, "execute"):
@@ -499,6 +607,19 @@ class SacredTimeline:
                         t["status"] = "failed"
                         t["output"] = str(res)
                         t["needs_review"] = False
+                        if thread_id:
+                            self._task_tree_update(
+                                thread_id=thread_id,
+                                task_id=tid,
+                                status='error',
+                                progress=100,
+                                color='#ef4444',
+                                metadata={
+                                    'task_name': t.get('title') or tid,
+                                    'result_summary': str(res),
+                                },
+                                parent_id=thread_id,
+                            )
                     else:
                         # detect if agent result indicated reflection reuse
                         if isinstance(res, dict):
@@ -527,6 +648,19 @@ class SacredTimeline:
                             out = res
                         t["output"] = out
                         t["needs_review"] = True
+                        if thread_id:
+                            self._task_tree_update(
+                                thread_id=thread_id,
+                                task_id=tid,
+                                status='done',
+                                progress=100,
+                                color='#22c55e',
+                                metadata={
+                                    'task_name': t.get('title') or tid,
+                                    'result_summary': str(out) if out is not None else None,
+                                },
+                                parent_id=thread_id,
+                            )
                 # self-initiated refinement: check graph for contradictions or low confidence
                 if autonomous_count < MAX_AUTONOMOUS_TASKS:
                     # contradictions
@@ -731,6 +865,21 @@ class SacredTimeline:
         if isinstance(final_result, dict):
             _final_summary = final_result.get("summary") or ""
         result_out["response"] = _final_summary or str(final_result)
+        if thread_id:
+            try:
+                upsert_task_node(
+                    thread_id=thread_id,
+                    task_id=thread_id,
+                    status='done',
+                    progress=100,
+                    color='#6366f1',
+                    metadata={
+                        'result_summary': _final_summary or str(final_result),
+                        'end_time': time.time(),
+                    },
+                )
+            except Exception:
+                logger.exception('Failed to finalize root task tree %s', thread_id)
         # housekeeping: prune low-confidence graph entries after run
         try:
             self._memory.prune_graph()
@@ -1024,7 +1173,7 @@ class SacredTimeline:
             logger.exception("Pruning graph failed")
         return result_out
 
-    async def stream_user_input(self, user_input: str):
+    async def stream_user_input(self, user_input: str, thread_id: Optional[str] = None):
         """Stream a response to *user_input* as an async generator of SSE-ready strings.
 
         For conversational input the LLM tokens are yielded one-by-one so the
@@ -1044,6 +1193,8 @@ class SacredTimeline:
         import json as _json
 
         def _evt(obj: dict) -> str:
+            if thread_id is not None:
+                obj['thread_id'] = thread_id
             return _json.dumps(obj)
 
         greeting = user_input.strip().lower()
@@ -1137,7 +1288,9 @@ class SacredTimeline:
         # Ask planner: is this conversational or a real goal?
         try:
             plan = await self._planner.plan(user_input)
-            plan = plan or {}
+            if not isinstance(plan, dict):
+                logger.warning("Planner returned non-dict plan object; coercing to empty plan: %r", plan)
+                plan = {}
             self._last_plan = plan
             try:
                 update = {"type": "plan", "plan": plan}
@@ -1215,26 +1368,17 @@ class SacredTimeline:
             except Exception as exc:
                 logger.exception("run_autonomous raised during execution")
                 result = {"final": {"summary": ""}, "response": "", "status": "error", "error": str(exc)}
-            if result is None:
-                logger.warning("run_autonomous returned None; substituting empty result")
+            result = _normalize_result(result)
+            if not result:
+                logger.warning("run_autonomous returned empty result; substituting empty response")
                 result = {"final": {"summary": ""}, "response": ""}
-            # ensure result is a dict so downstream .get() calls are safe
-            if not isinstance(result, dict):
-                logger.warning("run_autonomous returned non-dict result; coercing to dict")
-                result = {"final": {"summary": str(result)}, "response": str(result)}
         except Exception as exc:
             logger.exception("run_autonomous failed during streaming")
             yield _evt({"type": "error", "text": str(exc)})
             return
 
         # Stream the final summary text token-by-token from the result
-        final = result.get("final")
-        if isinstance(final, str):
-            final = {"summary": final}
-        elif final is None:
-            final = {}
-        elif not isinstance(final, dict):
-            final = {"summary": str(final)}
+        final = _result_final(result)
         summary: str = final.get("summary") or str(result)
         yield _evt({"type": "progress", "text": "Generating response…"})
         # chunk the summary so the frontend renders progressively
@@ -1244,7 +1388,7 @@ class SacredTimeline:
             await asyncio.sleep(0)  # yield to event loop between chunks
         yield _evt({"type": "done", "result": result})
 
-    async def handle_user_input(self, user_input: str) -> Dict[str, Any]:
+    async def handle_user_input(self, user_input: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
         """Handle user input asynchronously.
 
         - Ask Planner for decision (awaitable)
@@ -1287,6 +1431,9 @@ class SacredTimeline:
 
         # ask planner to decompose into tasks. planner may return a trivial "echo"
         plan = await self._planner.plan(user_input)
+        if not isinstance(plan, dict):
+            logger.warning("Planner returned non-dict plan object in handle_user_input; coercing to empty plan: %r", plan)
+            plan = {}
         # persist the last plan so UI can query thread state
         self._last_plan = plan
         # publish plan to timeline subscribers
@@ -1299,7 +1446,43 @@ class SacredTimeline:
                     continue
         except Exception:
             logger.exception("Failed to publish timeline plan update")
-        tasks = plan.get("tasks") or []
+        raw_tasks = plan.get("tasks")
+        if not isinstance(raw_tasks, list):
+            raw_tasks = []
+        tasks = []
+        for i, t in enumerate(raw_tasks):
+            if isinstance(t, dict):
+                tasks.append(t)
+                continue
+            tasks.append({
+                "task_id": f"t{i+1}",
+                "title": str(t),
+                "instructions": str(t),
+                "depends_on": [],
+            })
+
+        if thread_id:
+            initialize_thread(thread_id, {
+                'task_name': f'Assistant thread: {user_input[:80]}',
+                'start_time': time.time(),
+                'color': '#7c6af7',
+                'metadata': {'goal': user_input},
+            })
+            for task in tasks:
+                if isinstance(task, dict):
+                    upsert_task_node(
+                        thread_id=thread_id,
+                        task_id=task.get('task_id') or f"task_{len(tasks)}",
+                        parent_id=thread_id,
+                        status='waiting',
+                        progress=10,
+                        color='#38bdf8',
+                        metadata={
+                            'task_name': task.get('title') or task.get('task_id'),
+                            'instructions': task.get('instructions'),
+                            'start_time': time.time(),
+                        },
+                    )
 
         # if the planner produced a single task that simply repeats the user_input,
         # consider treating the exchange as casual conversation.  however, don't
@@ -1319,7 +1502,7 @@ class SacredTimeline:
                 # otherwise the user likely has a genuine goal; fall through
 
             # proceed with autonomous execution for non-trivial plans
-            return await self.run_autonomous(user_input)
+            return await self.run_autonomous(user_input, thread_id=thread_id)
 
         # no tasks at all: still conversational
         reply = await self._generate_chat_reply(user_input)

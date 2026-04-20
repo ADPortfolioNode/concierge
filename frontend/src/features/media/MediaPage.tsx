@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
 
+const normalizeMediaUrl = (url: string) => {
+  if (!url) return url;
+  return url.startsWith('/') ? url : `/${url}`;
+};
+
 const MediaPage: React.FC = () => {
   const imageLayers = useAppStore((s) => s.imageLayers);
   const videoLayers = useAppStore((s) => s.videoLayers);
@@ -11,17 +16,22 @@ const MediaPage: React.FC = () => {
   const setActiveMedia = useAppStore((s) => s.setActiveMedia);
   const clearMediaLayers = useAppStore((s) => s.clearMediaLayers);
 
-  const mediaItems = [
-    ...imageLayers.map((item) => ({ ...item, type: 'image' as const })),
-    ...videoLayers.map((item) => ({ ...item, type: 'video' as const })),
-    ...audioLayers.map((item) => ({ ...item, type: 'audio' as const })),
-  ];
+  const uniqueMediaItems = React.useMemo(() => {
+    const items = [
+      ...imageLayers.map((item) => ({ ...item, type: 'image' as const })),
+      ...videoLayers.map((item) => ({ ...item, type: 'video' as const })),
+      ...audioLayers.map((item) => ({ ...item, type: 'audio' as const })),
+    ];
+    return Array.from(new Map(items.map((item) => [`${item.type}-${item.url}`, item])).values());
+  }, [imageLayers, videoLayers, audioLayers]);
 
-  const uniqueMediaItems = Array.from(
-    new Map(mediaItems.map((item) => [`${item.type}-${item.url}`, item])).values()
+  const selected = React.useMemo(
+    () => {
+      const normalizedActive = activeMedia ? normalizeMediaUrl(activeMedia) : null;
+      return uniqueMediaItems.find((item) => normalizeMediaUrl(item.url) === normalizedActive) || uniqueMediaItems[0] || null;
+    },
+    [uniqueMediaItems, activeMedia]
   );
-
-  const selected = uniqueMediaItems.find((item) => item.url === activeMedia) || uniqueMediaItems[0] || null;
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
@@ -65,7 +75,7 @@ const MediaPage: React.FC = () => {
             {uniqueMediaItems.map((item) => (
               <button
                 key={`${item.type}-${item.id}-${encodeURIComponent(item.url)}`}
-                onClick={() => setActiveMedia(item.url)}
+                onClick={() => setActiveMedia(normalizeMediaUrl(item.url))}
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',

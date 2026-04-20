@@ -68,8 +68,8 @@ COPY . .
 # Copy built frontend assets from the build stage (if present)
 COPY --from=frontend-build /build/dist /app/frontend_dist
 
-# Expose the app port (FastAPI default)
-EXPOSE 8000
+# Expose the app port for self-contained Docker distribution
+EXPOSE 8001
 
 # Default command
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]

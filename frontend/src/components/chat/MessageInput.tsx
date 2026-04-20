@@ -11,6 +11,7 @@ const MessageInput: React.FC = () => {
   const [showUploader, setShowUploader] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const loading = useAppStore((s) => s.loading);
+  const conversationLength = useAppStore((s) => s.conversation.length);
   const sendMessage = useAppStore((s) => s.sendMessage);
   const draftMessage = useAppStore((s) => s.draftMessage);
   const setDraft = useAppStore((s) => s.setDraft);
@@ -125,7 +126,7 @@ const MessageInput: React.FC = () => {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={loading ? 'Sending...' : 'Message — Enter to send, Shift+Enter for newline'}
+          placeholder={loading ? (conversationLength === 0 ? 'Connecting to local backend...' : 'Sending...') : 'Message — Enter to send, Shift+Enter for newline'}
           disabled={loading}
           rows={1}
           style={{

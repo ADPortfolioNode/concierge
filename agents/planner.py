@@ -49,6 +49,14 @@ class Planner:
         tasks: List[Dict[str, Any]] = []
         try:
             parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                if isinstance(parsed.get("tasks"), list):
+                    parsed = parsed["tasks"]
+                elif isinstance(parsed.get("plan"), list):
+                    parsed = parsed["plan"]
+                else:
+                    parsed = [parsed]
+
             if isinstance(parsed, list):
                 for i, t in enumerate(parsed[:max_tasks]):
                     # tolerate LLMs that return a list of strings instead of

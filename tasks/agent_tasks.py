@@ -50,7 +50,7 @@ def run_agent_task(self, context: str, goal: str) -> Dict[str, Any]:
         )
 
         prompt = f"{context}\n\n{goal}".strip() if context else goal
-        return await timeline.handle_user_input(prompt)
+        return await timeline.handle_user_input(prompt, thread_id=task_id)
 
     try:
         result = _run_sync(_execute())
