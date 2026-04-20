@@ -18,6 +18,43 @@ Param(
 
 function Die($msg){ Write-Error $msg; exit 1 }
 
+function Clear-KnownPorts {
+    $ports = 8000,8001,5173,6333
+    foreach ($p in $ports) {
+        Write-Host "Checking port $p"
+        try {
+            $matches = & netstat -ano | Select-String ":$p" | ForEach-Object {
+                $_.ToString().Trim() -split '\s+' | Select-Object -Last 1
+            }
+            foreach ($pid in $matches | Where-Object { $_ -match '^[0-9]+$' }) {
+                try {
+                    Write-Host "Stopping process $pid listening on port ${p}"
+                    Stop-Process -Id $pid -Force -ErrorAction Stop
+                } catch {
+                    Write-Warning "Could not stop process $pid for port ${p}: $($_)"
+                }
+            }
+        } catch {
+            Write-Warning "Failed to inspect port ${p}: $($_)"
+        }
+    }
+}
+
+function Show-PortStatus {
+    $ports = 8000,8001,5173,6333
+    Write-Host "Inspecting port usage for known service ports..."
+    foreach ($p in $ports) {
+        Write-Host "--- port $p ---"
+        try {
+            & netstat -ano | Select-String ":$p" | ForEach-Object {
+                $_.ToString().Trim()
+            }
+        } catch {
+            Write-Warning "Cannot inspect port $p: $($_)"
+        }
+    }
+}
+
 # support --no-frontend
 if ($noFrontend) { $frontend = $false }
 
@@ -50,9 +87,13 @@ if ($diag) {
 
 if ($clear) {
     Write-Host "Clearing environment: compose down; up -d --build"
+    Write-Host "Freeing known ports before tear down/start"
+    Clear-KnownPorts
     Compose 'down' | Out-Null
     if ($build) { Compose 'up -d --build' } else { Compose 'up -d --build' }
 } else {
+    Write-Host "Freeing known ports before tear down/start"
+    Clear-KnownPorts
     Write-Host "Ensuring any existing services are stopped (compose down)"
     Compose 'down' | Out-Null
     if ($build) { Write-Host "Building containers before start..."; Compose 'build' }
@@ -78,6 +119,7 @@ if ($frontend) {
     $ps = docker compose ps | Select-String -Pattern 'quesarc_app.*Exited','quesarc_frontend.*Exited'
     if ($ps) {
         Write-Host "One or more containers exited unexpectedly; see logs above" -ForegroundColor Yellow
+        Show-PortStatus
     }
 }
 

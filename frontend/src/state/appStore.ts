@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ConversationMessage } from '../types/domain';
 import * as ConciergeAPI from '@/api/conciergeService';
+import { fetchTaskTree, TaskTree } from '@/api/taskService';
 import { ACTIVE_API_BASE, makeApiUrl } from '@/config/activeServer';
 // Industry-standard hybrid memory pattern: persist conversation history in
 // browser storage (IndexedDB with localStorage fallback) so the full chat
@@ -68,7 +69,9 @@ interface AppState {
   textHighlights: string[];
   // timeline/header state
   timelinePlan: any | null;
-  selectedTaskMeta: any | null;
+  taskThreadId: string | null;
+  taskTree: TaskTree | null;
+  selectedRiverNode: any | null;
   // ── actions ────────────────────────────────────────────────────────────
   setError: (msg: string | null) => void;
   setDraft: (text: string) => void;
@@ -82,7 +85,12 @@ interface AppState {
   clearMediaLayers: () => void;
   // timeline actions
   setTimelinePlan: (plan: any) => void;
+  setTaskTree: (tree: TaskTree | null) => void;
+  setTaskThreadId: (id: string | null) => void;
   setSelectedTaskMeta: (meta: any) => void;
+  setSelectedRiverNode: (meta: any) => void;
+  clearTaskThread: () => void;
+  pollTaskThreadStatus: (taskId: string) => Promise<void>;
   fetchTimeline: () => Promise<void>;
   fetchMedia: () => Promise<void>;
   selectTimelineTask: (task: any) => void;
@@ -106,6 +114,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   videoLayers: [],
   audioLayers: [],
   textHighlights: [],
+  taskThreadId: null,
+  taskTree: null,
+  selectedRiverNode: null,
   setError: (msg) => set({ error: msg }),
   setDraft: (text) => set({ draftMessage: text }),
   setConversation: (msgs) => {
@@ -114,7 +125,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Persist to IndexedDB/localStorage so history survives page refreshes
     saveHistory(normalized).catch(() => { /* best-effort */ });
   },
-  setActiveMedia: (url) => set({ activeMedia: url }),
+  setActiveMedia: (url) => set({ activeMedia: _normalizeMediaUrl(url || '') || null }),
   appendMessage: (msg) => set((s) => {
     const updated = [...s.conversation, _normalizeUrlsInObject(msg)];
     saveHistory(updated).catch(() => { /* best-effort */ });
@@ -122,7 +133,47 @@ export const useAppStore = create<AppState>((set, get) => ({
   }),
   // timeline actions
   setTimelinePlan: (plan) => set({ timelinePlan: plan }),
+  setTaskTree: (tree) => set({ taskTree: tree }),
+  setTaskThreadId: (id) => set({ taskThreadId: id }),
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
+  setSelectedRiverNode: (meta) => set({ selectedRiverNode: meta }),
+  clearTaskThread: () => {
+    if (typeof window !== 'undefined') {
+      const poller = (window as any).__TASK_THREAD_POLLER__;
+      if (poller) {
+        clearInterval(poller);
+        (window as any).__TASK_THREAD_POLLER__ = null;
+      }
+    }
+    set({ taskThreadId: null, taskTree: null, selectedRiverNode: null });
+  },
+  pollTaskThreadStatus: async (taskId: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const tick = async () => {
+        try {
+          const tree = await fetchTaskTree(taskId);
+          set({ taskTree: tree, taskThreadId: taskId });
+          if (tree.status === 'done' || tree.status === 'completed' || tree.status === 'error' || tree.progress === 100) {
+            const poller = (window as any).__TASK_THREAD_POLLER__;
+            if (poller) {
+              clearInterval(poller);
+              (window as any).__TASK_THREAD_POLLER__ = null;
+            }
+          }
+        } catch {
+          // ignore temporary fetch failures
+        }
+      };
+      if ((window as any).__TASK_THREAD_POLLER__) {
+        clearInterval((window as any).__TASK_THREAD_POLLER__);
+      }
+      await tick();
+      (window as any).__TASK_THREAD_POLLER__ = setInterval(tick, 2500);
+    } catch {
+      // ignore
+    }
+  },
   fetchTimeline: async () => {
     try {
       const plan = await ConciergeAPI.getTimeline();
@@ -162,13 +213,20 @@ export const useAppStore = create<AppState>((set, get) => ({
               const tasks = Array.isArray(plan.tasks) ? [...plan.tasks] : [];
               const idx = tasks.findIndex((t: any) => (t && t.task_id) === upd.task_id);
               if (idx >= 0) {
-                tasks[idx] = { ...tasks[idx], ...(upd.task_name ? { title: upd.task_name } : {}), ...(upd.status ? { status: upd.status } : {}), ...(upd.summary ? { summary: upd.summary } : {}), manager_agent_id: upd.manager_agent_id || tasks[idx].manager_agent_id };
+                tasks[idx] = {
+                  ...tasks[idx],
+                  ...(upd.task_name ? { title: upd.task_name } : {}),
+                  ...(upd.status ? { status: upd.status } : {}),
+                  ...(typeof upd.progress === 'number' ? { progress: upd.progress } : {}),
+                  ...(upd.summary ? { summary: upd.summary } : {}),
+                  manager_agent_id: upd.manager_agent_id || tasks[idx].manager_agent_id,
+                };
               } else {
                 // add a minimal task record if not present
-                tasks.push({ task_id: upd.task_id, title: upd.task_name || upd.task_id, status: upd.status, summary: upd.summary });
+                tasks.push({ task_id: upd.task_id, title: upd.task_name || upd.task_id, status: upd.status, progress: typeof upd.progress === 'number' ? upd.progress : undefined, summary: upd.summary });
               }
               const newPlan = { ...plan, tasks, updated_at: new Date().toISOString() };
-              const selected = s.selectedTaskMeta && s.selectedTaskMeta.task_id === upd.task_id ? { ...s.selectedTaskMeta, ...(upd.summary ? { summary: upd.summary } : {}), ...(upd.status ? { status: upd.status } : {}) } : s.selectedTaskMeta;
+              const selected = s.selectedTaskMeta && s.selectedTaskMeta.task_id === upd.task_id ? { ...s.selectedTaskMeta, ...(upd.summary ? { summary: upd.summary } : {}), ...(upd.status ? { status: upd.status } : {}), ...(typeof upd.progress === 'number' ? { progress: upd.progress } : {}) } : s.selectedTaskMeta;
               return { timelinePlan: newPlan, selectedTaskMeta: selected } as any;
             });
           }
@@ -247,6 +305,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       meta: null,
     };
 
+    // Reset any existing task-river state before starting a new request.
+    get().clearTaskThread();
+
     // Capture the history BEFORE adding the new messages so we only send
     // prior turns to the backend (hybrid memory: full context per call).
     const priorHistory = get().conversation.map((m) => ({ role: m.role, content: m.content }));
@@ -268,6 +329,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         const res = await ConciergeAPI.sendMessage(input, priorHistory);
         const result = res.data as any;
+        const threadId = result.thread_id || result.data?.thread_id || null;
+        if (threadId) {
+          set({ taskThreadId: threadId });
+          get().pollTaskThreadStatus(threadId).catch(() => {});
+        }
         const finalText = (result.response || '') as string;
         const confidence = result.confidence;
         const critic_score = result.critic_score;
@@ -304,6 +370,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       let accumulated = '';
 
       for await (const evt of ConciergeAPI.streamMessage(input, priorHistory)) {
+        if (evt.thread_id) {
+          const threadId = evt.thread_id;
+          set({ taskThreadId: threadId });
+          get().pollTaskThreadStatus(threadId).catch(() => {});
+        }
         if (evt.type === 'token' || evt.type === 'progress') {
           accumulated += evt.text;
           // Patch the placeholder bubble with the accumulated text

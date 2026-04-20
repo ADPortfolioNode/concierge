@@ -507,3 +507,22 @@ The browser-side helpers live in `frontend/src/utils/conversationHistory.ts` and
 - The **browser** (IndexedDB) handles the per-session chat thread, giving instant restore without a server round-trip and enabling the frontend to attach full conversational context to each request.
 
 Together they ensure the agent never loses context whether the user refreshes the page, restarts the Docker stack, or switches between devices.
+
+## Free Deployment
+
+For low-cost deployment, use the Docker stack with ngrok or Vercel plus the persistent ChromaDB volume.
+
+- **Docker + ngrok**
+  - Run `./start.sh --prune --yes --build --diag --log` in a Bash-compatible shell.
+  - The frontend connects to the backend via `VITE_API_URL`, `BACKEND_URL`, or `VITE_BACKEND_URL`.
+  - The backend persists ChromaDB data to a named volume: `chroma_data:/app/chroma`.
+
+- **Vercel**
+  - Set `VITE_API_URL` or `VITE_BACKEND_URL` in Vercel environment variables to your backend URL.
+  - The app already supports `VITE_BACKEND_URL` as an alias for ngrok and proxy-based deployments.
+
+- **Docker volume**
+  - `docker-compose.yml` declares a named volume `chroma_data:` mounted at `/app/chroma`.
+  - `CHROMA_PATH=/app/chroma` is passed into the `app` container so the backend can persist ChromaDB safely outside the image layer.
+
+This combination gives you a free local development deployment path and a production-ready persistent memory workflow without changing the core Celery or multimodal runtime flows.

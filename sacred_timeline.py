@@ -570,7 +570,23 @@ class SacredTimeline:
         logger.info("SacredTimeline handling input")
         # Use new planner.plan() API to get structured tasks
         plan = await self._planner.plan(user_input)
-        tasks = plan.get("tasks")
+        if not isinstance(plan, dict):
+            logger.warning("Planner returned non-dict plan object in handle_user_input; coercing to empty plan: %r", plan)
+            plan = {}
+        raw_tasks = plan.get("tasks")
+        if not isinstance(raw_tasks, list):
+            raw_tasks = []
+        tasks = []
+        for i, t in enumerate(raw_tasks):
+            if isinstance(t, dict):
+                tasks.append(t)
+                continue
+            tasks.append({
+                "task_id": f"t{i+1}",
+                "title": str(t),
+                "instructions": str(t),
+                "depends_on": [],
+            })
         if tasks:
             # Launch autonomous loop
             return await self.run_autonomous(user_input)

@@ -161,6 +161,42 @@ def test_streaming_plan_is_published(monkeypatch):
     assert timeline.get_last_plan()['tasks'][0]['task_id'] == 't1'
 
 
+def test_handle_user_input_coerces_invalid_plan(monkeypatch):
+    from orchestration.sacred_timeline import SacredTimeline
+    timeline = SacredTimeline()
+
+    async def fake_plan(user_input):
+        return "unexpected string"
+
+    async def fake_run_autonomous(user_input):
+        return {"status": "success", "response": "ok"}
+
+    monkeypatch.setattr(timeline._planner, 'plan', fake_plan)
+    monkeypatch.setattr(timeline, 'run_autonomous', fake_run_autonomous)
+
+    resp = asyncio.get_event_loop().run_until_complete(timeline.handle_user_input('build a new analytics dashboard for the sales team'))
+    assert resp['status'] == 'success'
+    assert isinstance(resp['response'], str)
+
+
+def test_handle_user_input_coerces_string_tasks(monkeypatch):
+    from orchestration.sacred_timeline import SacredTimeline
+    timeline = SacredTimeline()
+
+    async def fake_plan(user_input):
+        return {"tasks": ["build a dashboard"]}
+
+    async def fake_run_autonomous(user_input):
+        return {"status": "success", "response": "ok"}
+
+    monkeypatch.setattr(timeline._planner, 'plan', fake_plan)
+    monkeypatch.setattr(timeline, 'run_autonomous', fake_run_autonomous)
+
+    resp = asyncio.get_event_loop().run_until_complete(timeline.handle_user_input('build a new analytics dashboard for the sales team'))
+    assert resp['status'] == 'success'
+    assert resp['response'] == 'ok'
+
+
 def test_metrics_endpoint_and_notice(monkeypatch):
     """Metrics endpoint should reflect request counts and produce notice on fallback."""
     try:

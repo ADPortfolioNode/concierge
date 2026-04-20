@@ -72,15 +72,9 @@ const TimelineHero: React.FC = () => {
     // start SSE streaming for live updates
     (async () => {
       try {
-        const globalObj = window as Window & { __START_TIMELINE_STREAM__?: boolean };
+        const globalObj = window as any;
         globalObj.__START_TIMELINE_STREAM__ = true;
-        const storeMod = await import('@/state/appStore') as {
-          useAppStore: {
-            getState: () => {
-              startTimelineStream?: () => void;
-            };
-          };
-        };
+        const storeMod = await import('@/state/appStore') as any;
         const start = storeMod.useAppStore.getState().startTimelineStream;
         start && start();
       } catch (e) {
@@ -90,13 +84,7 @@ const TimelineHero: React.FC = () => {
     return () => {
       (async () => {
         try {
-          const storeMod = await import('@/state/appStore') as {
-            useAppStore: {
-              getState: () => {
-                stopTimelineStream?: () => void;
-              };
-            };
-          };
+          const storeMod = await import('@/state/appStore') as any;
           const stop = storeMod.useAppStore.getState().stopTimelineStream;
           stop && stop();
         } catch (e) {
@@ -111,6 +99,7 @@ const TimelineHero: React.FC = () => {
     : Array.isArray(timelinePlan?.plan?.tasks)
     ? timelinePlan.plan.tasks
     : []) as TimelineTask[];
+  const depths = computeTaskDepths(tasks);
   // Use an explicit graph version token to force reload when timelinePlan changes
   // Use a relative URL so system images are requested from the current origin.
   const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
@@ -119,6 +108,28 @@ const TimelineHero: React.FC = () => {
   const [graphLoadFailed, setGraphLoadFailed] = useState(false);
   const graphUrl = graphSrc;
   const fallbackGraphUrl = graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl;
+
+  const expandedOverlayStyle = {
+    position: 'fixed',
+    inset: 0,
+    zIndex: 1000,
+    background: 'rgba(6,6,12,0.95)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  };
+
+  const expandedInnerStyle = {
+    width: '100%',
+    height: '100%',
+    maxWidth: '100%',
+    maxHeight: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 18,
+    borderRadius: 12,
+  };
 
   return (
     <>
@@ -138,14 +149,12 @@ const TimelineHero: React.FC = () => {
           <div className="timeline-hero-task-thread">
             {tasks.length === 0 ? (
               <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
-                No Concierge timeline tasks are available yet — ask Concierge to create a plan or add a goal.
+                No Concierge timeline tasks are available yet - ask Concierge to create a plan or add a goal.
               </div>
             ) : (
               <div className="timeline-task-grid" aria-label="Timeline task thread">
                 <div className="timeline-thread-line" aria-hidden="true" />
-                {(() => {
-                  const depths = computeTaskDepths(tasks);
-                  return tasks.map((t: TimelineTask) => {
+                {tasks.map((t: TimelineTask) => {
                     const progressValue = typeof t.progress === 'number'
                       ? t.progress
                       : typeof t.percent === 'number'
@@ -160,12 +169,13 @@ const TimelineHero: React.FC = () => {
                     const progress = Math.min(100, Math.max(0, progressValue));
                     const depth = depths.get(t.task_id) ?? 0;
                     const indent = depth * 14;
+                    const branchStyle = { '--branch-offset': `${indent}px` };
                     return (
                       <button
                         key={t.task_id}
                         onClick={() => { setSelected(t); selectTimelineTask(t); }}
                         className={`timeline-task-branch ${selected?.task_id === t.task_id ? 'timeline-task-branch--active' : ''}`}
-                        style={{ '--branch-offset': `${indent}px` } as React.CSSProperties}
+                        style={branchStyle}
                       >
                       <span className="timeline-task-anchor" aria-hidden="true" />
                       <div className="timeline-task-branch-content">
@@ -180,7 +190,7 @@ const TimelineHero: React.FC = () => {
                       </div>
                     </button>
                   );
-                })}
+                  })}
               </div>
             )}
           </div>
@@ -189,8 +199,8 @@ const TimelineHero: React.FC = () => {
 
       {/* Expanded overlay (unchanged) */}
       {expanded && (
-        <div role="dialog" aria-label="Timeline fullscreen" style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(6,6,12,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={() => setExpanded(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', height: '100%', maxWidth: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', gap: 18, borderRadius: 12 }}>
+        <div role="dialog" aria-label="Timeline fullscreen" style={expandedOverlayStyle} onClick={() => setExpanded(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={expandedInnerStyle}>
             <div style={{ width: '100%', flex: '0 0 auto', minHeight: 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <img
                 src={graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl}

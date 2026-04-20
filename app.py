@@ -11,6 +11,7 @@ import json
 import os
 import time
 import traceback
+import uuid
 from typing import Any, Optional, Deque
 from pathlib import Path
 from config.settings import get_settings
@@ -50,6 +51,7 @@ import httpx
 import hashlib
 import re
 from datetime import datetime
+from jobs.task_tree_store import get_task_tree
 
 # Defer heavy/optional imports to runtime to keep module import small for
 # serverless builds. Populate these in the lifespan startup.
@@ -115,6 +117,7 @@ if not _jobs_available and _jobs_import_err_msg:
     logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
 settings = get_settings()
+SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8001')
 
 
 @asynccontextmanager
@@ -290,6 +293,17 @@ async def _lifespan(application: FastAPI):
 
 app = FastAPI(lifespan=_lifespan)
 
+from fastapi.middleware.cors import CORSMiddleware
+
+# CORS middleware for local React frontend on port 5173 calling backend on 8001
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Serve generated media (images/audio/video) from /media
 try:
     media_path = settings.media_dir
@@ -317,45 +331,6 @@ try:
             raise
 except Exception:
     logger.exception("Failed to mount media directory for static files")
-
-# ----------------------------------------------------------------------
-# CORS setup
-# ----------------------------------------------------------------------
-# The frontend commonly runs on localhost:5173 during development, so allow
-# that origin explicitly when configured. Automation tests and automated
-# environments may set CORS_ALLOW_ORIGINS as a comma-separated list.
-# If `CORS_ALLOW_ORIGINS` is blank or set to `*`, we allow any origin and
-# let the middleware reflect the request origin dynamically.
-from fastapi.middleware.cors import CORSMiddleware
-
-raw_allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "*")
-allow_origins = []
-allow_origin_regex = []
-for origin in raw_allow_origins.split(","):
-    origin = origin.strip()
-    if not origin:
-        continue
-    if origin.lower().startswith("regex:"):
-        allow_origin_regex.append(origin.split(":", 1)[1])
-    elif origin == "*":
-        allow_origins = ["*"]
-        allow_origin_regex = []
-        break
-    else:
-        allow_origins.append(origin)
-
-if not allow_origins and not allow_origin_regex:
-    allow_origins = ["*"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_origin_regex=allow_origin_regex or None,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 
 # Simple request logging middleware to aid debugging
 @app.middleware("http")
@@ -479,12 +454,17 @@ async def ask(payload: AskPayload):
     })
 
 
-@app.post("/api/v1/concierge/message")
-async def concierge_message(payload: ConciergeMessagePayload, request: Request):
+@app.post('/chat')
+async def chat_alias(payload: ConciergeMessagePayload, request: Request):
+    return await _handle_chat_message(payload, request)
+
+
+async def _handle_chat_message(payload: ConciergeMessagePayload, request: Request):
     # the Pydantic validator above guarantees we have a nonempty `message`
     msg = payload.message
     _ensure_timeline_available()
-    result = await app.state.timeline.handle_user_input(msg)
+    thread_id = str(uuid.uuid4())
+    result = await app.state.timeline.handle_user_input(msg, thread_id=thread_id)
     # The timeline may return a friendly conversational response in the
     # `response` field.  Convert that to the usual `content` string so the
     # frontend rendering logic (which looks at payload.content/text) works
@@ -654,6 +634,7 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
 
     # build the API response envelope and copy provider/error info into meta
     resp = _api_response(data)
+    resp['thread_id'] = thread_id
     llm_meta = resp['meta'].get('llm')
     if llm_meta is not None and isinstance(result, dict):
         llm_meta['provider'] = result.get('llm_provider')
@@ -689,6 +670,13 @@ async def concierge_timeline():
         logger.exception('Failed to fetch timeline plan')
         return _api_response({'error': 'timeline plan unavailable'}, status='error')
 
+@app.get('/api/v1/tasks/{task_id}/status')
+async def task_status(task_id: str):
+    task_tree = get_task_tree(task_id)
+    if task_tree is None:
+        raise HTTPException(status_code=404, detail='task_id not found')
+    return _api_response(task_tree)
+
 @app.get('/api/v1/concierge/timeline/graph')
 async def concierge_timeline_graph():
     _ensure_timeline_available()
@@ -721,12 +709,15 @@ async def concierge_timeline_stream():
     return StreamingResponse(event_generator(), media_type='text/event-stream')
 
 
-async def _create_concierge_stream_response(message: str) -> StreamingResponse:
+async def _create_concierge_stream_response(message: str, thread_id: Optional[str] = None) -> StreamingResponse:
     _ensure_timeline_available()
+
+    if thread_id is None:
+        thread_id = str(uuid.uuid4())
 
     async def _event_gen():
         try:
-            async for evt_json in app.state.timeline.stream_user_input(message):
+            async for evt_json in app.state.timeline.stream_user_input(message, thread_id=thread_id):
                 yield f"data: {evt_json}\n\n"
         except Exception as exc:
             logger.exception("SSE stream error")
@@ -1064,4 +1055,4 @@ async def spa_fallback(path: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8001")), reload=True)

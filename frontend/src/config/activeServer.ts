@@ -2,7 +2,8 @@
 const env = ((import.meta as unknown) as { env?: Record<string, string | undefined> }).env || {};
 
 const MODE = env.MODE || (env.DEV ? 'development' : env.PROD ? 'production' : 'production');
-const VITE_API_URL = (env.VITE_API_URL || env.BACKEND_URL || '').replace(/\/$/, '');
+const VITE_BACKEND_URL = (env.VITE_BACKEND_URL || '').replace(/\/$/, '');
+const VITE_API_URL = (env.VITE_API_URL || VITE_BACKEND_URL || env.BACKEND_URL || '').replace(/\/$/, '');
 const VITE_API_URL_LOCAL = (env.VITE_API_URL_LOCAL || '').replace(/\/$/, '');
 const VITE_API_URL_DOCKER = (env.VITE_API_URL_DOCKER || '').replace(/\/$/, '');
 const VITE_API_URL_STAGING = (env.VITE_API_URL_STAGING || '').replace(/\/$/, '');
@@ -12,10 +13,9 @@ const VITE_API_URL_AUTO_DETECT = (env.VITE_API_URL_AUTO_DETECT || 'true').toLowe
 
 // Support a runtime-self placeholder: if the build-time env is set to
 // "<self.server>" we'll treat it as an instruction to use the page
-// origin at runtime (same-origin deployments). Normalize to an empty
-// string so the runtime fallback in `makeApiUrl` will use
-// `window.location.origin`.
-const normalizeServerUrl = (url: string) => url.replace(/\/$/, '');
+// origin at runtime (same-origin deployments). Normalize it to an empty
+// string so any base URL resolution uses the browser origin instead.
+const normalizeServerUrl = (url: string) => (url === '<self.server>' ? '' : url.replace(/\/$/, ''));
 
 const parseHostname = (url: string) => {
   try {
@@ -29,7 +29,7 @@ const parseHostname = (url: string) => {
 const BROWSER_HOSTNAME = typeof window !== 'undefined' && window.location ? window.location.hostname.toLowerCase() : '';
 const isBrowserLocalHost = BROWSER_HOSTNAME === 'localhost' || BROWSER_HOSTNAME === '127.0.0.1' || BROWSER_HOSTNAME === '0.0.0.0';
 const DEV_MODE = env.DEV || MODE === 'development';
-const USE_RELATIVE_DEV_API = DEV_MODE && isBrowserLocalHost && !VITE_API_URL_LOCAL && !VITE_API_URL;
+const USE_RELATIVE_DEV_API = DEV_MODE && isBrowserLocalHost && !VITE_API_URL_LOCAL;
 
 const PRODUCTION_HOST = parseHostname(VITE_API_URL_PRODUCTION);
 const STAGING_HOST = parseHostname(VITE_API_URL_STAGING);
@@ -69,12 +69,12 @@ const detectServerSet = (): string => {
 };
 
 const ACTIVE_SERVER = (() => {
-  if (VITE_API_URL_SET) {
-    return VITE_API_URL_SET;
-  }
   const isLocalHost = typeof window !== 'undefined' && window.location && ['localhost', '127.0.0.1', '0.0.0.0'].includes(window.location.hostname.toLowerCase());
   if (isLocalHost) {
     return 'local';
+  }
+  if (VITE_API_URL_SET) {
+    return VITE_API_URL_SET;
   }
   if (VITE_API_URL && VITE_API_URL !== '<self.server>') {
     return 'auto';
@@ -88,8 +88,8 @@ const ACTIVE_SERVER = (() => {
 export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
-  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || ''),
-  docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || ''),
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || 'http://localhost:8001'),
+  docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://backend:8001'),
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),
   auto: normalizeServerUrl(VITE_API_URL || ''),
@@ -108,10 +108,7 @@ export const ACTIVE_API_BASE: string = (() => {
   if (ACTIVE_SERVER_SET !== 'local') {
     return candidate;
   }
-  if (DEV_MODE && isBrowserLocalHost) {
-    return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || '');
-  }
-  return normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || candidate || '');
+  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://localhost:8001');
 })();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
