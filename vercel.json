@@ -14,8 +14,8 @@
   "build": {
     "env": {
       "VITE_API_URL": "<self.server>",
-      "VITE_API_URL_LOCAL": "http://localhost:8000",
-      "VITE_API_URL_DOCKER": "http://app:8000",
+      "VITE_API_URL_LOCAL": "http://localhost:8001",
+      "VITE_API_URL_DOCKER": "http://app:8001",
       "VITE_API_URL_STAGING": "<self.server>",
       "VITE_API_URL_PRODUCTION": "<self.server>",
       "VITE_API_URL_SET": "",
@@ -23,7 +23,7 @@
     }
   },
   "env": {
-    "VITE_API_URL_LOCAL": "http://localhost:8000",
+    "VITE_API_URL_LOCAL": "http://localhost:8001",
     "VITE_API_URL_DOCKER": "http://app:8000",
     "VITE_API_URL_STAGING": "<self.server>",
     "VITE_API_URL_PRODUCTION": "<self.server>",
