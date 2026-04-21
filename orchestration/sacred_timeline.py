@@ -1192,6 +1192,16 @@ class SacredTimeline:
         """
         import json as _json
 
+        if thread_id is not None:
+            try:
+                initialize_thread(thread_id, {
+                    'task_name': 'assistant_thread',
+                    'start_time': time.time(),
+                    'color': '#7c6af7',
+                })
+            except Exception:
+                logger.exception('Failed to initialize stream task tree %s', thread_id)
+
         def _evt(obj: dict) -> str:
             if thread_id is not None:
                 obj['thread_id'] = thread_id
@@ -1409,6 +1419,16 @@ class SacredTimeline:
             # metrics: count every incoming call
             self.metrics.total_requests += 1
 
+        if thread_id is not None:
+            try:
+                initialize_thread(thread_id, {
+                    'task_name': 'assistant_thread',
+                    'start_time': time.time(),
+                    'color': '#7c6af7',
+                })
+            except Exception:
+                logger.exception('Failed to initialize root task tree %s', thread_id)
+
         # quick replies for simple greetings to avoid unnecessary planning
         greeting = user_input.strip().lower()
         if greeting in ("hi", "hello", "hey", "hey there", "good morning", "good afternoon", "good evening"):
@@ -1422,11 +1442,41 @@ class SacredTimeline:
                 resp["notice"] = queued_notice
             elif note:
                 resp["notice"] = note
+            if thread_id is not None:
+                try:
+                    upsert_task_node(
+                        thread_id=thread_id,
+                        task_id=thread_id,
+                        status='done',
+                        progress=100,
+                        color='#6366f1',
+                        metadata={
+                            'result_summary': resp['response'],
+                            'end_time': time.time(),
+                        },
+                    )
+                except Exception:
+                    logger.exception('Failed to finalize root task tree %s', thread_id)
             return resp
 
         # bypass orchestration for conversational questions
         if _is_conversational(user_input):
             reply = await self._generate_chat_reply(user_input)
+            if thread_id is not None:
+                try:
+                    upsert_task_node(
+                        thread_id=thread_id,
+                        task_id=thread_id,
+                        status='done',
+                        progress=100,
+                        color='#6366f1',
+                        metadata={
+                            'result_summary': reply,
+                            'end_time': time.time(),
+                        },
+                    )
+                except Exception:
+                    logger.exception('Failed to finalize root task tree %s', thread_id)
             return {"status": "success", "response": reply}
 
         # ask planner to decompose into tasks. planner may return a trivial "echo"
@@ -1506,6 +1556,21 @@ class SacredTimeline:
 
         # no tasks at all: still conversational
         reply = await self._generate_chat_reply(user_input)
+        if thread_id is not None:
+            try:
+                upsert_task_node(
+                    thread_id=thread_id,
+                    task_id=thread_id,
+                    status='done',
+                    progress=100,
+                    color='#6366f1',
+                    metadata={
+                        'result_summary': reply,
+                        'end_time': time.time(),
+                    },
+                )
+            except Exception:
+                logger.exception('Failed to finalize root task tree %s', thread_id)
         return {"status": "success", "response": reply}
 
 
