@@ -509,11 +509,13 @@ start_local_backend() {
 
     export PORT=8001
     local backend_cmd
+    set -f
     if "${py_cmd[@]}" -m uvicorn --help >/dev/null 2>&1; then
         backend_cmd=("${py_cmd[@]}" -u -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload --reload-exclude "frontend/node_modules/*" --reload-exclude "**/node_modules/*")
     else
         backend_cmd=("${py_cmd[@]}" -u app.py)
     fi
+    set +f
 
     echo "Starting local backend with: ${backend_cmd[*]}"
     nohup "${backend_cmd[@]}" > logs/backend.log 2>&1 &
