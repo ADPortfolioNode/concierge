@@ -33,7 +33,7 @@ const flattenTaskTree = (root: TaskTreeNode): TaskTreeNode[] => {
 const AssistantRiver: React.FC<Props> = ({ tree, selectedNode, onSelectNode }) => {
   const branches = useMemo(() => flattenTaskTree(tree), [tree]);
   const width = Math.max(520, 120 + branches.length * 140);
-  const height = 180;
+  const height = 400;
 
   return (
     <div style={{ margin: '0 0 16px', padding: '18px', borderRadius: 18, background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.08)' }}>
