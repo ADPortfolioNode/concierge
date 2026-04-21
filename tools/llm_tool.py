@@ -490,6 +490,16 @@ class LLMTool:
             # dotenv not installed or file missing — fall back to whatever's in os.environ
             pass
 
+        # allow overriding token budget for LLM responses via environment
+        # variable, so users can adjust memory usage without changing code.
+        raw_max_tokens = os.getenv("LLM_MAX_TOKENS", "1024")
+        try:
+            self.max_tokens = int(raw_max_tokens)
+            if self.max_tokens <= 0:
+                raise ValueError("LLM_MAX_TOKENS must be positive")
+        except Exception:
+            self.max_tokens = 1024
+
         # primary API key plus optional extras for rate‑limit fallback
         self._api_key = os.getenv("OPENAI_API_KEY")
         # allow a comma-separated list of additional keys via OPENAI_API_KEYS
@@ -528,6 +538,7 @@ class LLMTool:
             "GEMINI_API_KEY": self._gemini_key,
             "GEMINI_MODEL": self._gemini_model,
             "GEMINI_MODELS": os.getenv("GEMINI_MODELS", ""),
+            "LLM_MAX_TOKENS": str(self.max_tokens),
         }
 
     def _build_messages(self, prompt: str, context: Optional[str]) -> list:
@@ -595,7 +606,7 @@ class LLMTool:
         payload = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 1024,
+            "max_tokens": self.max_tokens,
             "stream": True,
         }
 
