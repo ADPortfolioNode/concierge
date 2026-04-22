@@ -88,7 +88,8 @@ const ACTIVE_SERVER = (() => {
 export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
-  local: normalizeServerUrl(VITE_API_URL_LOCAL || 'http://localhost:8001'),
+  // Local dev should prefer the helper-script managed backend on 8001.
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001'),
   docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://backend:8001'),
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),

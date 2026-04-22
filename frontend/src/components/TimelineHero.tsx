@@ -1,22 +1,30 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import { makeApiUrl } from '@/config/activeServer';
 
 const PLACEHOLDER_SVG_DATA_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid meet">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#0ea5e9" />
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60a5fa" />
+      <stop offset="100%" stop-color="#38bdf8" />
     </linearGradient>
   </defs>
-  <rect width="320" height="180" rx="20" fill="#111827" />
-  <rect x="24" y="38" width="42" height="96" rx="12" fill="rgba(255,255,255,0.12)" />
-  <rect x="88" y="18" width="42" height="116" rx="12" fill="rgba(255,255,255,0.18)" />
-  <rect x="152" y="60" width="42" height="74" rx="12" fill="rgba(255,255,255,0.14)" />
-  <rect x="216" y="24" width="42" height="110" rx="12" fill="rgba(255,255,255,0.16)" />
-  <path d="M26 150 Q90 90 154 118 T292 70" fill="none" stroke="url(#grad)" stroke-width="10" stroke-linecap="round" />
-  <text x="160" y="165" fill="#e2e8f0" font-family="Inter,system-ui,sans-serif" font-size="16" text-anchor="middle">Timeline unavailable</text>
+  <rect width="320" height="180" rx="20" fill="url(#bg)" />
+  <rect x="18" y="44" width="44" height="84" rx="12" fill="rgba(96,165,250,0.18)" />
+  <rect x="88" y="26" width="44" height="102" rx="12" fill="rgba(56,189,248,0.18)" />
+  <rect x="158" y="58" width="44" height="72" rx="12" fill="rgba(168,85,247,0.18)" />
+  <rect x="228" y="34" width="44" height="94" rx="12" fill="rgba(168,85,247,0.14)" />
+  <path d="M24 152 Q88 96 160 126 T300 72" fill="none" stroke="url(#line)" stroke-width="8" stroke-linecap="round" opacity="0.95" />
+  <circle cx="46" cy="118" r="6" fill="#bfdbfe" opacity="0.95" />
+  <circle cx="126" cy="84" r="6" fill="#7dd3fc" opacity="0.95" />
+  <circle cx="196" cy="110" r="6" fill="#c084fc" opacity="0.95" />
+  <circle cx="276" cy="80" r="6" fill="#38bdf8" opacity="0.95" />
+  <text x="160" y="165" fill="#e2e8f0" font-family="Inter,system-ui,sans-serif" font-size="15" text-anchor="middle">Timeline unavailable</text>
 </svg>
 `)} `;
 
@@ -69,11 +77,8 @@ const TimelineHero: React.FC = () => {
     fetchTimeline();
   }, [fetchTimeline]);
   useEffect(() => {
-    // start SSE streaming for live updates
     (async () => {
       try {
-        const globalObj = window as any;
-        globalObj.__START_TIMELINE_STREAM__ = true;
         const storeMod = await import('@/state/appStore') as any;
         const start = storeMod.useAppStore.getState().startTimelineStream;
         start && start();
@@ -94,166 +99,140 @@ const TimelineHero: React.FC = () => {
     };
   }, []);
 
-  const tasks = (Array.isArray(timelinePlan?.tasks)
-    ? timelinePlan.tasks
-    : Array.isArray(timelinePlan?.plan?.tasks)
-    ? timelinePlan.plan.tasks
-    : []) as TimelineTask[];
-  const depths = computeTaskDepths(tasks);
-  // Use an explicit graph version token to force reload when timelinePlan changes
-  // Use a relative URL so system images are requested from the current origin.
-  const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
-  const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
-  const graphSrc = makeApiUrl(graphPath);
+  const tasks = useMemo(() => {
+    if (Array.isArray(timelinePlan?.tasks)) return timelinePlan.tasks;
+    if (Array.isArray(timelinePlan?.plan?.tasks)) return timelinePlan.plan.tasks;
+    return [] as TimelineTask[];
+  }, [timelinePlan]);
+
+  const depths = useMemo(() => computeTaskDepths(tasks), [tasks]);
+
+  const vParam = useMemo(
+    () => encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now())),
+    [timelinePlan]
+  );
+  const graphPath = useMemo(() => `/api/v1/concierge/timeline/graph?v=${vParam}`, [vParam]);
+  const graphSrc = useMemo(() => makeApiUrl(graphPath), [graphPath]);
   const [graphLoadFailed, setGraphLoadFailed] = useState(false);
   const graphUrl = graphSrc;
-  const fallbackGraphUrl = graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl;
+  const fallbackGraphUrl = useMemo(
+    () => (graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl),
+    [graphLoadFailed, graphUrl]
+  );
 
-  const expandedOverlayStyle = {
-    position: 'fixed',
-    inset: 0,
-    zIndex: 1000,
-    background: 'rgba(6,6,12,0.95)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
+  const onSelectTask = useCallback(
+    (t: TimelineTask) => {
+      setSelected(t);
+      selectTimelineTask(t);
+    },
+    [selectTimelineTask]
+  );
+
+  const progressForTask = (t: TimelineTask) => {
+    const progressValue = typeof t.progress === 'number'
+      ? t.progress
+      : typeof t.percent === 'number'
+      ? t.percent
+      : t.status === 'completed' || t.status === 'success'
+      ? 100
+      : t.status === 'running' || t.status === 'started'
+      ? 46
+      : t.status === 'queued' || t.status === 'pending'
+      ? 18
+      : 12;
+    return Math.min(100, Math.max(0, progressValue));
   };
 
-  const expandedInnerStyle = {
-    width: '100%',
-    height: '100%',
-    maxWidth: '100%',
-    maxHeight: '100%',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 18,
-    borderRadius: 12,
-  };
+  const taskCards = useMemo(
+    () => tasks.map((t: TimelineTask) => {
+      const depth = depths.get(t.task_id) ?? 0;
+      const indent = depth * 12;
+      return (
+        <button
+          key={t.task_id}
+          onClick={() => onSelectTask(t)}
+          className={`timeline-hero-task ${selected?.task_id === t.task_id ? 'timeline-hero-task--active' : ''}`}
+          style={{ marginLeft: indent }}
+        >
+          <div className="timeline-hero-task-title">{t.title || 'Untitled task'}</div>
+          <div className="timeline-hero-task-details">{(t.instructions || t.summary || '').slice(0, 72)}</div>
+          <div className="timeline-hero-task-progress-bar">
+            <div style={{ width: `${progressForTask(t)}%` }} />
+          </div>
+        </button>
+      );
+    }),
+    [tasks, depths, selected, onSelectTask]
+  );
+
+  const expandedTaskButtons = useMemo(
+    () => tasks.map((t: TimelineTask) => (
+      <button
+        key={t.task_id}
+        onClick={() => { onSelectTask(t); setExpanded(false); }}
+        className={`timeline-hero-summary-button ${selected?.task_id === t.task_id ? 'timeline-hero-summary-button--active' : ''}`}
+      >
+        <div>{t.title || 'Untitled task'}</div>
+        <div>{(t.instructions || '').slice(0, 80)}</div>
+      </button>
+    )),
+    [tasks, selected, onSelectTask]
+  );
 
   return (
-    <>
-      <div className="timeline-hero-card">
-        <div className="timeline-hero-preview">
-          <button onClick={() => setExpanded(true)} className="timeline-hero-image-button">
+    <section className="timeline-hero shell-hero">
+      <div className="timeline-hero__headline">
+        <div>
+          <p className="timeline-hero__label">Timeline overview</p>
+          <h2 className="timeline-hero__title">Concierge task progression</h2>
+          <p className="timeline-hero__subtitle">A clean, simple snapshot of the current task graph and next actions.</p>
+        </div>
+        <button className="timeline-hero__action" onClick={() => setExpanded(true)}>
+          View full timeline
+        </button>
+      </div>
+
+      <div className="timeline-hero__body">
+        <div className="timeline-hero__graph">
+          <img
+            src={fallbackGraphUrl}
+            alt="timeline hero"
+            className="timeline-hero__graph-image"
+            loading="lazy"
+            decoding="async"
+            onError={() => { setGraphLoadFailed(true); }}
+          />
+        </div>
+
+        <div className="timeline-hero__tasks">
+          {tasks.length === 0 ? (
+            <div className="timeline-hero__empty">No timeline tasks are available yet. Ask Concierge to create a plan or add a goal.</div>
+          ) : (
+            <div className="timeline-hero__task-grid">{taskCards}</div>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="timeline-hero__modal-backdrop" onClick={() => setExpanded(false)}>
+          <div className="timeline-hero__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="timeline-hero__modal-header">
+              <h3>Fullscreen timeline</h3>
+              <button onClick={() => setExpanded(false)}>Close</button>
+            </div>
             <img
-              src={fallbackGraphUrl}
-              alt="timeline hero"
-              className="timeline-hero-image"
+              src={graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl}
+              alt="timeline large"
+              className="timeline-hero__modal-image"
               loading="lazy"
               decoding="async"
               onError={() => { setGraphLoadFailed(true); }}
             />
-          </button>
-
-          <div className="timeline-hero-task-thread">
-            {tasks.length === 0 ? (
-              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
-                No Concierge timeline tasks are available yet - ask Concierge to create a plan or add a goal.
-              </div>
-            ) : (
-              <div className="timeline-task-grid" aria-label="Timeline task thread">
-                <div className="timeline-thread-line" aria-hidden="true" />
-                {tasks.map((t: TimelineTask) => {
-                    const progressValue = typeof t.progress === 'number'
-                      ? t.progress
-                      : typeof t.percent === 'number'
-                      ? t.percent
-                      : t.status === 'completed' || t.status === 'success'
-                      ? 100
-                      : t.status === 'running' || t.status === 'started'
-                      ? 46
-                      : t.status === 'queued' || t.status === 'pending'
-                      ? 18
-                      : 12;
-                    const progress = Math.min(100, Math.max(0, progressValue));
-                    const depth = depths.get(t.task_id) ?? 0;
-                    const indent = depth * 14;
-                    const branchStyle = { '--branch-offset': `${indent}px` };
-                    return (
-                      <button
-                        key={t.task_id}
-                        onClick={() => { setSelected(t); selectTimelineTask(t); }}
-                        className={`timeline-task-branch ${selected?.task_id === t.task_id ? 'timeline-task-branch--active' : ''}`}
-                        style={branchStyle}
-                      >
-                      <span className="timeline-task-anchor" aria-hidden="true" />
-                      <div className="timeline-task-branch-content">
-                        <div className="timeline-task-headline">
-                          <span className="timeline-task-title">{t.title || 'Untitled'}</span>
-                          <span className={`timeline-task-status timeline-task-status--${(t.status || 'pending').toLowerCase()}`}>{t.status || 'pending'}</span>
-                        </div>
-                        <div className="timeline-task-copy">{(t.instructions || t.summary || '').slice(0, 72)}</div>
-                        <div className="timeline-task-progress">
-                          <div className="timeline-task-progress-bar" style={{ width: `${progress}%` }} />
-                        </div>
-                      </div>
-                    </button>
-                  );
-                  })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Expanded overlay (unchanged) */}
-      {expanded && (
-        <div role="dialog" aria-label="Timeline fullscreen" style={expandedOverlayStyle} onClick={() => setExpanded(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={expandedInnerStyle}>
-            <div style={{ width: '100%', flex: '0 0 auto', minHeight: 0, borderRadius: 8, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img
-                src={graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl}
-                alt="timeline large"
-                style={{ width: '100%', height: '100%', minHeight: 260, objectFit: 'contain' }}
-                loading="lazy"
-                decoding="async"
-                onError={() => { setGraphLoadFailed(true); }}
-              />
-            </div>
-            <div style={{ width: '100%', flex: '1 1 auto', overflow: 'auto', background: 'rgba(255,255,255,0.02)', borderRadius: 8, padding: 12 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>Sacred Timeline</div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', marginBottom: 12 }}>Includes Concierge activity and live updates</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                {tasks.map((t: TimelineTask) => (
-                  <button key={t.task_id} onClick={() => { setSelected(t); selectTimelineTask(t); }} style={{ background: selected?.task_id === t.task_id ? '#7c6af7' : 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)', color: selected?.task_id === t.task_id ? '#fff' : '#e2e8f0', padding: '8px 10px', borderRadius: 8, cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{t.title || 'Untitled'}</div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{(t.instructions || '').slice(0, 80)}</div>
-                  </button>
-                ))}
-              </div>
-
-              {selected ? (
-                <div style={{ marginTop: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: 8, padding: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 800 }}>{selected.title}</div>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{selected.task_id}</div>
-                    </div>
-                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{selected.status || 'unknown'}</div>
-                  </div>
-
-                  <div style={{ fontSize: 13, color: '#e2e8f0', marginBottom: 8 }}>{selected.instructions}</div>
-
-                  {Array.isArray(selected.depends_on) && selected.depends_on.length > 0 && (
-                    <div style={{ marginTop: 8 }}>
-                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', fontWeight: 700, marginBottom: 6 }}>Depends on</div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {selected.depends_on.map((d: string) => (
-                          <div key={d} style={{ fontFamily: 'monospace', fontSize: 12, background: 'rgba(255,255,255,0.03)', padding: '6px 8px', borderRadius: 6 }}>{d}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ marginTop: 12, color: 'rgba(255,255,255,0.4)' }}>Select a task to see details.</div>
-              )}
-            </div>
+            <div className="timeline-hero__modal-tasks">{expandedTaskButtons}</div>
           </div>
         </div>
       )}
-    </>
+    </section>
   );
 };
 

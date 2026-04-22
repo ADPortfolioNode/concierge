@@ -511,7 +511,14 @@ start_local_backend() {
     local backend_cmd
     set -f
     if "${py_cmd[@]}" -m uvicorn --help >/dev/null 2>&1; then
-        backend_cmd=("${py_cmd[@]}" -u -m uvicorn app:app --host 127.0.0.1 --port 8001 --reload --reload-exclude "frontend/node_modules/*" --reload-exclude "**/node_modules/*")
+        backend_cmd=(
+            "${py_cmd[@]}" -u -m uvicorn app:app
+            --host 127.0.0.1 --port 8001 --reload
+            --reload-exclude 'frontend/node_modules/*'
+            --reload-exclude 'frontend/.venv/*'
+            --reload-exclude 'frontend/.git/*'
+            --reload-exclude 'logs/*'
+        )
     else
         backend_cmd=("${py_cmd[@]}" -u app.py)
     fi
@@ -525,21 +532,29 @@ start_local_backend() {
 
 start_local_frontend() {
     echo "Starting local frontend dev server"
-    if [ -f "frontend/package-lock.json" ]; then
-        cleanup_frontend_node_modules
-        if ! npm --prefix frontend ci --no-audit --no-fund; then
-            echo "npm ci failed; attempting npm install fallback" >&2
-            echo "Removing stale frontend/node_modules and retrying install..." >&2
-            cleanup_frontend_node_modules
-            npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
-            if ! npm --prefix frontend install --no-audit --no-fund; then
-                echo "npm install also failed. On Windows, close editors/Explorer and remove frontend/node_modules manually before retrying." >&2
-                die "npm install failed"
-            fi
+
+    local package_lock="frontend/package-lock.json"
+    local node_modules_dir="frontend/node_modules"
+    local should_install=false
+
+    if [ ! -d "$node_modules_dir" ]; then
+        should_install=true
+        echo "frontend/node_modules missing; installing dependencies"
+    elif [ -f "$package_lock" ] && [ "$package_lock" -nt "$node_modules_dir" ]; then
+        should_install=true
+        echo "frontend/package-lock.json is newer than node_modules; reinstalling dependencies"
+    fi
+
+    if [ "$should_install" = true ]; then
+        if [ -f "$package_lock" ]; then
+            npm --prefix frontend ci --no-audit --no-fund || die "npm ci failed"
+        else
+            npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
         fi
     else
-        npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
+        echo "frontend dependencies are already installed and up to date; skipping install"
     fi
+
     mkdir -p logs
     nohup npm --prefix frontend run dev -- --host > logs/frontend.log 2>&1 &
     FRONTEND_PID=$!

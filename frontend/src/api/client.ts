@@ -5,6 +5,7 @@ import { reportApiError } from '../utils/errorLogger';
 interface AdaptiveAxiosRequestConfig extends AxiosRequestConfig {
   _adaptiveTimer?: ReturnType<typeof setTimeout>;
   _adaptiveCancel?: { cancel: (message?: string) => void };
+  _retryWithLocalFallback?: boolean;
 }
 
 // Timeout is disabled by default (0 = no limit) to accommodate slow LLM
@@ -22,6 +23,34 @@ const apiClient = axios.create({
   baseURL: `${base}${API_PREFIX}`,
   timeout: defaultTimeout, // 0 = no Axios built-in timeout
 });
+
+function shouldRetryLocalPortFallback(error: unknown): error is axios.AxiosError {
+  return axios.isAxiosError(error) && !!error.config && !error.response && !!error.request;
+}
+
+function retryLocalPortFallback(config: AdaptiveAxiosRequestConfig) {
+  if (config._adaptiveCancel?.cancel) {
+    config._adaptiveCancel.cancel('retrying with alternate local port');
+  }
+
+  if (config._retryWithLocalFallback) {
+    return null;
+  }
+
+  const baseURL = config.baseURL || '';
+  if (!baseURL.includes(':8001')) {
+    return null;
+  }
+
+  const fallbackBaseURL = baseURL.replace(':8001', ':8000');
+  const fallbackConfig: AdaptiveAxiosRequestConfig = {
+    ...config,
+    baseURL: fallbackBaseURL,
+    _retryWithLocalFallback: true,
+  };
+
+  return apiClient.request(fallbackConfig);
+}
 
 // Helper to start/stop adaptive timeout timers. We attach the timer and
 // cancel source to the request config so they can be cleaned up by the
@@ -135,7 +164,18 @@ apiClient.interceptors.response.use(
       if (err.response.status === 401) {
         // redirect to login or similar
       }
+      return Promise.reject(error);
     }
+
+    if (
+      shouldRetryLocalPortFallback(error) &&
+      !error.config._retryWithLocalFallback &&
+      typeof error.config.baseURL === 'string' &&
+      error.config.baseURL.includes(':8001')
+    ) {
+      return retryLocalPortFallback(error.config as AdaptiveAxiosRequestConfig) || Promise.reject(error);
+    }
+
     return Promise.reject(error);
   }
 );
