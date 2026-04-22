@@ -287,6 +287,10 @@ class ImageGenerationPlugin(BasePlugin):
             fname = f"img_{h}_{int(__import__('time').time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
+            try:
+                dest.chmod(0o644)
+            except Exception:
+                pass
             # write sidecar metadata file (JSON) next to the image
             try:
                 meta = metadata or {}
@@ -298,6 +302,10 @@ class ImageGenerationPlugin(BasePlugin):
                     meta.setdefault("size", len(content))
                 meta_path = media_dir / (fname + ".json")
                 meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+                try:
+                    meta_path.chmod(0o644)
+                except Exception:
+                    pass
             except Exception:
                 logger.exception("Failed to write sidecar metadata for %s", fname)
             try:
@@ -323,6 +331,10 @@ class ImageGenerationPlugin(BasePlugin):
             fname = f"img_{h}_{int(__import__('time').time())}.jpg"
             dest = media_dir / fname
             dest.write_bytes(content)
+            try:
+                dest.chmod(0o644)
+            except Exception:
+                pass
             # write sidecar metadata
             try:
                 meta = metadata or {}
@@ -334,6 +346,10 @@ class ImageGenerationPlugin(BasePlugin):
                     meta.setdefault("size", len(content))
                 meta_path = media_dir / (fname + ".json")
                 meta_path.write_text(json.dumps(meta, ensure_ascii=False))
+                try:
+                    meta_path.chmod(0o644)
+                except Exception:
+                    pass
             except Exception:
                 logger.exception("Failed to write static sidecar metadata for %s", fname)
             return fname

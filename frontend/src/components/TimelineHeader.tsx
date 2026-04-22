@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import { makeApiUrl } from '@/config/activeServer';
 
@@ -19,9 +19,13 @@ const TimelineHeader: React.FC = () => {
   // if there's no plan yet, still show a compact header icon that can open dropdown
   const [open, setOpen] = useState(false);
 
-  const vParam = encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()));
-  const graphPath = `/api/v1/concierge/timeline/graph?v=${vParam}`;
-  const graphSrc = makeApiUrl(graphPath);
+  const tasks = useMemo(() => (timelinePlan?.tasks || []) as any[], [timelinePlan]);
+  const previewTasks = useMemo(() => tasks.slice(0, 4), [tasks]);
+  const graphPath = useMemo(
+    () => `/api/v1/concierge/timeline/graph?v=${encodeURIComponent((timelinePlan && (timelinePlan.updated_at || '')) || String(Date.now()))}`,
+    [timelinePlan]
+  );
+  const graphSrc = useMemo(() => makeApiUrl(graphPath), [graphPath]);
   const placeholderPath = `${import.meta.env.BASE_URL || '/'}timeline-graph-placeholder.svg`;
 
   return (
@@ -37,9 +41,9 @@ const TimelineHeader: React.FC = () => {
           onError={(e) => { (e.currentTarget as HTMLImageElement).src = placeholderPath; }}
         />
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          {(timelinePlan?.tasks || []).slice(0, 4).map((t: any, idx: number) => (
+          {previewTasks.map((t: any, idx: number) => (
             <button
-              key={idx}
+              key={t.task_id || idx}
               onClick={() => selectTimelineTask(t)}
               style={{
                 background: '#374151',
@@ -74,7 +78,7 @@ const TimelineHeader: React.FC = () => {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#e6edf3' }}>Timeline</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
-                {(timelinePlan?.tasks || []).map((t: any, idx: number) => (
+                {tasks.map((t: any, idx: number) => (
                   <div key={t.task_id || idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <button onClick={() => { selectTimelineTask(t); setOpen(false); }} style={{ background: 'transparent', border: 'none', color: '#cbd5e1', textAlign: 'left', cursor: 'pointer', padding: '6px 8px', borderRadius: 6 }}>
                       <div style={{ fontWeight: 700, fontSize: 13 }}>{t.title || `Task ${idx + 1}`}</div>

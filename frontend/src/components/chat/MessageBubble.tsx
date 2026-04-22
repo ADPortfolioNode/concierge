@@ -122,6 +122,7 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
 /** Render message content, turning embedded image URLs into <img> elements */
 const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
   const navigate = useNavigate();
+  const pushImage = useAppStore((s) => s.pushImage);
   const segments = useMemo(() => splitContentIntoSegments(content), [content]);
   const hasImages = segments.some((s) => s.kind === 'image');
 
@@ -138,14 +139,51 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
       {segments.map((seg, i) => {
         if (seg.kind === 'image') {
           const src = seg.value;
-          // If the image is a locally persisted media image, do NOT render
-          // it inline. Instead, push it into the MediaStage store so it is
-          // shown in the media player only. Recognize local media by the
-          // `/media/images/` or `media/images/` path which may be used by backend.
-          if (src.includes('/media/images/') || src.includes('media/images/')) {
-            const normalizedSrc = src.startsWith('/') ? src : `/${src}`;
-            return <InlineImage key={i} src={normalizedSrc} />;
+          const isLocalMedia = src.includes('/media/images/') || src.includes('media/images/');
+          const normalizedSrc = src.startsWith('/') ? src : `/${src}`;
+
+          if (isLocalMedia) {
+            const handleOpenMedia = () => {
+              pushImage(normalizedSrc);
+              navigate('/media');
+            };
+            return (
+              <div key={i} style={{ margin: '14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', textDecoration: 'none' }}>
+                  <img
+                    src={normalizedSrc}
+                    alt="Generated image thumbnail"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: 240,
+                      borderRadius: 10,
+                      border: '1px solid rgba(255,255,255,0.12)',
+                    }}
+                  />
+                </a>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={handleOpenMedia}
+                    style={{
+                      background: 'rgba(124,106,247,0.18)',
+                      border: '1px solid rgba(124,106,247,0.35)',
+                      color: '#dfe6ff',
+                      borderRadius: 6,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Open in media player
+                  </button>
+                  <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ color: '#9ca3af', fontSize: 13 }}>
+                    View original
+                  </a>
+                </div>
+              </div>
+            );
           }
+
           return <InlineImage key={i} src={src} />;
         }
         return (

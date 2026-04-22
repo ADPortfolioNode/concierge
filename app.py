@@ -298,7 +298,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # CORS middleware for local React frontend on port 5173 calling backend on 8001
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://deoismconcierge.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -672,7 +676,14 @@ async def concierge_timeline():
 
 @app.get('/api/v1/tasks/{task_id}/status')
 async def task_status(task_id: str):
-    task_tree = get_task_tree(task_id)
+    try:
+        task_tree = get_task_tree(task_id)
+    except Exception as exc:
+        logger.exception('Failed to fetch task status for %s', task_id)
+        resp = _api_response(None, status='error')
+        resp['errors'] = {'message': str(exc)}
+        return JSONResponse(status_code=503, content=resp)
+
     if task_tree is None:
         raise HTTPException(status_code=404, detail='task_id not found')
     return _api_response(task_tree)

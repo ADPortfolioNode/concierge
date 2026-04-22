@@ -7,15 +7,34 @@ from typing import Any, Dict, List, Optional
 
 import redis
 
-REDIS_URL = os.getenv('REDIS_URL') or os.getenv('CELERY_RESULT_BACKEND') or 'redis://redis:6379/1'
+DEFAULT_REDIS_URL = 'redis://redis:6379/1'
+REDIS_URL = os.getenv('REDIS_URL') or os.getenv('CELERY_RESULT_BACKEND') or DEFAULT_REDIS_URL
 
 _redis_client: Optional[redis.Redis] = None
+
+
+def _build_redis_client(url: str) -> redis.Redis:
+    client = redis.from_url(url, decode_responses=True)
+    client.ping()
+    return client
+
+
+def _resolve_redis_url(url: str) -> str:
+    if url == DEFAULT_REDIS_URL:
+        local_url = url.replace('redis://redis:6379', 'redis://127.0.0.1:6379')
+        try:
+            _build_redis_client(local_url)
+            return local_url
+        except Exception:
+            pass
+    return url
 
 
 def get_redis() -> redis.Redis:
     global _redis_client
     if _redis_client is None:
-        _redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+        resolved_url = _resolve_redis_url(REDIS_URL)
+        _redis_client = redis.from_url(resolved_url, decode_responses=True)
     return _redis_client
 
 
