@@ -197,12 +197,16 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    if (
-      shouldRetryLocalPortFallback(error) &&
-      typeof error.config.baseURL === 'string' &&
-      (error.config.baseURL.includes(':8001') || error.config.baseURL.includes(':8000') || error.config.baseURL === '')
-    ) {
-      return retryLocalPortFallback(error.config as AdaptiveAxiosRequestConfig) || Promise.reject(error);
+    if (shouldRetryLocalPortFallback(error) && typeof error.config.baseURL === 'string') {
+      const backupCandidates = (error.config as AdaptiveAxiosRequestConfig)._localFallbackAttempts;
+      const currentIndex = (error.config as AdaptiveAxiosRequestConfig)._localFallbackIndex ?? -1;
+      const hasMoreFallbacks = Array.isArray(backupCandidates) && currentIndex + 1 < backupCandidates.length;
+      if (
+        (error.config.baseURL.includes(':8001') || error.config.baseURL.includes(':8000') || error.config.baseURL === '') ||
+        hasMoreFallbacks
+      ) {
+        return retryLocalPortFallback(error.config as AdaptiveAxiosRequestConfig) || Promise.reject(error);
+      }
     }
 
     return Promise.reject(error);

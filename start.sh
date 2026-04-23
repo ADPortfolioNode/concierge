@@ -611,8 +611,11 @@ if $NO_DOCKER; then
         if wait_for_backend 127.0.0.1 8001 30; then
             echo "Local backend ready after retry."
         else
-            echo "Warning: local backend still did not become healthy on 127.0.0.1:8001 after retry." >&2
+            echo "Error: local backend still did not become healthy on 127.0.0.1:8001 after retry." >&2
             show_port_status
+            echo "--- tail of backend log ---" >&2
+            tail -n 40 logs/backend.log >&2 || true
+            die "Local startup failed because the backend could not bind and become ready."
         fi
     fi
     if $FRONTEND; then
