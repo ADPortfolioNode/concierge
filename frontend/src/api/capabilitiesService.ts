@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { makeApiUrl } from '@/config/activeServer';
 
-const apiClient = axios.create({ baseURL: '/api/v1', timeout: 15000 });
+const apiClient = axios.create({ baseURL: makeApiUrl('/api/v1'), timeout: 15000 });
 
 export interface CapabilityItem {
   name: string;

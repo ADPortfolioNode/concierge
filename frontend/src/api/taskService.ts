@@ -29,10 +29,6 @@ export const getTasks = async () => {
   return apiClient.get<ApiResponse>('/tasks');
 };
 
-export const updateTask = async (id: string, data: any) => {
-  return apiClient.put<ApiResponse>(`/tasks/${id}`, data);
-};
-
 export async function fetchTaskTree(taskId: string): Promise<TaskTree> {
   const { data } = await apiClient.get<{ data: TaskTree }>(`/tasks/${encodeURIComponent(taskId)}/status`);
   return data.data;
