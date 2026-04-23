@@ -11,7 +11,7 @@ const NavSep: React.FC = () => (
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // responsive layout styles handled via CSS grid in index.css
   return (
-    <div className="app-container" style={{ height: '100vh' }}>
+    <div className="app-container">
       <header className="app-header">
         <div className="header-inner">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

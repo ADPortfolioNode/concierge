@@ -458,8 +458,14 @@ async def ask(payload: AskPayload):
     })
 
 
+@app.post('/api/v1/concierge/message')
+async def concierge_message(payload: ConciergeMessagePayload, request: Request):
+    return await _handle_chat_message(payload, request)
+
+
 @app.post('/chat')
 async def chat_alias(payload: ConciergeMessagePayload, request: Request):
+    """Legacy compatibility alias. The canonical endpoint is /api/v1/concierge/message."""
     return await _handle_chat_message(payload, request)
 
 

@@ -473,10 +473,10 @@ write_frontend_env_for_local() {
         grep -vE '^(VITE_API_URL_LOCAL|VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL_LOCAL=http://localhost:8001\nVITE_API_URL=http://localhost:8001\nBACKEND_URL=http://localhost:8001\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
+    printf 'VITE_API_URL_LOCAL=http://127.0.0.1:8001\nVITE_API_URL=http://127.0.0.1:8001\nBACKEND_URL=http://127.0.0.1:8001\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written local frontend environment file: ${env_file}"
-    echo "  VITE_API_URL_LOCAL=http://localhost:8001"
+    echo "  VITE_API_URL_LOCAL=http://127.0.0.1:8001"
     echo "  VITE_API_URL_SET=local"
     return 0
 }

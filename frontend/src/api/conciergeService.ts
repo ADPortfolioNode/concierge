@@ -12,7 +12,7 @@ export const sendMessage = async (message: string, history?: HistoryEntry[]) => 
   if (!message || !message.trim()) {
     throw new Error('message must be a nonempty string');
   }
-  const res = await apiClient.post<ApiResponse>('/chat', { message, history });
+  const res = await apiClient.post<ApiResponse>('/concierge/message', { message, history });
   if ((res as any).error) {
     throw new Error((res as any).error);
   }

@@ -6,6 +6,8 @@ interface AdaptiveAxiosRequestConfig extends AxiosRequestConfig {
   _adaptiveTimer?: ReturnType<typeof setTimeout>;
   _adaptiveCancel?: { cancel: (message?: string) => void };
   _retryWithLocalFallback?: boolean;
+  _localFallbackAttempts?: string[];
+  _localFallbackIndex?: number;
 }
 
 // Timeout is disabled by default (0 = no limit) to accommodate slow LLM
@@ -17,7 +19,7 @@ const defaultTimeout = _envTimeout !== undefined ? Number(_envTimeout) : 0;
 // Use central ACTIVE_API_BASE (resolved from Vite envs) and append API prefix.
 const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.BACKEND_URL || '';
 const VITE_API_URL_LOCAL = import.meta.env.VITE_API_URL_LOCAL || '';
-const localFallbackBase = VITE_BACKEND_URL || VITE_API_URL_LOCAL || 'http://localhost:8001';
+const localFallbackBase = VITE_BACKEND_URL || VITE_API_URL_LOCAL || 'http://127.0.0.1:8001';
 const base = ((ACTIVE_API_BASE || (import.meta.env.DEV ? localFallbackBase : ''))).replace(/\/$/, '');
 const apiClient = axios.create({
   baseURL: `${base}${API_PREFIX}`,
@@ -28,25 +30,53 @@ function shouldRetryLocalPortFallback(error: unknown): error is axios.AxiosError
   return axios.isAxiosError(error) && !!error.config && !error.response && !!error.request;
 }
 
+function buildLocalFallbackBases(baseURL: string): string[] {
+  const fallbacks: string[] = [];
+  const primary = baseURL.trim();
+  const hasPort8001 = primary.includes(':8001');
+  const hasPort8000 = primary.includes(':8000');
+  const hasLocalHost = primary.includes('localhost');
+  const has127Local = primary.includes('127.0.0.1');
+
+  if (primary && (hasPort8001 || hasPort8000)) {
+    if (hasPort8001) {
+      fallbacks.push(primary.replace(':8001', ':8000'));
+      if (!hasLocalHost) fallbacks.push(primary.replace('127.0.0.1:8001', 'localhost:8001'));
+      if (!has127Local) fallbacks.push(primary.replace('localhost:8001', '127.0.0.1:8001'));
+    }
+    if (hasPort8000) {
+      fallbacks.push(primary.replace(':8000', ':8001'));
+      if (!hasLocalHost) fallbacks.push(primary.replace('127.0.0.1:8000', 'localhost:8000'));
+      if (!has127Local) fallbacks.push(primary.replace('localhost:8000', '127.0.0.1:8000'));
+    }
+  } else if (!primary && import.meta.env.DEV) {
+    fallbacks.push('http://127.0.0.1:8001');
+    fallbacks.push('http://localhost:8001');
+    fallbacks.push('http://127.0.0.1:8000');
+    fallbacks.push('http://localhost:8000');
+  }
+
+  return Array.from(new Set(fallbacks)).filter((url) => !!url);
+}
+
 function retryLocalPortFallback(config: AdaptiveAxiosRequestConfig) {
   if (config._adaptiveCancel?.cancel) {
     config._adaptiveCancel.cancel('retrying with alternate local port');
   }
 
-  if (config._retryWithLocalFallback) {
-    return null;
-  }
-
   const baseURL = config.baseURL || '';
-  if (!baseURL.includes(':8001')) {
+  const candidates = config._localFallbackAttempts || buildLocalFallbackBases(baseURL);
+  const nextIndex = typeof config._localFallbackIndex === 'number' ? config._localFallbackIndex + 1 : 0;
+  if (nextIndex >= candidates.length) {
     return null;
   }
 
-  const fallbackBaseURL = baseURL.replace(':8001', ':8000');
   const fallbackConfig: AdaptiveAxiosRequestConfig = {
     ...config,
-    baseURL: fallbackBaseURL,
+    baseURL: candidates[nextIndex],
     _retryWithLocalFallback: true,
+    _localFallbackAttempts: candidates,
+    _localFallbackIndex: nextIndex,
   };
 
   return apiClient.request(fallbackConfig);
@@ -169,9 +199,8 @@ apiClient.interceptors.response.use(
 
     if (
       shouldRetryLocalPortFallback(error) &&
-      !error.config._retryWithLocalFallback &&
       typeof error.config.baseURL === 'string' &&
-      error.config.baseURL.includes(':8001')
+      (error.config.baseURL.includes(':8001') || error.config.baseURL.includes(':8000') || error.config.baseURL === '')
     ) {
       return retryLocalPortFallback(error.config as AdaptiveAxiosRequestConfig) || Promise.reject(error);
     }

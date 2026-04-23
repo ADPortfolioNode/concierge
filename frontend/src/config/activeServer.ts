@@ -11,11 +11,26 @@ const VITE_API_URL_PRODUCTION = (env.VITE_API_URL_PRODUCTION || '').replace(/\/$
 const VITE_API_URL_SET = (env.VITE_API_URL_SET || env.VITE_API_SERVER_SET || '').trim().toLowerCase();
 const VITE_API_URL_AUTO_DETECT = (env.VITE_API_URL_AUTO_DETECT || 'true').toLowerCase() !== 'false';
 
-// Support a runtime-self placeholder: if the build-time env is set to
-// "<self.server>" we'll treat it as an instruction to use the page
-// origin at runtime (same-origin deployments). Normalize it to an empty
-// string so any base URL resolution uses the browser origin instead.
-const normalizeServerUrl = (url: string) => (url === '<self.server>' ? '' : url.replace(/\/$/, ''));
+// Support runtime-self placeholders for same-origin deployments.
+// Build-time envs can use any of these markers:
+//   <self.server>, self.server, <server.self>, server.self, <self>, self
+// They all resolve to an empty base URL so the frontend uses the current
+// browser origin and stays aligned with the host serving the page.
+const SELF_SERVER_MARKERS = new Set([
+  '<self.server>',
+  'self.server',
+  '<server.self>',
+  'server.self',
+  '<self>',
+  'self',
+]);
+
+const isSelfServerUrl = (url: string) => SELF_SERVER_MARKERS.has(url.trim().toLowerCase());
+
+const normalizeServerUrl = (url: string) => {
+  const trimmed = url.trim();
+  return isSelfServerUrl(trimmed) ? '' : trimmed.replace(/\/$/, '');
+};
 
 const parseHostname = (url: string) => {
   try {
@@ -89,7 +104,7 @@ export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
   // Local dev should prefer the helper-script managed backend on 8001.
-  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://localhost:8001'),
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://127.0.0.1:8001'),
   docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://backend:8001'),
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),
@@ -104,12 +119,12 @@ export const ACTIVE_API_BASE: string = (() => {
   }
   const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? '';
   if (MODE === 'production') {
-    return candidate === '<self.server>' || candidate === '' ? '' : candidate;
+    return candidate === '' ? '' : candidate;
   }
   if (ACTIVE_SERVER_SET !== 'local') {
     return candidate;
   }
-  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://localhost:8001');
+  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8001');
 })();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
