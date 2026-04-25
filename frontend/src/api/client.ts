@@ -19,7 +19,7 @@ const defaultTimeout = _envTimeout !== undefined ? Number(_envTimeout) : 0;
 // Use central ACTIVE_API_BASE (resolved from Vite envs) and append API prefix.
 const VITE_BACKEND_URL = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || import.meta.env.BACKEND_URL || '';
 const VITE_API_URL_LOCAL = import.meta.env.VITE_API_URL_LOCAL || '';
-const localFallbackBase = VITE_BACKEND_URL || VITE_API_URL_LOCAL || 'http://127.0.0.1:8001';
+const localFallbackBase = VITE_BACKEND_URL || VITE_API_URL_LOCAL || 'http://127.0.0.1:8000';
 const base = ((ACTIVE_API_BASE || (import.meta.env.DEV ? localFallbackBase : ''))).replace(/\/$/, '');
 const apiClient = axios.create({
   baseURL: `${base}${API_PREFIX}`,

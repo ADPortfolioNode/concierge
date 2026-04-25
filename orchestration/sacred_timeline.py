@@ -30,7 +30,7 @@ from tools.web_search_tool import WebSearchTool
 from tools.file_memory_tool import FileMemoryTool
 from tools.code_execution_tool import CodeExecutionTool
 from tools.tool_router import ToolRouter
-from jobs.task_tree_store import append_task_logs, initialize_thread, upsert_task_node
+from jobs.task_tree_store import append_task_logs, get_task_tree, initialize_thread, upsert_task_node
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +101,34 @@ def _result_status(result: Any) -> str:
     return result.get("status") if isinstance(result, dict) else "complete"
 
 
+def _find_task_node(tree: Optional[Dict[str, Any]], task_id: str) -> Optional[Dict[str, Any]]:
+    if tree is None:
+        return None
+    if tree.get("task_id") == task_id:
+        return tree
+    for child in tree.get("children", []):
+        found = _find_task_node(child, task_id)
+        if found is not None:
+            return found
+    return None
+
+
+def _derive_visual_node_type(task_id: str, thread_id: Optional[str], metadata: Optional[Dict[str, Any]]) -> str:
+    label = ""
+    if isinstance(metadata, dict):
+        label = str(metadata.get("task_name") or "")
+        if metadata.get("agent_type") or metadata.get("tool_name"):
+            return "tool_call"
+    if task_id == thread_id:
+        return "thread_root"
+    normalized = label.lower()
+    if "rag" in normalized or "retrieve" in normalized or "search" in normalized:
+        return "rag_retrieval"
+    if "observe" in normalized or "scan" in normalized or "read" in normalized:
+        return "observation"
+    return "reasoning"
+
+
 def _result_final(result: Any) -> Dict[str, Any]:
     if isinstance(result, dict):
         final = result.get("final")
@@ -159,6 +187,8 @@ class SacredTimeline:
         self._vector_tool = vector_tool or VectorSearchTool(self._memory)
         # timeline subscription queues for SSE/live updates
         self._timeline_subscribers: set[asyncio.Queue] = set()
+        self._timeline_graph_nodes: set[str] = set()
+        self._timeline_graph_edges: set[str] = set()
         # Register default tools so specialized agents can find them
         try:
             register_tool(WebSearchTool())
@@ -277,9 +307,25 @@ class SacredTimeline:
 
         return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
 
+    def _publish_timeline_event(self, event: Dict[str, Any]) -> None:
+        for q in list(self._timeline_subscribers):
+            try:
+                q.put_nowait(event)
+            except Exception:
+                continue
+
+    def _timeline_node_key(self, thread_id: str, task_id: str) -> str:
+        return f"{thread_id}:{task_id}"
+
+    def _timeline_edge_key(self, thread_id: str, from_id: str, to_id: str) -> str:
+        return f"{thread_id}:{from_id}:{to_id}"
+
     def _task_tree_update(self, thread_id: Optional[str], task_id: str, status: str, progress: int, color: str, metadata: Optional[Dict[str, Any]] = None, parent_id: Optional[str] = None) -> None:
         if not thread_id:
             return
+        tree = get_task_tree(thread_id)
+        existing_node = _find_task_node(tree, task_id)
+        is_new_node = existing_node is None
         try:
             upsert_task_node(
                 thread_id=thread_id,
@@ -291,7 +337,7 @@ class SacredTimeline:
                 metadata=metadata,
             )
             try:
-                update = {
+                task_update = {
                     "type": "task_update",
                     "task_id": task_id,
                     "task_name": metadata.get("task_name") if isinstance(metadata, dict) else None,
@@ -299,11 +345,54 @@ class SacredTimeline:
                     "progress": progress,
                     "summary": metadata.get("result_summary") if isinstance(metadata, dict) else None,
                 }
-                for q in list(self._timeline_subscribers):
-                    try:
-                        q.put_nowait(update)
-                    except Exception:
-                        continue
+                self._publish_timeline_event(task_update)
+
+                visual_payload = {
+                    "id": task_id,
+                    "type": _derive_visual_node_type(task_id, thread_id, metadata),
+                    "label": (metadata.get("task_name") if isinstance(metadata, dict) else task_id) or task_id,
+                    "status": status,
+                    "x": 180 + (len(self._timeline_graph_nodes) % 6) * 320,
+                    "y": 120 + (len(self._timeline_graph_nodes) // 6) * 120,
+                    "metadata": {
+                        "progress": progress,
+                        **({} if metadata is None else metadata),
+                    },
+                }
+
+                if is_new_node:
+                    node_key = self._timeline_node_key(thread_id, task_id)
+                    if node_key not in self._timeline_graph_nodes:
+                        self._timeline_graph_nodes.add(node_key)
+                        self._publish_timeline_event({
+                            "type": "node_add",
+                            "payload": visual_payload,
+                            "thread_id": thread_id,
+                        })
+                    if parent_id:
+                        edge_key = self._timeline_edge_key(thread_id, parent_id, task_id)
+                        if edge_key not in self._timeline_graph_edges:
+                            self._timeline_graph_edges.add(edge_key)
+                            self._publish_timeline_event({
+                                "type": "edge_add",
+                                "payload": {
+                                    "fromId": parent_id,
+                                    "toId": task_id,
+                                    "type": "dependency",
+                                },
+                                "thread_id": thread_id,
+                            })
+                else:
+                    self._publish_timeline_event({
+                        "type": "node_update",
+                        "payload": {
+                            "id": task_id,
+                            "status": status,
+                            "label": visual_payload["label"],
+                            "metadata": visual_payload["metadata"],
+                        },
+                        "thread_id": thread_id,
+                    })
             except Exception:
                 logger.exception('Failed to publish timeline progress update for %s/%s', thread_id, task_id)
         except Exception:

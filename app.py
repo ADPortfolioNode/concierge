@@ -51,7 +51,7 @@ import httpx
 import hashlib
 import re
 from datetime import datetime
-from jobs.task_tree_store import get_task_tree
+from jobs.task_tree_store import get_redis, get_task_tree
 
 # Defer heavy/optional imports to runtime to keep module import small for
 # serverless builds. Populate these in the lifespan startup.
@@ -295,14 +295,61 @@ app = FastAPI(lifespan=_lifespan)
 
 from fastapi.middleware.cors import CORSMiddleware
 
+# CORS configuration is driven by a single source: CORS_ALLOW_ORIGINS.
+# If unset, we fall back to the legacy allowed origins used by local dev
+# and production deployments.
+
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://deoismconcierge.vercel.app",
+    "https://deoismconcierge-adportfolionodes-projects.vercel.app",
+]
+
+_LOCALHOST_CORS_ALIASES = {
+    "http://localhost:5173": "http://127.0.0.1:5173",
+    "http://127.0.0.1:5173": "http://localhost:5173",
+}
+
+
+def _parse_cors_allow_origins(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    origins = []
+    for part in raw_value.split(","):
+        origin = part.strip().rstrip("/")
+        if origin:
+            origins.append(origin)
+    return origins
+
+
+def _expand_cors_origin_aliases(origins: list[str]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for origin in origins:
+        if origin in seen:
+            continue
+        seen.add(origin)
+        expanded.append(origin)
+        alias = _LOCALHOST_CORS_ALIASES.get(origin)
+        if alias and alias not in seen:
+            seen.add(alias)
+            expanded.append(alias)
+    return expanded
+
+
+def _get_cors_origins() -> list[str]:
+    env_origins = _parse_cors_allow_origins(os.getenv("CORS_ALLOW_ORIGINS"))
+    if not env_origins:
+        return _DEFAULT_CORS_ORIGINS.copy()
+
+    return _expand_cors_origin_aliases(env_origins)
+
+
 # CORS middleware for local React frontend on port 5173 calling backend on 8001
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "https://deoismconcierge.vercel.app",
-    ],
+    allow_origins=_get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -679,6 +726,30 @@ async def concierge_timeline():
     except Exception:
         logger.exception('Failed to fetch timeline plan')
         return _api_response({'error': 'timeline plan unavailable'}, status='error')
+
+@app.get('/api/v1/tasks')
+async def list_tasks():
+    try:
+        client = get_redis()
+        task_keys = list(client.scan_iter(match='task_tree:*', count=100))
+        tasks = []
+        for key in task_keys:
+            thread_id = key.split(':', 1)[1] if ':' in key else key
+            task_tree = get_task_tree(thread_id)
+            if not task_tree:
+                continue
+            metadata = task_tree.get('metadata') or {}
+            tasks.append({
+                'id': thread_id,
+                'type': metadata.get('task_type') or task_tree.get('task_name') or thread_id,
+                'status': task_tree.get('status') or task_tree.get('state') or 'unknown',
+                'created_at': None if metadata.get('start_time') is None else datetime.fromtimestamp(float(metadata.get('start_time'))).isoformat(),
+            })
+        tasks.sort(key=lambda item: item.get('created_at') or '', reverse=True)
+        return _api_response(tasks)
+    except Exception:
+        logger.exception('Failed to fetch task list')
+        return _api_response({'error': 'task list unavailable'}, status='error')
 
 @app.get('/api/v1/tasks/{task_id}/status')
 async def task_status(task_id: str):

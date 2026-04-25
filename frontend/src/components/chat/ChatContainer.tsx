@@ -33,10 +33,10 @@ const ConciergeHeader: React.FC = () => (
     />
     <div>
       <div style={{ fontSize: 12, fontWeight: 700, color: '#c4b8ff', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-        AI Ops Concierge
+        Concierge
       </div>
       <div aria-live="polite" style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
-        Ready
+        I'm ready to help
       </div>
     </div>
   </div>

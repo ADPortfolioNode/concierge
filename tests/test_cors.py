@@ -39,6 +39,32 @@ def test_cors_allows_local_dev_origin(monkeypatch):
         assert "GET" in resp.headers["access-control-allow-methods"]
 
 
+def test_cors_auto_confirms_localhost_alias(monkeypatch):
+    app = _reload_app_with_cors_origins(
+        monkeypatch,
+        "http://localhost:5173",
+    )
+    with TestClient(app) as client:
+        resp = _cors_preflight(client, "http://127.0.0.1:5173")
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+        assert resp.headers["access-control-allow-credentials"] == "true"
+        assert "GET" in resp.headers["access-control-allow-methods"]
+
+
+def test_cors_auto_confirms_127_alias(monkeypatch):
+    app = _reload_app_with_cors_origins(
+        monkeypatch,
+        "http://127.0.0.1:5173",
+    )
+    with TestClient(app) as client:
+        resp = _cors_preflight(client, "http://localhost:5173")
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+        assert resp.headers["access-control-allow-credentials"] == "true"
+        assert "GET" in resp.headers["access-control-allow-methods"]
+
+
 def test_cors_allows_production_origin(monkeypatch):
     app = _reload_app_with_cors_origins(
         monkeypatch,

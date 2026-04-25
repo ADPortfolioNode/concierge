@@ -151,89 +151,24 @@ const OutcomeCard: React.FC<(typeof USE_CASES)[0]> = ({
 // ── main page ─────────────────────────────────────────────────────────────
 const baseAssetUrl = import.meta.env.BASE_URL || '/';
 
-const VISUAL_CARDS = [
-  {
-    src: `${baseAssetUrl}workflow-collaboration.svg`,
-    alt: 'Collaboration workflow illustration',
-    label: 'Collaboration',
-    title: 'Work together on AI-driven planning',
-  },
-  {
-    src: `${baseAssetUrl}workflow-insights.svg`,
-    alt: 'Insights workflow illustration',
-    label: 'Insights',
-    title: 'Monitor progress with clear metrics',
-  },
-  {
-    src: `${baseAssetUrl}workflow-design.svg`,
-    alt: 'Design workflow illustration',
-    label: 'Design',
-    title: 'Visualise strategy, tasks, and outcomes',
-  },
-];
-
 const HomePage: React.FC = () => (
   <div className="home-page">
     {/* hero */}
     <div className="home-hero">
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7c6af7', background: 'rgba(124,106,247,0.12)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 99, padding: '3px 10px' }}>
-            AI Ops Concierge
-          </span>
-        </div>
         <h1 style={{ fontSize: 38, fontWeight: 800, margin: '0 0 14px', letterSpacing: '-0.02em', lineHeight: 1.08 }}>
           Build smarter workflows,
           <br />
           <span style={{ color: '#7c6af7' }}>see results visually.</span>
         </h1>
         <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', margin: 0, maxWidth: 600, lineHeight: 1.75 }}>
-          Jump into the chat or browse the visual workspace. Use AI to plan, execute,
-          and monitor tasks, then surface photo-driven insights and media outputs.
+          Ask me to plan, execute, and monitor your work. I can also surface photo-driven insights,
+          review your files, and turn your goals into a clear visual timeline.
         </p>
         <div style={{ marginTop: 24, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
           <SamplePrompt text="Show me my current roadmap" variant="chip" />
           <SamplePrompt text="Create a visual status update" variant="chip" />
           <SamplePrompt text="Generate a media summary" variant="chip" />
-        </div>
-      </div>
-
-      <div className="home-hero-preview">
-        <div className="home-hero-backdrop" />
-        <div className="home-hero-overlay" />
-        <div className="home-hero-content">
-          <div style={{ borderRadius: 20, padding: '28px 24px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7dd3fc', marginBottom: 10 }}>Live concierge preview</div>
-            <h2 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: '#ffffff', lineHeight: 1.05 }}>Realtime planning and execution insights</h2>
-            <p style={{ margin: '16px 0 0', fontSize: 14, color: 'rgba(255,255,255,0.72)', lineHeight: 1.8 }}>
-              Track the current plan, task updates, and AI-generated strategy — then review the full timeline in its own card below.
-            </p>
-          </div>
-          <div className="home-hero-cards">
-            {VISUAL_CARDS.slice(0, 2).map((card) => (
-              <div key={card.label} className="home-card-panel">
-                <img src={card.src} alt={card.alt} className="home-card-image" />
-                <div className="home-card-body">
-                  <div className="home-card-label">{card.label}</div>
-                  <div className="home-card-title">{card.title}</div>
-                </div>
-              </div>
-            ))}
-            <div className="home-card-panel home-card-panel--visual">
-              <div>
-                <div className="home-card-visual-label">Visual summary</div>
-                <h2 className="home-card-visual-title">Photos, charts, and media previews</h2>
-                <p className="home-card-visual-copy">
-                  Browse your content library and preview image-based deliverables without leaving the dashboard.
-                </p>
-              </div>
-              <div className="home-visual-grid">
-                {VISUAL_CARDS.slice(2).map((card) => (
-                  <img key={card.label} src={card.src} alt={card.alt} className="home-visual-image" />
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -19,8 +19,8 @@ const VITE_API_URL_AUTO_DETECT = (process.env.VITE_API_URL_AUTO_DETECT || 'true'
 const MODE = (process.env.MODE || process.env.NODE_ENV || '').toLowerCase() || 'development';
 
 const SERVER_URLS: Record<string, string> = {
-  // Local dev should prefer the helper-script managed backend on 8001.
-  local: VITE_API_URL_LOCAL || VITE_API_URL || 'http://127.0.0.1:8001',
+  // Local dev should prefer the backend running on 8000 by default.
+  local: VITE_API_URL_LOCAL || VITE_API_URL || 'http://127.0.0.1:8000',
   docker: VITE_API_URL_DOCKER || VITE_API_URL || 'http://app:8001',
   staging: VITE_API_URL_STAGING || VITE_API_URL || '',
   production: VITE_API_URL_PRODUCTION || VITE_API_URL || '',
