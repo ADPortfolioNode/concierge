@@ -514,10 +514,10 @@ start_local_backend() {
         backend_cmd=(
             "${py_cmd[@]}" -u -m uvicorn app:app
             --host 127.0.0.1 --port 8001 --reload
-            --reload-exclude 'frontend/node_modules/*'
-            --reload-exclude 'frontend/.venv/*'
-            --reload-exclude 'frontend/.git/*'
-            --reload-exclude 'logs/*'
+            "--reload-exclude=frontend/node_modules/*"
+            "--reload-exclude=frontend/.venv/*"
+            "--reload-exclude=frontend/.git/*"
+            "--reload-exclude=logs/*"
         )
     else
         backend_cmd=("${py_cmd[@]}" -u app.py)
