@@ -469,6 +469,96 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 220px;
 }
 
+.timeline-hero__branch-graph {
+  min-height: 260px;
+  padding: 18px;
+  background: radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 25%),
+              radial-gradient(circle at bottom right, rgba(124, 106, 247, 0.12), transparent 18%),
+              linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(20, 27, 41, 0.95));
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-hero__branch-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.timeline-branch-main-line {
+  fill: none;
+  stroke: url(#branchGrad);
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 650;
+  stroke-dashoffset: 650;
+  opacity: 0.95;
+  animation: branch-draw 2.4s ease forwards;
+}
+
+.timeline-branch-edge {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.24);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 6 6;
+  animation: branch-edge-dash 2s linear infinite;
+}
+
+.timeline-branch-node-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 2;
+  opacity: 0.72;
+  animation: branch-pulse 2.8s ease-in-out infinite;
+}
+
+.timeline-branch-node {
+  transform-origin: center center;
+  transition: transform 0.22s ease;
+}
+
+.timeline-branch-node-group:hover .timeline-branch-node {
+  transform: scale(1.05);
+}
+
+.timeline-branch-label {
+  fill: rgba(226, 232, 240, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@keyframes branch-draw {
+  from {
+    stroke-dashoffset: 650;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes branch-pulse {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.42;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes branch-edge-dash {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 12;
+  }
+}
+
 .timeline-hero__graph-image {
   width: 100%;
   height: 100%;

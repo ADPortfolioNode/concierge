@@ -116,6 +116,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   textHighlights: [],
   taskThreadId: null,
   taskTree: null,
+  selectedTaskMeta: null,
   selectedRiverNode: null,
   setError: (msg) => set({ error: msg }),
   setDraft: (text) => set({ draftMessage: text }),

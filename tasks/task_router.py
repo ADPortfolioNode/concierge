@@ -39,6 +39,7 @@ def _task_dict(task: Task) -> dict:
 
 
 @router.post("")
+@router.post("/")
 async def create_task(req: CreateTaskRequest):
     """Enqueue a new background task. Returns the task ID for polling."""
     task = Task(type=req.type, payload=req.payload, project_id=req.project_id)
@@ -65,6 +66,7 @@ async def get_task(task_id: str):
 
 
 @router.get("")
+@router.get("/")
 async def list_tasks():
     """List all tasks (for debugging/admin)."""
     tasks = get_queue().list_tasks()
