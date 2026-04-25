@@ -170,10 +170,14 @@ const AgenticThreadCanvas: React.FC = () => {
     ctx.fillStyle = '#070b16';
     ctx.fillRect(0, 0, width, height);
 
-    const visibleX0 = -viewState.x / viewState.scale - 120;
-    const visibleY0 = -viewState.y / viewState.scale - 120;
-    const visibleX1 = visibleX0 + width / viewState.scale + 240;
-    const visibleY1 = visibleY0 + height / viewState.scale + 240;
+    ctx.save();
+    ctx.translate(viewState.x, viewState.y);
+    ctx.scale(viewState.scale, viewState.scale);
+
+    const visibleX0 = -viewState.x / viewState.scale - 240;
+    const visibleY0 = -viewState.y / viewState.scale - 240;
+    const visibleX1 = visibleX0 + width / viewState.scale + 480;
+    const visibleY1 = visibleY0 + height / viewState.scale + 480;
 
     edges.forEach((edge, index) => {
       const from = nodeMap.get(edge.fromId);
@@ -184,24 +188,24 @@ const AgenticThreadCanvas: React.FC = () => {
       if (from.y < visibleY0 && to.y < visibleY0) return;
       if (from.y > visibleY1 && to.y > visibleY1) return;
 
-      const cp1x = from.x + Math.max(140, Math.abs(to.x - from.x) * 0.35);
+      const cp1x = from.x + Math.max(160, Math.abs(to.x - from.x) * 0.32);
       const cp1y = from.y;
-      const cp2x = to.x - Math.max(140, Math.abs(to.x - from.x) * 0.35);
+      const cp2x = to.x - Math.max(160, Math.abs(to.x - from.x) * 0.32);
       const cp2y = to.y;
 
-      ctx.strokeStyle = 'rgba(96, 165, 250, 0.35)';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(96, 165, 250, 0.28)';
+      ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
       ctx.stroke();
 
-      const particlePosition = ((particleFrame.current + index * 12) % 160) / 160;
+      const particlePosition = ((particleFrame.current + index * 12) % 180) / 180;
       const px = computeBezierPoint(particlePosition, from.x, cp1x, cp2x, to.x);
       const py = computeBezierPoint(particlePosition, from.y, cp1y, cp2y, to.y);
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.beginPath();
-      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
       ctx.fill();
     });
 
@@ -215,9 +219,9 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.save();
       ctx.beginPath();
       ctx.roundRect(node.x - 96, node.y - 28, 192, 56, 20);
-      ctx.fillStyle = isSelected ? 'rgba(31, 41, 55, 0.96)' : 'rgba(15, 23, 42, 0.94)';
+      ctx.fillStyle = isSelected ? 'rgba(31, 41, 55, 0.98)' : 'rgba(15, 23, 42, 0.92)';
       ctx.fill();
-      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.85)' : 'rgba(148, 163, 184, 0.18)';
+      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.92)' : 'rgba(148, 163, 184, 0.18)';
       ctx.lineWidth = isHovered || isSelected ? 3 : 1.5;
       ctx.stroke();
 
@@ -225,7 +229,7 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.arc(node.x - 66, node.y, 18, 0, Math.PI * 2);
       ctx.fillStyle = nodeColor;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
@@ -235,9 +239,10 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.textBaseline = 'middle';
       const text = node.label.length > 24 ? `${node.label.slice(0, 24)}…` : node.label;
       ctx.fillText(text, node.x - 44, node.y);
-
       ctx.restore();
     });
+
+    ctx.restore();
   }, [edges, nodeMap, nodes, selectedNodeId, hoveredNodeId, viewState]);
 
   useEffect(() => {
@@ -385,6 +390,14 @@ const AgenticThreadCanvas: React.FC = () => {
     [viewState]
   );
 
+  const screenPosition = useCallback(
+    (x: number, y: number) => ({
+      left: x * viewState.scale + viewState.x,
+      top: y * viewState.scale + viewState.y,
+    }),
+    [viewState]
+  );
+
   const findNodeAtPoint = useCallback(
     (point: { x: number; y: number } | null) => {
       if (!point) return null;
@@ -435,16 +448,22 @@ const AgenticThreadCanvas: React.FC = () => {
 
   const handleCanvasWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const delta = event.deltaY < 0 ? 1.12 : 0.88;
     setViewState((current) => {
       const nextScale = Math.max(0.35, Math.min(2.6, current.scale * delta));
-      const point = transformPoint(event.clientX, event.clientY);
-      if (!point) return current;
-      const newX = event.clientX - (point.x * nextScale + containerRef.current!.getBoundingClientRect().left);
-      const newY = event.clientY - (point.y * nextScale + containerRef.current!.getBoundingClientRect().top);
-      return { x: newX, y: newY, scale: nextScale };
+      const offsetX = event.clientX - rect.left;
+      const offsetY = event.clientY - rect.top;
+      const logicalX = (offsetX - current.x) / current.scale;
+      const logicalY = (offsetY - current.y) / current.scale;
+      return {
+        scale: nextScale,
+        x: offsetX - logicalX * nextScale,
+        y: offsetY - logicalY * nextScale,
+      };
     });
-  }, [transformPoint]);
+  }, []);
 
   const renderNodeDetails = () => {
     if (!selectedNode) {
@@ -563,38 +582,42 @@ const AgenticThreadCanvas: React.FC = () => {
         <div className="agentic-thread-visualizer__canvas-wrapper">
           <div
             ref={containerRef}
-            className="agentic-thread-canvas-shell"
+            className={`agentic-thread-canvas-shell ${isPanning ? 'agentic-thread-canvas-shell--panning' : ''}`}
             onPointerMove={handleCanvasPointerMove}
             onPointerDown={handleCanvasPointerDown}
             onPointerUp={handleCanvasPointerUp}
-            onPointerLeave={() => setIsPanning(false)}
+            onPointerLeave={handleCanvasPointerUp}
             onWheel={handleCanvasWheel}
           >
-          <div className="agentic-thread-canvas-inner" style={{ transform: `translate(${viewState.x}px, ${viewState.y}px) scale(${viewState.scale})` }}>
-            <canvas ref={canvasRef} className="agentic-thread-canvas" aria-label="Concierge thread graph" />
-            {nodes.map((node) => (
-              <button
-                key={node.id}
-                type="button"
-                className={`agentic-thread-node-chip ${selectedNodeId === node.id ? 'agentic-thread-node-chip--selected' : ''}`}
-                style={{ left: node.x, top: node.y }}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setSelectedNodeId(node.id);
-                }}
-                onMouseEnter={() => setHoveredNodeId(node.id)}
-                onMouseLeave={() => setHoveredNodeId(null)}
-              >
-                <span>{node.label}</span>
-                <small>{node.status}</small>
-              </button>
-            ))}
+            <div className="agentic-thread-canvas-inner">
+              <canvas ref={canvasRef} className="agentic-thread-canvas" aria-label="Concierge thread graph" />
+              {nodes.filter((node) => node.id === hoveredNodeId || node.id === selectedNodeId).map((node) => {
+                const { left, top } = screenPosition(node.x, node.y);
+                return (
+                  <button
+                    key={`overlay-${node.id}`}
+                    type="button"
+                    className={`agentic-thread-node-chip ${selectedNodeId === node.id ? 'agentic-thread-node-chip--selected' : ''}`}
+                    style={{ left, top }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
+                    onMouseEnter={() => setHoveredNodeId(node.id)}
+                    onMouseLeave={() => setHoveredNodeId(null)}
+                  >
+                    <span>{node.label}</span>
+                    <small>{node.type.replace('_', ' ')} · {node.status}</small>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          <aside className="agentic-thread-sidepanel">
+            {renderNodeDetails()}
+          </aside>
         </div>
-        <aside className="agentic-thread-sidepanel">
-          {renderNodeDetails()}
-        </aside>
-      </div>
+      )}
     </div>
   );
 };

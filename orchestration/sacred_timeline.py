@@ -287,6 +287,7 @@ class SacredTimeline:
         try:
             update = {
                 "type": "task_update",
+                "thread_id": task_info.get("thread_id") if isinstance(task_info, dict) else None,
                 "task_id": metadata.get("task_id"),
                 "task_name": metadata.get("task_name"),
                 "manager_agent_id": manager_agent_id,
@@ -339,6 +340,7 @@ class SacredTimeline:
             try:
                 task_update = {
                     "type": "task_update",
+                    "thread_id": thread_id,
                     "task_id": task_id,
                     "task_name": metadata.get("task_name") if isinstance(metadata, dict) else None,
                     "status": status,
@@ -349,6 +351,7 @@ class SacredTimeline:
 
                 visual_payload = {
                     "id": task_id,
+                    "thread_id": thread_id,
                     "type": _derive_visual_node_type(task_id, thread_id, metadata),
                     "label": (metadata.get("task_name") if isinstance(metadata, dict) else task_id) or task_id,
                     "status": status,
