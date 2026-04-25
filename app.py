@@ -42,7 +42,7 @@ except ImportError:
             pass
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
@@ -781,7 +781,6 @@ async def concierge_timeline_stream():
     """Server-Sent Events endpoint streaming timeline updates in real-time."""
     async def event_generator():
         _ensure_timeline_available()
-        # subscribe to the timeline updates
         q = app.state.timeline.subscribe_timeline()
         try:
             while True:
@@ -795,6 +794,25 @@ async def concierge_timeline_stream():
                 pass
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
+
+@app.websocket('/api/v1/concierge/timeline/ws')
+async def concierge_timeline_websocket(websocket: WebSocket):
+    await websocket.accept()
+    _ensure_timeline_available()
+    q = app.state.timeline.subscribe_timeline()
+    try:
+        while True:
+            update = await q.get()
+            await websocket.send_json(update)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception('Timeline websocket error')
+    finally:
+        try:
+            app.state.timeline.unsubscribe_timeline(q)
+        except Exception:
+            pass
 
 
 async def _create_concierge_stream_response(message: str, thread_id: Optional[str] = None) -> StreamingResponse:
