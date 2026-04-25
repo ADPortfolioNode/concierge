@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import { makeApiUrl } from '@/config/activeServer';
+import AgenticThreadCanvas from '@/components/AgenticThreadCanvas';
 
 const PLACEHOLDER_SVG_DATA_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid meet">
@@ -71,11 +72,14 @@ const TimelineHero: React.FC = () => {
   const fetchTimeline = useAppStore((s) => s.fetchTimeline);
   const selectTimelineTask = useAppStore((s) => s.selectTimelineTask);
   const selectedTaskMeta = useAppStore((s) => s.selectedTaskMeta);
+  const taskThreadId = useAppStore((s) => s.taskThreadId);
   const [expanded, setExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'linear' | 'visual' | 'split'>(taskThreadId ? 'visual' : 'linear');
 
   useEffect(() => {
     fetchTimeline();
   }, [fetchTimeline]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -98,6 +102,12 @@ const TimelineHero: React.FC = () => {
       })();
     };
   }, []);
+
+  useEffect(() => {
+    if (taskThreadId && viewMode === 'linear') {
+      setViewMode('visual');
+    }
+  }, [taskThreadId, viewMode]);
 
   const tasks = useMemo(() => {
     if (Array.isArray(timelinePlan?.tasks)) return timelinePlan.tasks;
@@ -145,7 +155,7 @@ const TimelineHero: React.FC = () => {
 
   const branchNodes = useMemo(() => {
     const source = tasks.length > 0
-      ? tasks.slice(0, Math.min(tasks.length, 6))
+      ? tasks
       : [
           { task_id: 'assistant-start', title: 'Assistant starts', status: 'started' },
           { task_id: 'strategy-branch', title: 'Strategy branch', status: 'running' },
@@ -156,38 +166,41 @@ const TimelineHero: React.FC = () => {
 
     const total = Math.max(source.length, 1);
     return source.map((task, idx) => {
-      const depth = depths.get(task.task_id) ?? (idx === 0 ? 0 : 1);
-      const x = 72 + (idx * (576 / Math.max(total - 1, 1)));
-      const baseY = 160;
-      const offset = depth === 0 ? 0 : (idx % 2 === 0 ? -1 : 1) * (32 + depth * 12);
+      const x = 60 + (idx * (600 / Math.max(total - 1, 1)));
+      const y = 150;
       return {
         ...task,
         x,
-        y: baseY + offset,
-        color: ['#38bdf8', '#7c3aed', '#f97316', '#22c55e', '#ec4899'][idx % 5],
+        y,
+        color: ['#38bdf8', '#7c3aed', '#f97316', '#22c55e', '#ec4899', '#8b5cf6', '#06b6d4'][idx % 7],
       };
     });
-  }, [tasks, depths]);
+  }, [tasks]);
 
   const branchMainPath = useMemo(() => {
     if (branchNodes.length === 0) return '';
     const startX = branchNodes[0].x;
     const endX = branchNodes[branchNodes.length - 1].x;
-    return `M ${startX} 160 C ${startX + 72} 160, ${endX - 72} 160, ${endX} 160`;
+    return `M ${startX} 150 L ${endX} 150`;
   }, [branchNodes]);
 
   const taskCards = useMemo(
     () => tasks.map((t: TimelineTask) => {
       const depth = depths.get(t.task_id) ?? 0;
       const indent = depth * 12;
+      const isActive = selectedTaskMeta?.task_id === t.task_id;
       return (
         <button
           key={t.task_id}
           onClick={() => onSelectTask(t)}
-          className={`timeline-hero-task ${selectedTaskMeta?.task_id === t.task_id ? 'timeline-hero-task--active' : ''}`}
+          className={`timeline-hero-task ${isActive ? 'timeline-hero-task--active' : 'timeline-hero-task--collapsed'}`}
           style={{ marginLeft: indent }}
+          aria-expanded={isActive}
         >
-          <div className="timeline-hero-task-title">{t.title || 'Untitled task'}</div>
+          <div className="timeline-hero-task-headline-row">
+            <div className="timeline-hero-task-title">{t.title || 'Untitled task'}</div>
+            <div className="timeline-hero-task-summary-label">{t.status ? t.status.toUpperCase() : 'PENDING'}</div>
+          </div>
           <div className="timeline-hero-task-details">{(t.instructions || t.summary || '').slice(0, 72)}</div>
           <div className="timeline-hero-task-progress-bar">
             <div style={{ width: `${progressForTask(t)}%` }} />
@@ -217,48 +230,74 @@ const TimelineHero: React.FC = () => {
       <div className="timeline-hero__headline">
         <div>
           <p className="timeline-hero__label">Assistant timeline</p>
-          <h2 className="timeline-hero__title">Assistant branch timeline</h2>
-          <p className="timeline-hero__subtitle">Visualize the assistant's strategy as a branching timeline with tasks and progress.</p>
+          <h2 className="timeline-hero__title">Agentic thread visualizer</h2>
+          <p className="timeline-hero__subtitle">Watch Concierge execute the thread as live nodes, tool calls, and retrievals in a dynamic graph view.</p>
         </div>
-        <button className="timeline-hero__action" onClick={() => setExpanded(true)}>
-          View full timeline
-        </button>
+        <div className="timeline-hero__view-toggle">
+          <button
+            type="button"
+            className={viewMode === 'linear' ? 'timeline-view-toggle--active' : ''}
+            onClick={() => setViewMode('linear')}
+          >
+            Chat
+          </button>
+          <button
+            type="button"
+            className={viewMode === 'visual' ? 'timeline-view-toggle--active' : ''}
+            onClick={() => setViewMode('visual')}
+          >
+            Visualizer
+          </button>
+          <button
+            type="button"
+            className={viewMode === 'split' ? 'timeline-view-toggle--active' : ''}
+            onClick={() => setViewMode('split')}
+          >
+            Split
+          </button>
+        </div>
       </div>
 
       <div className="timeline-hero__body">
-        <div className="timeline-hero__graph timeline-hero__branch-graph">
-          <svg viewBox="0 0 720 260" className="timeline-hero__branch-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assistant branch timeline">
-            <defs>
-              <linearGradient id="branchGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#60a5fa" />
-                <stop offset="50%" stopColor="#8b5cf6" />
-                <stop offset="100%" stopColor="#38bdf8" />
-              </linearGradient>
-            </defs>
-            <path className="timeline-branch-main-line" d={branchMainPath} />
-            {branchNodes.map((node) => (
-              <path
-                key={`edge-${node.task_id}`}
-                className="timeline-branch-edge"
-                d={`M ${node.x} ${node.y} L ${node.x} 160`}
-              />
-            ))}
-            {branchNodes.map((node, idx) => (
-              <g key={`node-${node.task_id}`} className="timeline-branch-node-group" style={{ animationDelay: `${idx * 0.15}s` }}>
-                <circle className="timeline-branch-node-ring" cx={node.x} cy={node.y} r="24" />
-                <circle className="timeline-branch-node" cx={node.x} cy={node.y} r="12" fill={node.color} />
-                <text
-                  className="timeline-branch-label"
-                  x={node.x}
-                  y={node.y < 160 ? node.y - 20 : node.y + 28}
-                  textAnchor="middle"
-                >
-                  {node.title?.slice(0, 18)}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
+        {viewMode === 'visual' || viewMode === 'split' ? (
+          <div className="timeline-hero__graph timeline-hero__visualizer-graph">
+            <AgenticThreadCanvas />
+          </div>
+        ) : (
+          <div className="timeline-hero__graph timeline-hero__branch-graph">
+            <svg viewBox="0 0 720 260" className="timeline-hero__branch-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assistant linear timeline">
+              <defs>
+                <linearGradient id="branchGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#60a5fa" />
+                  <stop offset="50%" stopColor="#8b5cf6" />
+                  <stop offset="100%" stopColor="#38bdf8" />
+                </linearGradient>
+              </defs>
+              <path className="timeline-branch-main-line" d={branchMainPath} />
+              {branchNodes.map((node) => (
+                <path
+                  key={`edge-${node.task_id}`}
+                  className="timeline-branch-edge"
+                  d={`M ${node.x} ${node.y} L ${node.x} 160`}
+                />
+              ))}
+              {branchNodes.map((node, idx) => (
+                <g key={`node-${node.task_id}`} className="timeline-branch-node-group" style={{ animationDelay: `${idx * 0.15}s` }}>
+                  <circle className="timeline-branch-node-ring" cx={node.x} cy={node.y} r="24" />
+                  <circle className="timeline-branch-node" cx={node.x} cy={node.y} r="12" fill={node.color} />
+                  <text
+                    className="timeline-branch-label"
+                    x={node.x}
+                    y={node.y < 160 ? node.y - 20 : node.y + 28}
+                    textAnchor="middle"
+                  >
+                    {node.title?.slice(0, 18)}
+                  </text>
+                </g>
+              ))}
+            </svg>
+          </div>
+        )}
 
         <div className="timeline-hero__tasks">
           {tasks.length === 0 ? (
@@ -267,55 +306,29 @@ const TimelineHero: React.FC = () => {
             <div className="timeline-hero__task-grid">{taskCards}</div>
           )}
           {selectedTaskMeta && (
-            <div style={{ marginTop: 18, padding: 16, background: 'rgba(15, 23, 42, 0.95)', borderRadius: 16, border: '1px solid rgba(148, 163, 184, 0.15)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div className="timeline-hero__selected-task-panel">
+              <div className="timeline-hero__selected-task-header">
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>{selectedTaskMeta.title || selectedTaskMeta.task_id}</div>
-                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{selectedTaskMeta.status ? `Status: ${selectedTaskMeta.status}` : 'Status: unknown'}</div>
+                  <div className="timeline-hero__selected-task-title">{selectedTaskMeta.title || selectedTaskMeta.task_id}</div>
+                  <div className="timeline-hero__selected-task-status">{selectedTaskMeta.status ? `Status: ${selectedTaskMeta.status}` : 'Status: unknown'}</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onSelectTask(null)}
-                  style={{ background: 'transparent', border: '1px solid rgba(148, 163, 184, 0.25)', borderRadius: 8, color: '#cbd5e1', padding: '6px 10px', cursor: 'pointer' }}
-                >
-                  Hide details
+                <button type="button" className="timeline-hero__selected-task-close" onClick={() => onSelectTask(null)}>
+                  Hide
                 </button>
               </div>
-              <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1, background: 'rgba(148, 163, 184, 0.12)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
-                  <div style={{ width: `${progressForTask(selectedTaskMeta)}%`, height: 10, borderRadius: 999, background: '#22c55e' }} />
+              <div className="timeline-hero__selected-task-progress">
+                <div className="timeline-hero__selected-task-bar">
+                  <div style={{ width: `${progressForTask(selectedTaskMeta)}%` }} />
                 </div>
-                <div style={{ minWidth: 44, fontSize: 12, color: '#e2e8f0' }}>{progressForTask(selectedTaskMeta)}%</div>
+                <span>{progressForTask(selectedTaskMeta)}%</span>
               </div>
               {(selectedTaskMeta.summary || selectedTaskMeta.instructions) && (
-                <div style={{ marginTop: 12, fontSize: 13, lineHeight: 1.6, color: '#cbd5e1' }}>
-                  {selectedTaskMeta.summary || selectedTaskMeta.instructions}
-                </div>
+                <div className="timeline-hero__selected-task-summary">{selectedTaskMeta.summary || selectedTaskMeta.instructions}</div>
               )}
             </div>
           )}
         </div>
       </div>
-
-      {expanded && (
-        <div className="timeline-hero__modal-backdrop" onClick={() => setExpanded(false)}>
-          <div className="timeline-hero__modal" onClick={(e) => e.stopPropagation()}>
-            <div className="timeline-hero__modal-header">
-              <h3>Fullscreen timeline</h3>
-              <button onClick={() => setExpanded(false)}>Close</button>
-            </div>
-            <img
-              src={graphLoadFailed ? PLACEHOLDER_SVG_DATA_URI : graphUrl}
-              alt="timeline large"
-              className="timeline-hero__modal-image"
-              loading="lazy"
-              decoding="async"
-              onError={() => { setGraphLoadFailed(true); }}
-            />
-            <div className="timeline-hero__modal-tasks">{expandedTaskButtons}</div>
-          </div>
-        </div>
-      )}
     </section>
   );
 };
