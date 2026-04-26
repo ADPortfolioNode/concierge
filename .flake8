@@ -1,0 +1,67 @@
+[flake8]
+max-line-length = 120
+
+# Exclude virtual environments, build artifacts, and vendored package
+# directories that are committed to the repository but should never be
+# linted (running flake8 on .venv causes a RecursionError in sympy).
+exclude =
+    .venv,
+    .vercel_tmp_env,
+    build_packages,
+    uv,
+    node_modules,
+    frontend/node_modules,
+    frontend/dist,
+    .git,
+    __pycache__,
+    *.egg-info,
+    dist,
+    build
+
+# Ignore widespread pre-existing style issues that are not related to
+# correctness.  The critical check F821 (undefined name) is kept enabled
+# so real unresolved-name bugs are still reported.
+extend-ignore =
+    # Line length — handled by max-line-length above; some long strings
+    # are intentional documentation comments.
+    E501,
+    # Import order / placement — many modules use conditional late imports.
+    E402,
+    # Blank line conventions — prevalent across the codebase but harmless.
+    E301,E302,E303,E305,E306,
+    # Trailing whitespace / newline — cosmetic only.
+    W291,W292,W391,
+    # Unused imports — many modules do optional feature detection.
+    F401,
+    # Unused variables — common in scaffolding and placeholder modules.
+    F841,
+    # Lambda assignment — stylistic preference.
+    E731,
+    # Ambiguous variable names — pre-existing.
+    E741,
+    # Whitespace before ':' — common in slice notation.
+    E203,
+    # Star imports — used in thin re-export shim modules.
+    F403,F405,
+    # global statement unused — pre-existing in PIL vendored code.
+    F824,
+    # Multiple imports on one line — pre-existing in test files.
+    E401,
+    # Tabs in indentation — pre-existing in index.py.
+    W191,
+    # f-string without placeholders — pre-existing.
+    F541,
+    # Invalid escape sequences — Windows-style paths in docstrings.
+    W605,
+    # Whitespace issues — pre-existing in blank lines and around operators.
+    W293,
+    E225,
+    E231,
+    # Continuation line indentation — pre-existing.
+    E127,
+    # Whitespace before ')' — pre-existing.
+    E202,
+    # Multiple statements on one line — pre-existing.
+    E702,
+    # Redefinition of unused name — common pattern in __main__ blocks.
+    F811,

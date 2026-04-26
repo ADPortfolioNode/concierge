@@ -4,6 +4,7 @@ _ms.MemoryStore = lambda *args, **kwargs: None
 
 import asyncio
 import types
+import pytest
 
 def test_timeline_concurrency_setting(monkeypatch):
     # timeline should create a semaphore respecting the settings value
