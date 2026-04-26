@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # simple helper to manage development containers and diagnostics
-# usage: start.sh [--prune] [--yes] [--build] [--diag] [--log] [--frontend|--no-frontend] [--help]
+# usage: start.sh [--prune] [--yes] [--build] [--diag] [--log] [--frontend|--no-frontend] [--fresh] [--pause] [--input-flags] [--help]
 
 set -euo pipefail
 
@@ -225,6 +225,9 @@ Options:
   --diag     emit a small diagnostics log (docker info, ps, etc.)
   --log      capture docker-compose service logs to start.log
   --clear    stop and remove running compose services (docker-compose down)
+  --fresh    force clean startup (compose down + clear ports + full frontend reinstall)
+  --pause    pause before startup and wait for Enter confirmation
+  --input-flags  prompt for additional flags interactively before startup
   --frontend      start the React frontend dev server (npm run dev) and log output (default)
   --no-frontend   do not attempt to start the frontend service
   --no-ngrok      do not start ngrok tunnel even if ngrok is installed
@@ -271,14 +274,18 @@ FRONTEND=true
 NGROK=true
 CLEAR=false
 NO_DOCKER=false
+FRESH=false
+PAUSE=false
+INPUT_FLAGS=false
 
-for arg in "$@"; do
+apply_arg() {
+    local arg="$1"
     case "$arg" in
         --prune) PRUNE=true ;;
         --yes) YES=true ;;
         --build) BUILD=true ;;
         --diag) DIAG=true ;;
-        --log) LOGS=true ;; 
+        --log) LOGS=true ;;
         --test) TEST=true ;;
         --docker-build) DOCKER_BUILD=true ;;
         --buildx) DOCKER_BUILDX=true ;;
@@ -292,6 +299,10 @@ for arg in "$@"; do
         --frontend) FRONTEND=true ;;  # explicit enable (redundant)
         --no-frontend) FRONTEND=false ;;
         --no-ngrok) NGROK=false ;;
+        --clear) CLEAR=true ;;
+        --fresh) FRESH=true ;;
+        --pause) PAUSE=true ;;
+        --input-flags) INPUT_FLAGS=true ;;
         --no-docker|--local) NO_DOCKER=true ;;
         -h|--help)
             print_usage
@@ -303,7 +314,40 @@ for arg in "$@"; do
             exit 1
             ;;
     esac
+}
+
+for arg in "$@"; do
+    apply_arg "$arg"
 done
+
+if $INPUT_FLAGS; then
+    echo "Enter additional startup flags (space-separated), or press Enter to continue:"
+    read -r extra_flags_line
+    if [ -n "${extra_flags_line:-}" ]; then
+        # shellcheck disable=SC2206
+        extra_flags=( $extra_flags_line )
+        for arg in "${extra_flags[@]}"; do
+            apply_arg "$arg"
+        done
+    fi
+fi
+
+echo "Startup flags:"
+echo "  PRUNE=${PRUNE} YES=${YES} BUILD=${BUILD} DIAG=${DIAG} LOGS=${LOGS} TEST=${TEST}"
+echo "  FRONTEND=${FRONTEND} NGROK=${NGROK} CLEAR=${CLEAR} FRESH=${FRESH} NO_DOCKER=${NO_DOCKER}"
+echo "  DOCKER_BUILD=${DOCKER_BUILD} DOCKER_BUILDX=${DOCKER_BUILDX} PUSH_IMAGE=${PUSH_IMAGE}"
+echo "  IMAGE_TAG=${IMAGE_TAG} PLATFORMS=${PLATFORMS}"
+if [ -n "${VITE_API_URL_ARG:-}" ]; then
+    echo "  VITE_API_URL_ARG=${VITE_API_URL_ARG}"
+fi
+if [ -n "${VITE_API_URL_DOCKER_ARG:-}" ]; then
+    echo "  VITE_API_URL_DOCKER_ARG=${VITE_API_URL_DOCKER_ARG}"
+fi
+
+if $PAUSE; then
+    echo "Startup paused. Press Enter to continue..."
+    read -r _
+fi
 
 if ! $NO_DOCKER; then
     if ! command -v docker >/dev/null 2>&1; then
@@ -489,14 +533,15 @@ write_frontend_env_for_docker() {
     tmp_file=$(mktemp)
 
     if [ -f "$env_file" ]; then
-        grep -vE '^(VITE_API_URL_DOCKER|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
+        grep -vE '^(VITE_API_URL_DOCKER|VITE_API_URL_LOCAL|VITE_API_URL|BACKEND_URL|VITE_API_URL_SET|VITE_API_URL_AUTO_DETECT)=' "$env_file" > "$tmp_file" || true
     fi
 
-    printf 'VITE_API_URL_DOCKER=http://app:8001\nVITE_API_URL_SET=docker\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
+    # The browser cannot resolve Docker internal hostnames like `app`; use host-mapped port.
+    printf 'VITE_API_URL_DOCKER=http://127.0.0.1:8001\nVITE_API_URL_LOCAL=http://127.0.0.1:8001\nVITE_API_URL=http://127.0.0.1:8001\nBACKEND_URL=http://127.0.0.1:8001\nVITE_API_URL_SET=local\nVITE_API_URL_AUTO_DETECT=false\n' >> "$tmp_file"
     mv "$tmp_file" "$env_file"
     echo "Written docker frontend environment file: ${env_file}"
-    echo "  VITE_API_URL_DOCKER=http://app:8001"
-    echo "  VITE_API_URL_SET=docker"
+    echo "  VITE_API_URL=http://127.0.0.1:8001"
+    echo "  VITE_API_URL_SET=local"
     return 0
 }
 
@@ -559,6 +604,49 @@ start_local_frontend() {
     nohup npm --prefix frontend run dev -- --host > logs/frontend.log 2>&1 &
     FRONTEND_PID=$!
     echo "Local frontend started with PID ${FRONTEND_PID}; logs are in logs/frontend.log"
+}
+
+frontend_needs_install() {
+    local package_lock="frontend/package-lock.json"
+    local node_modules_dir="frontend/node_modules"
+
+    if [ ! -d "$node_modules_dir" ]; then
+        return 0
+    fi
+    if [ -f "$package_lock" ] && [ "$package_lock" -nt "$node_modules_dir" ]; then
+        return 0
+    fi
+    return 1
+}
+
+install_frontend_dependencies() {
+    local force_reinstall="${1:-false}"
+    if [ ! -d "frontend" ]; then
+        echo "Warning: frontend directory not found, skipping dependency install." >&2
+        return 0
+    fi
+
+    if [ "$force_reinstall" = "true" ]; then
+        echo "Force-reinstall requested: cleaning frontend/node_modules"
+        cleanup_frontend_node_modules
+    fi
+
+    if frontend_needs_install; then
+        if [ -f "frontend/package-lock.json" ]; then
+            echo "Installing frontend dependencies via npm ci..."
+            if ! npm --prefix frontend ci --no-audit --no-fund; then
+                echo "npm ci failed; attempting npm install fallback" >&2
+                cleanup_frontend_node_modules
+                npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
+                npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
+            fi
+        else
+            echo "Installing frontend dependencies via npm install..."
+            npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
+        fi
+    else
+        echo "frontend dependencies are up to date; skipping install"
+    fi
 }
 
 start_ngrok() {
@@ -780,13 +868,15 @@ if $CLEAR; then
     fi
     start_ngrok
 else
-    # always attempt to tear down first to avoid port conflicts, then bring up
-    echo "resetting logs before compose startup"
-    clear_logs
-    echo "Ensuring any existing services are stopped (compose down)"
-    compose down || true
-    echo "Freeing known ports after compose down"
-    clear_ports
+    # fast path: avoid destructive resets unless explicitly requested
+    if $FRESH; then
+        echo "Fresh startup requested: resetting logs, stopping services, and freeing ports"
+        clear_logs
+        compose down || true
+        clear_ports
+    else
+        echo "Incremental startup mode: skipping compose down/port clearing for faster boot"
+    fi
     if $BUILD; then
         echo "Building containers before start..."
         compose build || die "compose build failed"
@@ -825,24 +915,7 @@ fi
 
 if $FRONTEND; then
     write_frontend_env_for_docker || true
-    if [ -d "frontend" ]; then
-        if [ -f "frontend/package-lock.json" ]; then
-            cleanup_frontend_node_modules
-            if ! npm --prefix frontend ci --no-audit --no-fund; then
-                echo "npm ci failed; attempting npm install fallback" >&2
-                echo "Removing stale frontend/node_modules and retrying install..." >&2
-                cleanup_frontend_node_modules
-                npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
-                if ! npm --prefix frontend install --no-audit --no-fund; then
-                    die "npm install failed"
-                fi
-            fi
-        else
-            npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
-        fi
-    else
-        echo "Warning: frontend directory not found, skipping install." >&2
-    fi
+    install_frontend_dependencies "$FRESH"
     echo "Starting frontend container via docker-compose"
     compose up -d frontend || die "failed to start frontend container"
     if $LOGS; then

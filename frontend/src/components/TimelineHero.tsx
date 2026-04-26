@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAppStore } from '@/state/appStore';
 import { makeApiUrl } from '@/config/activeServer';
-import AgenticThreadCanvas from '@/components/AgenticThreadCanvas';
+import ThreadVisualizer from '@/components/ThreadVisualizer';
 
 const PLACEHOLDER_SVG_DATA_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid meet">
@@ -261,7 +261,7 @@ const TimelineHero: React.FC = () => {
       <div className="timeline-hero__body">
         {viewMode === 'visual' || viewMode === 'split' ? (
           <div className="timeline-hero__graph timeline-hero__visualizer-graph">
-            <AgenticThreadCanvas />
+            <ThreadVisualizer />
           </div>
         ) : (
           <div className="timeline-hero__graph timeline-hero__branch-graph">
