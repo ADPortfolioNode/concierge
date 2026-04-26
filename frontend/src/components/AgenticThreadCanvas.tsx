@@ -13,7 +13,7 @@ interface VisualNode {
   status: string;
   x: number;
   y: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 interface VisualEdge {
@@ -29,6 +29,35 @@ interface RetrievalDocument {
   excerpt?: string;
   score?: number;
   url?: string;
+}
+
+interface TimelineEventPayload {
+  type?: string;
+  thread_id?: string;
+  threadId?: string;
+  task_id?: string;
+  task_name?: string;
+  status?: string;
+  progress?: number;
+  summary?: string;
+  payload?: unknown;
+}
+
+interface StreamDeltaNodePayload {
+  id: string;
+  type?: VisualNodeType;
+  label?: string;
+  status?: string;
+  x?: number;
+  y?: number;
+  metadata?: Record<string, unknown>;
+}
+
+interface NodeMemory {
+  id: string;
+  summary: string;
+  score?: number;
+  metadata?: Record<string, unknown>;
 }
 
 const STATUS_COLOR_MAP: Record<string, string> = {
@@ -106,7 +135,34 @@ const buildGraphFromTree = (tree: TaskTreeNode): { nodes: VisualNode[]; edges: V
 const computeBezierPoint = (t: number, p0: number, p1: number, p2: number, p3: number) =>
   ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
 
-const getEventSourceUrl = () => makeApiUrl('/api/v1/concierge/timeline/stream');
+const getWebSocketUrl = () => {
+  const timelineUrl = makeApiUrl('/api/v1/concierge/timeline/ws');
+  if (timelineUrl.startsWith('http')) {
+    return timelineUrl.replace(/^http/, 'ws');
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${scheme}//${window.location.host}${timelineUrl}`;
+  }
+  return timelineUrl;
+};
+
+const buildTimelineStreamUrl = (threadId?: string) => {
+  const url = new URL(makeApiUrl('/api/v1/concierge/timeline/stream'), window.location.origin);
+  if (threadId) {
+    url.searchParams.set('thread_id', threadId);
+  }
+  return url.toString();
+};
+
+const buildTimelineWebSocketUrl = (threadId?: string) => {
+  const base = getWebSocketUrl();
+  const url = new URL(base, window.location.origin);
+  if (threadId) {
+    url.searchParams.set('thread_id', threadId);
+  }
+  return url.toString();
+};
 
 const AgenticThreadCanvas: React.FC = () => {
   const taskThreadId = useAppStore((s) => s.taskThreadId);
@@ -116,12 +172,14 @@ const AgenticThreadCanvas: React.FC = () => {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>('Loading thread graph…');
   const [isMobileFallback, setIsMobileFallback] = useState(false);
-  const [lastEventAt, setLastEventAt] = useState<number>(0);
+  const [nodeMemories, setNodeMemories] = useState<NodeMemory[]>([]);
+  const [memoryStatus, setMemoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafId = useRef<number | null>(null);
   const particleFrame = useRef(0);
+  const clickStartPointer = useRef<{ x: number; y: number } | null>(null);
 
   const [viewState, setViewState] = useState({ x: 0, y: 0, scale: 1 });
   const [isPanning, setIsPanning] = useState(false);
@@ -136,6 +194,16 @@ const AgenticThreadCanvas: React.FC = () => {
     () => new Map(nodes.map((node) => [node.id, node])),
     [nodes]
   );
+
+  const selectedAdjacency = useMemo(() => {
+    if (!selectedNodeId) return new Set<string>();
+    const connected = new Set<string>([selectedNodeId]);
+    for (const edge of edges) {
+      if (edge.fromId === selectedNodeId) connected.add(edge.toId);
+      if (edge.toId === selectedNodeId) connected.add(edge.fromId);
+    }
+    return connected;
+  }, [edges, selectedNodeId]);
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -178,6 +246,7 @@ const AgenticThreadCanvas: React.FC = () => {
     const visibleY0 = -viewState.y / viewState.scale - 240;
     const visibleX1 = visibleX0 + width / viewState.scale + 480;
     const visibleY1 = visibleY0 + height / viewState.scale + 480;
+    const pulse = (Math.sin(particleFrame.current / 10) + 1) * 0.5;
 
     edges.forEach((edge, index) => {
       const from = nodeMap.get(edge.fromId);
@@ -193,8 +262,10 @@ const AgenticThreadCanvas: React.FC = () => {
       const cp2x = to.x - Math.max(160, Math.abs(to.x - from.x) * 0.32);
       const cp2y = to.y;
 
-      ctx.strokeStyle = 'rgba(96, 165, 250, 0.28)';
-      ctx.lineWidth = 2.4;
+      const edgeFocused =
+        !selectedNodeId || edge.fromId === selectedNodeId || edge.toId === selectedNodeId;
+      ctx.strokeStyle = edgeFocused ? 'rgba(96, 165, 250, 0.34)' : 'rgba(148, 163, 184, 0.18)';
+      ctx.lineWidth = edgeFocused ? 2.6 : 1.6;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
@@ -203,7 +274,7 @@ const AgenticThreadCanvas: React.FC = () => {
       const particlePosition = ((particleFrame.current + index * 12) % 180) / 180;
       const px = computeBezierPoint(particlePosition, from.x, cp1x, cp2x, to.x);
       const py = computeBezierPoint(particlePosition, from.y, cp1y, cp2y, to.y);
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillStyle = edgeFocused ? 'rgba(255,255,255,0.95)' : 'rgba(148,163,184,0.45)';
       ctx.beginPath();
       ctx.arc(px, py, 3.2, 0, Math.PI * 2);
       ctx.fill();
@@ -215,13 +286,14 @@ const AgenticThreadCanvas: React.FC = () => {
       }
       const isSelected = node.id === selectedNodeId;
       const isHovered = node.id === hoveredNodeId;
+      const isConnected = selectedAdjacency.has(node.id);
       const nodeColor = getStatusColor(node.status);
       ctx.save();
       ctx.beginPath();
       ctx.roundRect(node.x - 96, node.y - 28, 192, 56, 20);
-      ctx.fillStyle = isSelected ? 'rgba(31, 41, 55, 0.98)' : 'rgba(15, 23, 42, 0.92)';
+      ctx.fillStyle = isSelected ? 'rgba(31, 41, 55, 0.98)' : isConnected ? 'rgba(15, 23, 42, 0.96)' : 'rgba(15, 23, 42, 0.86)';
       ctx.fill();
-      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.92)' : 'rgba(148, 163, 184, 0.18)';
+      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.92)' : isConnected ? 'rgba(56, 189, 248, 0.42)' : 'rgba(148, 163, 184, 0.18)';
       ctx.lineWidth = isHovered || isSelected ? 3 : 1.5;
       ctx.stroke();
 
@@ -233,6 +305,15 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
+      const normalizedStatus = node.status.toLowerCase();
+      if (normalizedStatus === 'thinking' || normalizedStatus === 'running' || normalizedStatus === 'started') {
+        ctx.beginPath();
+        ctx.arc(node.x - 66, node.y, 22 + pulse * 4, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(251, 191, 36, ${0.24 + pulse * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '600 12px Inter, system-ui, sans-serif';
       ctx.textAlign = 'left';
@@ -243,7 +324,7 @@ const AgenticThreadCanvas: React.FC = () => {
     });
 
     ctx.restore();
-  }, [edges, nodeMap, nodes, selectedNodeId, hoveredNodeId, viewState]);
+  }, [edges, nodeMap, nodes, selectedAdjacency, selectedNodeId, hoveredNodeId, viewState]);
 
   useEffect(() => {
     resizeCanvas();
@@ -270,6 +351,70 @@ const AgenticThreadCanvas: React.FC = () => {
     };
   }, [drawScene]);
 
+  const connectTimelineStream = useCallback(
+    (threadId: string, onEvent: (payload: TimelineEventPayload) => void) => {
+      let socket: WebSocket | null = null;
+      let eventSource: EventSource | null = null;
+      let closed = false;
+
+      const dispatchPayload = (rawData: string) => {
+        try {
+          const payload = JSON.parse(rawData) as TimelineEventPayload;
+          const payloadThreadId = payload.thread_id || payload.threadId;
+          if (payloadThreadId && payloadThreadId !== threadId) {
+            return;
+          }
+          onEvent(payload);
+        } catch {
+          // ignore malformed payloads
+        }
+      };
+
+      const createSse = () => {
+        eventSource = new EventSource(buildTimelineStreamUrl(threadId));
+        eventSource.onmessage = (ev) => {
+          dispatchPayload(ev.data);
+        };
+        eventSource.onerror = () => {
+          if (eventSource?.readyState === EventSource.CLOSED) {
+            eventSource.close();
+          }
+        };
+      };
+
+      const createWebSocket = () => {
+        try {
+          socket = new WebSocket(buildTimelineWebSocketUrl(threadId));
+          socket.onopen = () => setStatusMessage('Connected to live agent thread.');
+          socket.onmessage = (event) => dispatchPayload(event.data);
+          socket.onclose = () => {
+            if (!closed) {
+              createSse();
+            }
+          };
+          socket.onerror = () => {
+            socket?.close();
+          };
+        } catch {
+          createSse();
+        }
+      };
+
+      if (typeof WebSocket !== 'undefined') {
+        createWebSocket();
+      } else {
+        createSse();
+      }
+
+      return () => {
+        closed = true;
+        socket?.close();
+        eventSource?.close();
+      };
+    },
+    []
+  );
+
   useEffect(() => {
     if (!taskThreadId) {
       setStatusMessage('No active agent thread yet. Start a Concierge goal or ask for a plan.');
@@ -290,34 +435,32 @@ const AgenticThreadCanvas: React.FC = () => {
         setStatusMessage('Unable to load thread graph yet. Retrying as the agent starts.');
       });
 
-    const eventSource = new EventSource(getEventSourceUrl());
-    eventSource.onmessage = (ev) => {
-      try {
-        const payload = JSON.parse(ev.data);
-        if (payload.thread_id && payload.thread_id !== taskThreadId) {
-          return;
-        }
-        setLastEventAt(Date.now());
-        if (payload.type === 'task_update' && payload.task_id) {
-          setNodes((prev) => {
-            const existingIndex = prev.findIndex((node) => node.id === payload.task_id);
-            const label = payload.task_name || payload.task_id;
-            const status = payload.status || 'running';
-            if (existingIndex >= 0) {
-              const next = [...prev];
-              next[existingIndex] = {
-                ...next[existingIndex],
-                status,
-                label,
-                metadata: {
-                  ...next[existingIndex].metadata,
-                  progress: payload.progress,
-                  summary: payload.summary,
-                },
-              };
-              return next;
-            }
-            const nextNode: VisualNode = {
+    const disconnect = connectTimelineStream(taskThreadId, (payload) => {
+      if (payload.type === 'plan') {
+        return;
+      }
+      if (payload.type === 'task_update' && payload.task_id) {
+        setNodes((prev) => {
+          const existingIndex = prev.findIndex((node) => node.id === payload.task_id);
+          const label = payload.task_name || payload.task_id;
+          const status = payload.status || 'running';
+          if (existingIndex >= 0) {
+            const next = [...prev];
+            next[existingIndex] = {
+              ...next[existingIndex],
+              status,
+              label,
+              metadata: {
+                ...next[existingIndex].metadata,
+                progress: payload.progress,
+                summary: payload.summary,
+              },
+            };
+            return next;
+          }
+          return [
+            ...prev,
+            {
               id: payload.task_id,
               label,
               type: 'reasoning',
@@ -328,55 +471,115 @@ const AgenticThreadCanvas: React.FC = () => {
                 progress: payload.progress,
                 summary: payload.summary,
               },
-            };
-            return [...prev, nextNode];
-          });
-        }
-        if (payload.type === 'node_add' && payload.payload) {
-          setNodes((prev) => {
-            const rawNode = payload.payload as Partial<VisualNode> & { id: string };
-            if (prev.some((n) => n.id === rawNode.id)) return prev;
-            const nextNode: VisualNode = {
-              id: rawNode.id,
-              type: rawNode.type ?? 'reasoning',
-              label: rawNode.label || rawNode.id,
-              status: rawNode.status || 'running',
-              x: typeof rawNode.x === 'number' ? rawNode.x : 180 + (prev.length % 6) * 260,
-              y: typeof rawNode.y === 'number' ? rawNode.y : 120 + Math.floor(prev.length / 6) * 100,
-              metadata: {
-                progress: 0,
-                ...(rawNode.metadata || {}),
-              },
-            };
-            return [...prev, nextNode];
-          });
-        }
-        if (payload.type === 'node_update' && payload.payload) {
-          const nodeUpdate = payload.payload as Partial<VisualNode> & { id: string };
-          setNodes((prev) => prev.map((node) => (node.id === nodeUpdate.id ? { ...node, ...nodeUpdate } : node)));
-        }
-        if (payload.type === 'edge_add' && payload.payload) {
-          const edgeUpdate = payload.payload as VisualEdge;
-          setEdges((prev) => {
-            if (prev.some((edge) => edge.fromId === edgeUpdate.fromId && edge.toId === edgeUpdate.toId)) return prev;
-            return [...prev, edgeUpdate];
-          });
-        }
-      } catch {
-        // ignore malformed messages
+            },
+          ];
+        });
       }
-    };
-    eventSource.onerror = () => {
-      if (eventSource.readyState === EventSource.CLOSED) {
-        eventSource.close();
+      if (payload.type === 'node_add' && payload.payload) {
+        setNodes((prev) => {
+          const rawNode = payload.payload as StreamDeltaNodePayload;
+          if (prev.some((n) => n.id === rawNode.id)) return prev;
+          const nextNode: VisualNode = {
+            id: rawNode.id,
+            type: rawNode.type ?? 'reasoning',
+            label: rawNode.label || rawNode.id,
+            status: rawNode.status || 'running',
+            x: typeof rawNode.x === 'number' ? rawNode.x : 180 + (prev.length % 6) * 260,
+            y: typeof rawNode.y === 'number' ? rawNode.y : 120 + Math.floor(prev.length / 6) * 100,
+            metadata: {
+              progress: 0,
+              ...(rawNode.metadata || {}),
+            },
+          };
+          return [...prev, nextNode];
+        });
       }
-    };
+      if (payload.type === 'node_update' && payload.payload) {
+        const nodeUpdate = payload.payload as Partial<VisualNode> & { id: string };
+        setNodes((prev) => prev.map((node) => (node.id === nodeUpdate.id ? { ...node, ...nodeUpdate, metadata: { ...node.metadata, ...(nodeUpdate.metadata || {}) } } : node)));
+      }
+      if (payload.type === 'edge_add' && payload.payload) {
+        const edgeUpdate = payload.payload as VisualEdge;
+        setEdges((prev) => {
+          if (prev.some((edge) => edge.fromId === edgeUpdate.fromId && edge.toId === edgeUpdate.toId)) return prev;
+          return [...prev, edgeUpdate];
+        });
+      }
+    });
 
     return () => {
       isMounted = false;
-      eventSource.close();
+      disconnect();
     };
-  }, [taskThreadId]);
+  }, [connectTimelineStream, taskThreadId]);
+
+  useEffect(() => {
+    if (!taskThreadId || !selectedNodeId) {
+      setNodeMemories([]);
+      setMemoryStatus('idle');
+      return;
+    }
+    const controller = new AbortController();
+    const loadMemories = async () => {
+      setMemoryStatus('loading');
+      try {
+        const response = await fetch(
+          makeApiUrl(
+            `/api/v1/concierge/threads/${encodeURIComponent(taskThreadId)}/nodes/${encodeURIComponent(selectedNodeId)}/memories?top_k=8`
+          ),
+          { signal: controller.signal }
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to fetch memories (${response.status})`);
+        }
+        const json = (await response.json()) as { data?: { memories?: NodeMemory[] } };
+        const memories = Array.isArray(json?.data?.memories) ? json.data.memories : [];
+        setNodeMemories(memories);
+        setMemoryStatus('ready');
+      } catch {
+        if (!controller.signal.aborted) {
+          setNodeMemories([]);
+          setMemoryStatus('error');
+        }
+      }
+    };
+    loadMemories();
+    return () => controller.abort();
+  }, [selectedNodeId, taskThreadId]);
+
+  useEffect(() => {
+    if (nodes.length <= 200) return;
+    const workerScript = `
+      self.onmessage = function(event) {
+        const nodes = event.data || [];
+        const positioned = nodes.map(function(node, index) {
+          const col = index % 16;
+          const row = Math.floor(index / 16);
+          const x = 180 + col * 190;
+          const y = 120 + row * 100;
+          return { id: node.id, x: x, y: y };
+        });
+        self.postMessage(positioned);
+      };
+    `;
+    const blob = new Blob([workerScript], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(blob);
+    const worker = new Worker(workerUrl);
+    worker.onmessage = (event: MessageEvent<Array<{ id: string; x: number; y: number }>>) => {
+      const byId = new Map(event.data.map((item) => [item.id, item]));
+      setNodes((prev) =>
+        prev.map((node) => {
+          const next = byId.get(node.id);
+          return next ? { ...node, x: next.x, y: next.y } : node;
+        })
+      );
+    };
+    worker.postMessage(nodes.map((n) => ({ id: n.id })));
+    return () => {
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+    };
+  }, [nodes.length]);
 
   const transformPoint = useCallback(
     (clientX: number, clientY: number) => {
@@ -427,13 +630,14 @@ const AgenticThreadCanvas: React.FC = () => {
 
   const handleCanvasPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     lastPointer.current = { x: event.clientX, y: event.clientY };
+    clickStartPointer.current = { x: event.clientX, y: event.clientY };
     setIsPanning(true);
   }, []);
 
   const handleCanvasPointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      if (isPanning && lastPointer.current) {
-        const moved = Math.hypot(event.clientX - lastPointer.current.x, event.clientY - lastPointer.current.y);
+      if (isPanning && clickStartPointer.current) {
+        const moved = Math.hypot(event.clientX - clickStartPointer.current.x, event.clientY - clickStartPointer.current.y);
         if (moved < 8) {
           const point = transformPoint(event.clientX, event.clientY);
           const clicked = findNodeAtPoint(point);
@@ -442,6 +646,7 @@ const AgenticThreadCanvas: React.FC = () => {
       }
       setIsPanning(false);
       lastPointer.current = null;
+      clickStartPointer.current = null;
     },
     [findNodeAtPoint, isPanning, transformPoint]
   );
@@ -494,6 +699,23 @@ const AgenticThreadCanvas: React.FC = () => {
             <p>{selectedNode.metadata.summary}</p>
           </section>
         ) : null}
+        <section>
+          <h4>Chroma memories</h4>
+          {memoryStatus === 'loading' ? <p>Retrieving related memory context...</p> : null}
+          {memoryStatus === 'error' ? <p>Could not load related memories right now.</p> : null}
+          {memoryStatus === 'ready' && nodeMemories.length === 0 ? <p>No related memories found yet.</p> : null}
+          {memoryStatus === 'ready' && nodeMemories.length > 0 ? (
+            <div className="agentic-thread-doc-list">
+              {nodeMemories.map((memory) => (
+                <article key={memory.id} className="agentic-thread-doc-card">
+                  <strong>{memory.metadata?.task_name ? String(memory.metadata.task_name) : memory.id}</strong>
+                  <p>{memory.summary}</p>
+                  {typeof memory.score === 'number' ? <small>Relevance {(memory.score * 100).toFixed(0)}%</small> : null}
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
         {documents.length > 0 ? (
           <section>
             <h4>Retrievals</h4>
