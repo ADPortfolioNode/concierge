@@ -480,6 +480,18 @@ def _ensure_timeline_available():
         raise HTTPException(status_code=503, detail='service temporarily unavailable')
 
 
+def _find_task_node(tree: Any, task_id: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(tree, dict):
+        return None
+    if tree.get("task_id") == task_id:
+        return tree
+    for child in tree.get("children", []) or []:
+        found = _find_task_node(child, task_id)
+        if found is not None:
+            return found
+    return None
+
+
 # startup logic moved to _lifespan context manager above
 
 
@@ -777,8 +789,13 @@ async def concierge_timeline_graph():
 
 
 @app.get('/api/v1/concierge/timeline/stream')
-async def concierge_timeline_stream():
-    """Server-Sent Events endpoint streaming timeline updates in real-time."""
+async def concierge_timeline_stream(thread_id: Optional[str] = None):
+    """Server-Sent Events endpoint streaming timeline updates in real-time.
+
+    Each event is a structured delta object and may include visual graph hints
+    for the frontend visualizer: node_add, node_update, edge_add, task_update,
+    and plan metadata.
+    """
     async def event_generator():
         _ensure_timeline_available()
         q = app.state.timeline.subscribe_timeline()
@@ -786,6 +803,9 @@ async def concierge_timeline_stream():
             while True:
                 update = await q.get()
                 import json as _json
+                update_thread_id = update.get("thread_id") if isinstance(update, dict) else None
+                if thread_id and update_thread_id and update_thread_id != thread_id:
+                    continue
                 yield f"data: {_json.dumps(update)}\n\n"
         finally:
             try:
@@ -799,10 +819,14 @@ async def concierge_timeline_stream():
 async def concierge_timeline_websocket(websocket: WebSocket):
     await websocket.accept()
     _ensure_timeline_available()
+    thread_id = websocket.query_params.get("thread_id")
     q = app.state.timeline.subscribe_timeline()
     try:
         while True:
             update = await q.get()
+            update_thread_id = update.get("thread_id") if isinstance(update, dict) else None
+            if thread_id and update_thread_id and update_thread_id != thread_id:
+                continue
             await websocket.send_json(update)
     except WebSocketDisconnect:
         pass
@@ -813,6 +837,55 @@ async def concierge_timeline_websocket(websocket: WebSocket):
             app.state.timeline.unsubscribe_timeline(q)
         except Exception:
             pass
+
+
+@app.get('/api/v1/concierge/threads/{thread_id}/nodes/{node_id}/memories')
+async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
+    """Return memory snippets related to a thread node for visualizer side panels."""
+    _ensure_timeline_available()
+    if top_k < 1:
+        top_k = 1
+    if top_k > 20:
+        top_k = 20
+
+    task_tree = get_task_tree(thread_id)
+    if task_tree is None:
+        raise HTTPException(status_code=404, detail='thread_id not found')
+
+    node = _find_task_node(task_tree, node_id)
+    if node is None:
+        raise HTTPException(status_code=404, detail='node_id not found')
+
+    context_parts = [node_id]
+    if isinstance(node, dict):
+        task_name = node.get("task_name")
+        if isinstance(task_name, str) and task_name.strip():
+            context_parts.append(task_name.strip())
+        metadata = node.get("metadata")
+        if isinstance(metadata, dict):
+            if isinstance(metadata.get("result_summary"), str):
+                context_parts.append(metadata["result_summary"])
+            if isinstance(metadata.get("tool_name"), str):
+                context_parts.append(metadata["tool_name"])
+            if isinstance(metadata.get("agent_type"), str):
+                context_parts.append(metadata["agent_type"])
+    context = " ".join(context_parts).strip()
+
+    memories = await app.state.memory.query(context=context, top_k=top_k)
+    ranked = []
+    for idx, memory in enumerate(memories):
+        score = None
+        if isinstance(memory, dict):
+            score = memory.get("score")
+            if not isinstance(score, (int, float)):
+                score = max(0.1, 1 - (idx / max(len(memories), 1)))
+            ranked.append({
+                "id": str(memory.get("id", f"mem-{idx}")),
+                "summary": str(memory.get("summary", "")),
+                "score": float(score),
+                "metadata": memory.get("metadata", {}),
+            })
+    return _api_response({"thread_id": thread_id, "node_id": node_id, "memories": ranked})
 
 
 async def _create_concierge_stream_response(message: str, thread_id: Optional[str] = None) -> StreamingResponse:
