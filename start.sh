@@ -10,7 +10,50 @@ echo "Frontend → http://localhost:5173"
 echo "Flower → http://localhost:5555"
 echo "ChromaDB volume enabled for persistent memory"
 
+print_completion_urls() {
+    echo ""
+    echo "=== Concierge is running ==="
+    if ! $NO_DOCKER; then
+        echo "  Backend  → http://localhost:8001"
+        echo "  Frontend → http://localhost:5173"
+        echo "  Flower   → http://localhost:5555 (Celery Monitor)"
+        echo "  ChromaDB → http://localhost:8000 (Vector DB)"
+    else
+        echo "  Backend  → http://localhost:8001"
+        if $FRONTEND; then
+            echo "  Frontend → http://localhost:5173"
+        fi
+        echo "  (Docker services like Flower and ChromaDB are not running in --no-docker mode)"
+    fi
+    local ngrok_url
+    if ngrok_url=$(get_ngrok_public_url); then
+        if [ -n "$ngrok_url" ]; then
+            echo "  Public URL (ngrok) → ${ngrok_url}"
+        fi
+    fi
+    echo ""
+}
 # make sure we actually have a bash-compatible shell; this script uses
+
+open_browser() {
+    local url="$1"
+    echo "Attempting to open browser to: $url"
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url" &
+    elif command -v open >/dev/null 2>&1; then
+        open "$url" &
+    elif command -v start >/dev/null 2>&1; then
+        # Windows cmd.exe start command
+        start "$url" &
+    elif command -v powershell.exe >/dev/null 2>&1; then
+        powershell.exe -NoProfile -Command "Start-Process '$url'" &
+    elif command -v cygstart >/dev/null 2>&1; then
+        cygstart "$url" &
+    else
+        echo "Warning: Could not find a suitable command to open the browser automatically. Please open $url manually." >&2
+    fi
+}
+
 # bash-specific features and Unix utilities.  Running it under PowerShell or
 # Command Prompt silently returns without doing anything, which is confusing
 # for Windows users.
@@ -629,6 +672,8 @@ do_start_local() {
             echo "Warning: local frontend did not become healthy on 127.0.0.1:5173 after 30s." >&2
         fi
     fi
+    open_browser "http://localhost:5173"
+    print_completion_urls
     echo "Local startup complete."
     exit 0
 }
@@ -681,6 +726,7 @@ do_start_docker() {
             echo "Warning: frontend container did not become healthy on 127.0.0.1:5173 after 30s." >&2
         fi
         # check status and show logs if any container exited unexpectedly
+        open_browser "http://localhost:5173"
         for svc in app frontend; do
             # use docker ps filter to reliably detect exited containers by name
             if docker ps -a --filter "name=quesarc_${svc}" --filter "status=exited" --format '{{.Names}}' | grep -q .; then
@@ -751,6 +797,8 @@ wait_for_backend() {
     local ticks=0
     local preferred_path=${HEALTH_PATH:-/health}
     local health_paths=()
+    local start_time
+    start_time=$(date +%s)
 
     # Normalize paths and allow back compatible health endpoints.
     if [ -n "$preferred_path" ]; then
@@ -771,22 +819,61 @@ wait_for_backend() {
                 fi
             done
         elif command -v nc >/dev/null 2>&1; then
+    # First, wait for the port to be open
+    while true; do
+        if command -v nc >/dev/null 2>&1; then
             if nc -z "$host" "$port" >/dev/null 2>&1; then
                 echo "Backend port ${port} is open."
                 return 0
+                break
             fi
         else
             if (exec 3<>/dev/tcp/${host}/${port}) >/dev/null 2>&1; then
                 exec 3>&-
                 echo "Backend port ${port} is open."
                 return 0
+                break
             fi
+        fi
+
+        current_time=$(date +%s)
+        if [ $((current_time - start_time)) -ge "$timeout" ]; then
+            echo "Warning: backend port did not open on ${host}:${port} after ${timeout}s." >&2
+            return 1
         fi
         sleep 1
         ticks=$((ticks + 1))
     done
 
     echo "Warning: backend did not become available on ${host}:${port} after ${timeout}s." >&2
+    # Now, verify critical API endpoints
+    echo "Verifying critical backend endpoints..."
+    local critical_endpoints=("/health" "/health/system" "/memory/health" "/api/v1/capabilities")
+    local all_ok=false
+    while [ $(( $(date +%s) - start_time )) -lt "$timeout" ]; do
+        all_ok=true
+        for endpoint in "${critical_endpoints[@]}"; do
+            if ! curl -fs "http://${host}:${port}${endpoint}" >/dev/null 2>&1; then
+                echo "  Endpoint ${endpoint} is not ready yet..."
+                all_ok=false
+                break
+            fi
+        done
+
+        if [ "$all_ok" = true ]; then
+            echo "All critical backend endpoints are responsive."
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "Warning: Not all critical backend endpoints became available after ${timeout}s." >&2
+    # Report which ones are still failing
+    for endpoint in "${critical_endpoints[@]}"; do
+        if ! curl -fs "http://${host}:${port}${endpoint}" >/dev/null 2>&1; then
+            echo "  Failed endpoint: http://${host}:${port}${endpoint}" >&2
+        fi
+    done
     return 1
 }
 
@@ -1117,4 +1204,5 @@ if $TEST; then
     do_test
 fi
 
+print_completion_urls
 echo "start.sh complete."
