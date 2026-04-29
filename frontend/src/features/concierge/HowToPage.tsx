@@ -89,8 +89,8 @@ const HowToPage: React.FC = () => (
       <Step n={2} title="Concierge plans it">
         <P>The Planner agent breaks your goal into prioritised tasks, assigns each one a depth level, and detects dependencies.</P>
       </Step>
-      <Step n={3} title="Agents run in parallel">
-        <P>Research and Coding agents execute their tasks under the concurrency manager. The Critic reviews each output and requests refinements when needed.</P>
+      <Step n={3} title="Agents run sequentially">
+        <P>Specialist agents (e.g., Research, Coding) execute tasks one at a time as background Celery jobs. This chronological flow ensures reliability and prevents system overload.</P>
       </Step>
       <Step n={4} title="Synthesizer produces a final report">
         <P>Once all tasks are approved, the Synthesizer compiles key points, risks, and recommendations into a structured summary stored in memory.</P>
@@ -126,11 +126,11 @@ const HowToPage: React.FC = () => (
         ))}
       </div>
       <H3>Polling pattern</H3>
-      <Step n={1} title="POST /api/v1/tasks — enqueue">
-        <P>Send <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>{'{ "type": "...", "payload": {...} }'}</code>. You get back a task ID immediately.</P>
+      <Step n={1} title="POST /api/v1/concierge/message — enqueue">
+        <P>Send your goal. The API immediately returns a <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>thread_id</code>.</P>
       </Step>
-      <Step n={2} title="GET /api/v1/tasks/:id — poll">
-        <P>Poll every few seconds until <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>status</code> is <strong>completed</strong> or <strong>failed</strong>. The result is in the <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>result</code> field.</P>
+      <Step n={2} title="Connect to the timeline stream">
+        <P>The UI connects to a WebSocket at <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>/api/v1/concierge/timeline/ws?thread_id=...</code> to receive real-time status updates for the entire task tree as steps execute.</P>
       </Step>
       <H3>Sample task prompts</H3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -164,7 +164,7 @@ const HowToPage: React.FC = () => (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Callout icon="📝">Be specific with goals — include a timeframe, a measurable outcome, and the scope (e.g. "API layer only, not frontend").</Callout>
         <Callout icon="🔄">For complex goals, use the autonomous mode: start with "Plan and execute…" and let the agent loop run to completion.</Callout>
-        <Callout icon="🛑">If a task fails, check the <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>error</code> field via GET /api/v1/tasks/:id and re-enqueue with corrected payload.</Callout>
+        <Callout icon="🛑">If a task fails, check the error in the metadata panel. You can use the "Kill Task" button to terminate a stuck process.</Callout>
         <Callout icon="📂">Attach a file before describing a complex task — having the content available as context dramatically improves output quality.</Callout>
       </div>
     </Section>
