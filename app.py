@@ -13,9 +13,15 @@ import time
 import traceback
 import uuid
 from typing import Any, Optional, Deque
-from pathlib import Path
+from pathlib import Path 
 from config.settings import get_settings
 import collections
+
+# In-memory cache for capabilities endpoint
+_capabilities_cache: Optional[dict[str, Any]] = None
+_capabilities_cache_expiry: float = 0.0
+CACHE_TTL_SECONDS = 300  # 5 minutes
+
 
 # Load .env before any os.getenv calls so keys are available to all modules.
 # Use override=True so local .env explicitly governs values during development
@@ -46,21 +52,23 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
 from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from pathlib import Path
 import httpx
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime 
 from jobs.task_tree_store import get_redis, get_task_tree
 
-# Defer heavy/optional imports to runtime to keep module import small for
+# Defer heavy/optional imports to runtime to keep module imports small for
 # serverless builds. Populate these in the lifespan startup.
 SacredTimeline = None
 AsyncConcurrencyManager = None
 MemoryStore = None
 
-# capability layers placeholders
+# capability layers placeholders 
 load_default_plugins = None
+_celery_app = None # Global Celery app instance
 _plugin_reg = None
 load_default_integrations = None
 _intg_reg = None
@@ -70,7 +78,7 @@ _register_tool = None
 is_enabled = None
 observability_setup = None
 MEDIA_SAVED = None
-REQUEST_COUNTER = None
+REQUEST_COUNTER = None 
 
 # routers / task handlers placeholders
 _upload_router = None
@@ -140,6 +148,14 @@ async def _lifespan(application: FastAPI):
     orches_mod = importlib.import_module('orchestration.sacred_timeline')
     SacredTimeline = getattr(orches_mod, 'SacredTimeline')
 
+    # Initialize Celery app
+    celery_mod = importlib.import_module('tasks.celery_app')
+    global _celery_app
+    _celery_app = getattr(celery_mod, 'celery_app')
+    # Import tasks to register them with Celery
+    importlib.import_module('tasks.main_tasks')
+    importlib.import_module('tasks.step_assistant_tasks')
+    importlib.import_module('tasks.step_assistant_tasks')
     # optional LLM wrapper for memory embedding support
     llm_tool = None
     try:
@@ -157,7 +173,7 @@ async def _lifespan(application: FastAPI):
     except Exception:
         is_enabled = lambda name: False
 
-    application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
+    application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents) # type: ignore
     application.state.memory = MemoryStore(collection_name=settings.memory_collection, llm_tool=llm_tool)
     application.state.timeline = SacredTimeline(
         concurrency_manager=application.state.concurrency,
@@ -245,7 +261,7 @@ async def _lifespan(application: FastAPI):
     # Wire file-agent handlers and start the background task worker (optional)
     try:
         tw_mod = importlib.import_module('tasks.task_worker')
-        _register_task_handlers = getattr(tw_mod, 'register_default_handlers')
+        _register_task_handlers = getattr(tw_mod, 'register_default_handlers') # type: ignore
         tq_mod = importlib.import_module('tasks')
         _get_task_queue = getattr(tq_mod, 'get_queue')
         _register_task_handlers()
@@ -534,10 +550,21 @@ async def _handle_chat_message(payload: ConciergeMessagePayload, request: Reques
     _ensure_timeline_available()
     thread_id = str(uuid.uuid4())
     result = await app.state.timeline.handle_user_input(msg, thread_id=thread_id)
-    # The timeline may return a friendly conversational response in the
-    # `response` field.  Convert that to the usual `content` string so the
-    # frontend rendering logic (which looks at payload.content/text) works
-    # correctly.
+
+    # If the timeline dispatched a background task, it returns a "processing" status.
+    if isinstance(result, dict) and result.get('status') == 'processing':
+        data = {
+            'id': str(int(time.time() * 1000)),
+            'role': 'assistant',
+            'content': "OK, I've started working on that. You can follow the progress in real-time.",
+            'meta': {'raw': result},
+            'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }
+        resp = _api_response(data)
+        resp['thread_id'] = result.get('thread_id')
+        resp['meta']['llm'] = {'provider': 'celery', 'error': None}
+        return resp
+
     content_val: Any
     if isinstance(result, dict) and "response" in result:
         content_val = result["response"]
@@ -661,41 +688,33 @@ async def _handle_chat_message(payload: ConciergeMessagePayload, request: Reques
         return text
 
     # rewrite content_val and raw metadata if they contain remote image URLs
-    try:
-        content_val = await _persist_and_rewrite_images(content_val, request)
-    except Exception:
-        logger.exception('Error persisting images found in assistant content')
-    try:
-        # if result is a dict/structured object, stringify nested response text
-        if isinstance(result, dict):
-            # deep scan for strings in result to rewrite URLs
-            def _rewrite_in_obj(obj):
-                if isinstance(obj, str):
-                    return asyncio.get_event_loop().run_until_complete(_persist_and_rewrite_images(obj))
-                if isinstance(obj, dict):
-                    return {k: _rewrite_in_obj(v) for k, v in obj.items()}
-                if isinstance(obj, list):
-                    return [_rewrite_in_obj(v) for v in obj]
-                return obj
-            try:
-                # run the rewrite for top-level known keys
-                if 'response' in result and isinstance(result['response'], str):
-                    result['response'] = await _persist_and_rewrite_images(result['response'], request)
-                if 'media' in result and isinstance(result['media'], list):
-                    new_media = []
-                    for m in result['media']:
-                        if isinstance(m, str):
-                            new_media.append(await _persist_and_rewrite_images(m, request))
-                        elif isinstance(m, dict):
-                            # rewrite url fields inside media dicts
-                            if 'url' in m and isinstance(m['url'], str):
-                                m['url'] = await _persist_and_rewrite_images(m['url'], request)
-                            new_media.append(m)
-                    result['media'] = new_media
-            except Exception:
-                logger.exception('Failed to rewrite nested URLs in result dict')
-    except Exception:
-        logger.exception('Error scanning result for images')
+    # This logic is now primarily for the initial response.
+    # Actual image processing from LLM responses should be handled within Celery tasks.
+    # try:
+    #     data['content'] = await _persist_and_rewrite_images(data['content'], request)
+    # except Exception:
+    #     logger.exception('Error persisting images found in initial assistant content')
+    # try:
+    #     # if result is a dict/structured object, stringify nested response text
+    #     if isinstance(data['meta']['raw'], dict):
+    #         try:
+    #             # run the rewrite for top-level known keys
+    #             if 'response' in data['meta']['raw'] and isinstance(data['meta']['raw']['response'], str):
+    #                 data['meta']['raw']['response'] = await _persist_and_rewrite_images(data['meta']['raw']['response'], request)
+    #             if 'media' in data['meta']['raw'] and isinstance(data['meta']['raw']['media'], list):
+    #                 new_media = []
+    #                 for m in data['meta']['raw']['media']:
+    #                     if isinstance(m, str):
+    #                         new_media.append(await _persist_and_rewrite_images(m, request))
+    #                     elif isinstance(m, dict):
+    #                         if 'url' in m and isinstance(m['url'], str):
+    #                             m['url'] = await _persist_and_rewrite_images(m['url'], request)
+    #                         new_media.append(m)
+    #                 data['meta']['raw']['media'] = new_media
+    #         except Exception:
+    #             logger.exception('Failed to rewrite nested URLs in result dict for initial response')
+    # except Exception:
+    #     logger.exception('Error scanning initial response for images')
 
     # append entries to conversation state (used by /conversation endpoint)
     app.state.conversation.append(user_entry)
@@ -704,10 +723,8 @@ async def _handle_chat_message(payload: ConciergeMessagePayload, request: Reques
     # build the API response envelope and copy provider/error info into meta
     resp = _api_response(data)
     resp['thread_id'] = thread_id
-    llm_meta = resp['meta'].get('llm')
-    if llm_meta is not None and isinstance(result, dict):
-        llm_meta['provider'] = result.get('llm_provider')
-        llm_meta['error'] = result.get('llm_error')
+    # LLM metadata will be updated by the Celery tasks
+    resp['meta']['llm'] = {'provider': 'celery', 'error': None}
     return resp
 
 
@@ -742,10 +759,11 @@ async def concierge_timeline():
 @app.get('/api/v1/tasks')
 async def list_tasks():
     try:
-        client = get_redis()
+        from tasks.task_tree_store import get_redis, get_task_tree_key
+        client = get_redis() # This get_redis is from jobs.task_tree_store, not tasks.task_tree_store
         task_keys = list(client.scan_iter(match='task_tree:*', count=100))
         tasks = []
-        for key in task_keys:
+        for key in task_keys: # type: ignore
             thread_id = key.split(':', 1)[1] if ':' in key else key
             task_tree = get_task_tree(thread_id)
             if not task_tree:
@@ -757,11 +775,34 @@ async def list_tasks():
                 'status': task_tree.get('status') or task_tree.get('state') or 'unknown',
                 'created_at': None if metadata.get('start_time') is None else datetime.fromtimestamp(float(metadata.get('start_time'))).isoformat(),
             })
-        tasks.sort(key=lambda item: item.get('created_at') or '', reverse=True)
+        tasks.sort(key=lambda item: item.get('created_at') or '', reverse=True) # type: ignore
         return _api_response(tasks)
     except Exception:
         logger.exception('Failed to fetch task list')
         return _api_response({'error': 'task list unavailable'}, status='error')
+
+@app.post('/api/v1/tasks/{task_id}/kill')
+async def kill_task(task_id: str):
+    """Endpoint to kill a running Celery task."""
+    if _celery_app is None:
+        raise HTTPException(status_code=503, detail="Celery app not initialized.")
+    try:
+        # Revoke the task, terminating it immediately
+        _celery_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
+        from tasks.task_tree_store import update_task_node
+        # Update the task status in the task tree
+        # Note: task_id is used as thread_id here if it's a root task, otherwise it's the actual task_id
+        # A more robust solution might involve finding the thread_id associated with the task_id first.
+        update_task_node(task_id, task_id, {"status": "KILLED", "result": "Task killed by user."})
+        logger.info(f"Task {task_id} sent SIGKILL and marked as KILLED.")
+        return _api_response({"status": "success", "message": f"Task {task_id} kill signal sent."})
+    except Exception as e:
+        logger.exception(f"Failed to kill task {task_id}")
+        return JSONResponse(status_code=500, content={
+            "status": "error",
+            "message": f"Failed to send kill signal to task {task_id}: {str(e)}"
+        })
+
 
 @app.get('/api/v1/tasks/{task_id}/status')
 async def task_status(task_id: str):
@@ -795,21 +836,25 @@ async def concierge_timeline_stream(thread_id: Optional[str] = None):
     Each event is a structured delta object and may include visual graph hints
     for the frontend visualizer: node_add, node_update, edge_add, task_update,
     and plan metadata.
+    This endpoint now streams task tree updates from Redis Pub/Sub.
     """
+    thread_id = request.query_params.get("thread_id")
     async def event_generator():
-        _ensure_timeline_available()
-        q = app.state.timeline.subscribe_timeline()
+        pubsub = get_task_update_pubsub(thread_id)
         try:
             while True:
-                update = await q.get()
-                import json as _json
-                update_thread_id = update.get("thread_id") if isinstance(update, dict) else None
-                if thread_id and update_thread_id and update_thread_id != thread_id:
-                    continue
-                yield f"data: {_json.dumps(update)}\n\n"
+                await asyncio.sleep(0.1) # Prevent busy-waiting
+                # Use a timeout to prevent blocking indefinitely and allow for cleanup
+                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+                if message and message['data']:
+                    yield f"data: {message['data']}\n\n"
+                await asyncio.sleep(0.1) # Prevent busy-waiting
         finally:
             try:
-                app.state.timeline.unsubscribe_timeline(q)
+                # Unsubscribe from Redis Pub/Sub
+                if pubsub:
+                    pubsub.unsubscribe()
+                    pubsub.close()
             except Exception:
                 pass
 
@@ -818,23 +863,28 @@ async def concierge_timeline_stream(thread_id: Optional[str] = None):
 @app.websocket('/api/v1/concierge/timeline/ws')
 async def concierge_timeline_websocket(websocket: WebSocket):
     await websocket.accept()
-    _ensure_timeline_available()
     thread_id = websocket.query_params.get("thread_id")
-    q = app.state.timeline.subscribe_timeline()
+    if not thread_id:
+        await websocket.close(code=1008, reason="thread_id is required")
+        return
+
+    pubsub = get_task_update_pubsub(thread_id)
     try:
         while True:
-            update = await q.get()
-            update_thread_id = update.get("thread_id") if isinstance(update, dict) else None
-            if thread_id and update_thread_id and update_thread_id != thread_id:
-                continue
-            await websocket.send_json(update)
+            await asyncio.sleep(0.1)
+            message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+            if message and message['data']:
+                await websocket.send_text(message['data'])
     except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for thread_id: {thread_id}")
         pass
     except Exception:
         logger.exception('Timeline websocket error')
     finally:
         try:
-            app.state.timeline.unsubscribe_timeline(q)
+            if pubsub:
+                pubsub.unsubscribe()
+                pubsub.close()
         except Exception:
             pass
 
@@ -842,6 +892,7 @@ async def concierge_timeline_websocket(websocket: WebSocket):
 @app.get('/api/v1/concierge/threads/{thread_id}/nodes/{node_id}/memories')
 async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
     """Return memory snippets related to a thread node for visualizer side panels."""
+    from tasks.task_tree_store import get_task_tree, _find_node_in_tree
     _ensure_timeline_available()
     if top_k < 1:
         top_k = 1
@@ -888,34 +939,6 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
     return _api_response({"thread_id": thread_id, "node_id": node_id, "memories": ranked})
 
 
-async def _create_concierge_stream_response(message: str, thread_id: Optional[str] = None) -> StreamingResponse:
-    _ensure_timeline_available()
-
-    if thread_id is None:
-        thread_id = str(uuid.uuid4())
-
-    async def _event_gen():
-        try:
-            async for evt_json in app.state.timeline.stream_user_input(message, thread_id=thread_id):
-                yield f"data: {evt_json}\n\n"
-        except Exception as exc:
-            logger.exception("SSE stream error")
-            import json as _j
-            yield f"data: {_j.dumps({'type': 'error', 'text': str(exc)})}\n\n"
-        finally:
-            yield "data: [DONE]\n\n"
-
-    return StreamingResponse(
-        _event_gen(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",   # disable Nginx proxy buffering
-            "Connection": "keep-alive",
-        },
-    )
-
-
 @app.post('/api/v1/concierge/stream')
 async def concierge_stream(payload: ConciergeMessagePayload):
     """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.
@@ -925,14 +948,15 @@ async def concierge_stream(payload: ConciergeMessagePayload):
 
     The client should open this with ``fetch`` + ``ReadableStream`` (or
     an ``EventSource`` that supports POST — most libraries do).
+    This endpoint is now deprecated in favor of WebSocket for task updates.
     """
-    return await _create_concierge_stream_response(payload.message)
+    raise HTTPException(status_code=501, detail="Streaming via this endpoint is deprecated. Use /api/v1/concierge/timeline/ws for real-time task updates.")
 
 
 @app.get('/api/v1/concierge/stream')
 async def concierge_stream_get(message: str):
-    """Compatibility GET endpoint for stream clients that cannot POST."""
-    return await _create_concierge_stream_response(message)
+    """Compatibility GET endpoint for stream clients that cannot POST. Deprecated."""
+    raise HTTPException(status_code=501, detail="Streaming via this endpoint is deprecated. Use /api/v1/concierge/timeline/ws for real-time task updates.")
 
 
 @app.options('/api/v1/concierge/stream')
@@ -1029,12 +1053,16 @@ if _jobs_available and _job_router is not None:
 @app.get('/api/v1/plugins')
 async def get_plugins():
     """List all registered plugins and their metadata."""
+    if not _plugin_reg:
+        return _api_response([])
     return _api_response(_plugin_reg.list_plugins())
 
 
 @app.get('/api/v1/tools')
 async def get_tools():
     """List all registered tools and their metadata."""
+    if not _list_tool_names or not _get_tool:
+        return _api_response([])
     names = _list_tool_names()
     serialized = []
     for name in names:
@@ -1050,7 +1078,103 @@ async def get_tools():
 @app.get('/api/v1/integrations')
 async def get_integrations():
     """List all registered integrations and their metadata."""
+    if not _intg_reg:
+        return _api_response([])
     return _api_response(_intg_reg.list_integrations())
+
+
+@app.get('/api/v1/capabilities')
+async def get_all_capabilities(request: Request):
+    """
+    List all registered capabilities (plugins, tools, integrations) in a single call for efficiency.
+    This endpoint is cached for 5 minutes to improve performance.
+    """
+    global _capabilities_cache, _capabilities_cache_expiry
+
+    force_refresh = request.query_params.get('force', 'false').lower() == 'true'
+
+    # Return cached response if it's still valid
+    if not force_refresh and _capabilities_cache is not None and time.time() < _capabilities_cache_expiry:
+        logger.info("Serving capabilities from cache.")
+        return _api_response(_capabilities_cache)
+
+    log_reason = "force refresh requested" if force_refresh else "cache stale or empty"
+    logger.info(f"Generating new capabilities response: {log_reason}.")
+    all_capabilities = {}
+
+    # --- Tools ---
+    try:
+        if not _list_tool_names or not _get_tool:
+            all_capabilities['tools'] = []
+        else:
+            names = _list_tool_names()
+            serialized_tools = []
+            for name in names:
+                tool = _get_tool(name)
+                # Enrich with all fields the frontend expects
+                serialized_tools.append({
+                    "name": name,
+                    "description": getattr(tool, "description", ""),
+                    "type": "tool",
+                    "version": getattr(tool, "version", None),
+                    "service": getattr(tool, "service", None),
+                    "enabled": getattr(tool, "enabled", True),
+                })
+            all_capabilities['tools'] = serialized_tools
+    except Exception:
+        logger.exception("Failed to get tools for /api/v1/capabilities")
+        all_capabilities['tools'] = []
+
+    # --- Plugins ---
+    try:
+        if not _plugin_reg:
+            all_capabilities['plugins'] = []
+        else:
+            raw_plugins = _plugin_reg.list_plugins()
+            processed_plugins = []
+            for p in raw_plugins:
+                # Ensure a consistent structure for the frontend
+                processed_plugins.append({
+                    "name": p.get("name"),
+                    "description": p.get("description", ""),
+                    "type": p.get("type", "plugin"),
+                    "version": p.get("version"),
+                    "service": p.get("service"),
+                    "enabled": p.get("enabled", True),
+                })
+            all_capabilities['plugins'] = processed_plugins
+    except Exception:
+        logger.exception("Failed to get plugins for /api/v1/capabilities")
+        all_capabilities['plugins'] = []
+
+    # --- Integrations ---
+    try:
+        if not _intg_reg:
+            all_capabilities['integrations'] = []
+        else:
+            raw_integrations = _intg_reg.list_integrations()
+            processed_integrations = []
+            for i in raw_integrations:
+                # Ensure a consistent structure for the frontend
+                processed_integrations.append({
+                    "name": i.get("name"),
+                    "description": i.get("description", ""),
+                    "type": i.get("type", "integration"),
+                    "version": i.get("version"),
+                    "service": i.get("service"),
+                    "enabled": i.get("enabled", True),
+                })
+            all_capabilities['integrations'] = processed_integrations
+    except Exception:
+        logger.exception("Failed to get integrations for /api/v1/capabilities")
+        all_capabilities['integrations'] = []
+
+    # Store in cache before returning
+    _capabilities_cache = all_capabilities
+    _capabilities_cache_expiry = time.time() + CACHE_TTL_SECONDS
+    logger.info(f"Capabilities cache updated. Next expiry in {CACHE_TTL_SECONDS} seconds.")
+
+    return _api_response(all_capabilities)
 
 
 # --- health endpoints ------------------------------------------------------
@@ -1199,33 +1323,34 @@ async def serve_asset(path: str):
 
 @app.get('/{path:path}', include_in_schema=False)
 async def spa_fallback(path: str):
-    # Serve static frontend files directly when they exist, then fall back
-    # to the SPA entrypoint for client-side routes.
-    if path and not path.startswith('api/') and not path.startswith('health') and not path.startswith('memory') and not path.startswith('media/'):
+    # Do not handle API, health, or media routes here.
+    if path.startswith(('api/', 'health', 'memory/', 'media/')):
+        raise HTTPException(status_code=404, detail='Not Found')
+
+    # Heuristic: if path has a file extension or is in 'assets', it's a static file.
+    is_static_asset = path.startswith('assets/') or '.' in path.split('/')[-1]
+
+    if is_static_asset:
         static_candidates = [
             Path('/vercel/output') / 'frontend' / 'dist' / path,
             Path('/vercel/output') / 'dist' / path,
             Path('/vercel/output') / path,
             Path(__file__).parent / 'frontend' / 'dist' / path,
-            Path(__file__).parent / path,
         ]
         for candidate in static_candidates:
             if candidate.exists() and candidate.is_file():
                 return FileResponse(candidate)
+        # If it looked like an asset but wasn't found, it's a 404.
+        raise HTTPException(status_code=404, detail='Static asset not found')
 
-    # Do not override explicit API, health, or media routes handled elsewhere.
-    if path.startswith('api/') or path.startswith('health') or path.startswith('memory') or path.startswith('media/'):
-        raise HTTPException(status_code=404, detail='Not Found')
-
-    candidates = [
+    # Otherwise, it's a client-side route; serve the SPA entrypoint.
+    index_candidates = [
         Path('/vercel/output') / 'frontend' / 'dist' / 'index.html',
         Path('/vercel/output') / 'dist' / 'index.html',
         Path('/vercel/output') / 'index.html',
         Path(__file__).parent / 'frontend' / 'dist' / 'index.html',
-        Path(__file__).parent / 'index.html',
-        Path(__file__).parent / 'frontend_index.html',
     ]
-    for candidate in candidates:
+    for candidate in index_candidates:
         if candidate.exists():
             return HTMLResponse(content=candidate.read_text(encoding='utf-8'), status_code=200)
     raise HTTPException(status_code=404, detail='Not Found')

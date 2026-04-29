@@ -486,7 +486,7 @@ class FileResponse(Response):
                 if start > p_end:
                     continue
                 elif end < p_start:
-                    result.insert(p, (start, end))  # THIS IS NOT REACHED!
+                    result.insert(p, (start, end))
                     break
                 else:
                     result[p] = (min(start, p_start), max(end, p_end))
@@ -546,7 +546,7 @@ class FileResponse(Response):
         Content-Range: bytes {start}-{end-1}/{max_size}\n
         \n
         ..........content...........\n
-        --{boundary}--\n
+        \n--{boundary}--\n
         ```
         """
         boundary_len = len(boundary)
@@ -555,8 +555,8 @@ class FileResponse(Response):
             (len(str(start)) + len(str(end - 1)) + static_header_part_len)  # Headers
             + (end - start)  # Content
             for start, end in ranges
-        ) + (
-            5 + boundary_len  # --boundary--\n
+        ) + len(ranges) + (
+            6 + boundary_len  # \n--boundary--\n
         )
         return (
             content_length,

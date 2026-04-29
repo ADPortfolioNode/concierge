@@ -322,138 +322,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     // if tests want to bypass SSE they can set window.USE_POST = true
     const usePost = Boolean((window as any).USE_POST);
     // record that sendMessage was invoked; tests can check this flag
-    if (typeof window !== 'undefined') {
-      (window as any).__LAST_SENDMESSAGE__ = usePost;
-    }
-    console.log('sendMessage called, usePost=', usePost);
-    if (usePost) {
-      try {
-        const res = await ConciergeAPI.sendMessage(input, priorHistory);
-        const result = res.data as any;
-        const threadId = result.thread_id || result.data?.thread_id || null;
-        if (threadId) {
-          set({ taskThreadId: threadId });
-          get().pollTaskThreadStatus(threadId).catch(() => {});
-        }
-        const finalText = (result.response || '') as string;
-        const confidence = result.confidence;
-        const critic_score = result.critic_score;
-        // update the placeholder message just like in stream event
-        set((s) => {
-          const updated = s.conversation.map((m) =>
-            m.id === assistantMsgId
-              ? { ...m, content: finalText, meta: {
-                  confidence: typeof confidence === 'number' ? confidence : undefined,
-                  critic_score: typeof critic_score === 'number' ? critic_score : undefined,
-                  raw: _normalizeUrlsInObject(result),
-                  llm: { provider: result.meta?.llm?.provider, error: result.meta?.llm?.error },
-                } }
-              : m,
-          );
-          saveHistory(updated).catch(() => { /* best-effort */ });
-          return { conversation: updated };
-        });
-      } catch (e) {
-        const errText = e instanceof Error ? e.message : String(e);
-        set((s) => ({
-          conversation: s.conversation.map((m) =>
-            m.id === assistantMsgId ? { ...m, content: `⚠️ ${errText}` } : m,
-          ),
-          error: errText,
-        }));
-      } finally {
-        set({ loading: false, streamingId: null });
-      }
-      return;
-    }
-
+    // The primary flow is now to send the message and then listen for updates on a WebSocket.
     try {
-      let accumulated = '';
+      // This now returns immediately with a thread_id if it's a background job
+      const res = await ConciergeAPI.sendMessage(input, priorHistory);
+      const result = res.data as any;
+      const threadId = result.thread_id || result.data?.thread_id || null;
+      const assistantResponse = result.data; // The full assistant message object
 
-      for await (const evt of ConciergeAPI.streamMessage(input, priorHistory)) {
-        if (evt.thread_id) {
-          const threadId = evt.thread_id;
-          set({ taskThreadId: threadId });
-          get().pollTaskThreadStatus(threadId).catch(() => {});
-        }
-        if (evt.type === 'token' || evt.type === 'progress') {
-          accumulated += evt.text;
-          // Patch the placeholder bubble with the accumulated text
-          set((s) => ({
-            conversation: s.conversation.map((m) =>
-              m.id === assistantMsgId ? { ...m, content: accumulated } : m,
-            ),
-          }));
-        } else if (evt.type === 'done') {
-          // Finalise: extract a clean human-readable string from the result
-          const result = evt.result as Record<string, unknown>;
-          const metaResult = result as Record<string, any>;
-          const confidence = metaResult?.final?.confidence ?? metaResult?.confidence ?? undefined;
-          const critic_score = metaResult?.final?.critic_score ?? metaResult?.critic_score ?? undefined;
-          const provider = metaResult?.llm_provider ?? metaResult?.llm?.provider;
-          const errorMsg = metaResult?.llm_error ?? metaResult?.llm?.error;
-          const resp = result?.response;
-          const finalText: string = (() => {
-            // 1. Non-empty summary from orchestration final pass
-            const s = (result?.final as any)?.summary || (result?.summary as string);
-            if (typeof s === 'string' && s.trim()) return s.trim();
-            // 2. response field — only if it reads like plain prose, not a raw error/object dump
-            if (typeof resp === 'string' && resp.trim()) {
-              if (resp.startsWith('[LLM-Error]')) {
-                const detail = resp.replace('[LLM-Error]', '').trim().split('\n')[0];
-                return `I wasn't able to complete that request right now.\n\n_${detail}_`;
-              }
-              if (!resp.startsWith("{") && !resp.startsWith("{'" )) return resp.trim();
-            }
-            // 3. Streamed tokens collected so far
-            if (accumulated.trim()) return accumulated.trim();
-            return 'Sorry, I could not generate a response right now.';
-          })();
-          set((s) => {
-            const updated = s.conversation.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: finalText, meta: {
-                    confidence: typeof confidence === 'number' ? confidence : undefined,
-                    critic_score: typeof critic_score === 'number' ? critic_score : undefined,
-                    raw: _normalizeUrlsInObject(result),
-                    llm: { provider, error: errorMsg },
-                  } }
-                : m,
-            );
-            saveHistory(updated).catch(() => { /* best-effort */ });
-            return { conversation: updated };
-          });
-          // ── Auto-route content to media layers ───────────────────────
-          const content = finalText || accumulated;
-          _IMG_RE.lastIndex = 0; _VID_RE.lastIndex = 0; _AUD_RE.lastIndex = 0;
-          const imgM = content.match(_IMG_RE);
-          const vidM = content.match(_VID_RE);
-          const audM = content.match(_AUD_RE);
-          imgM?.forEach((u) => get().pushImage(u.trim()));
-          vidM?.forEach((u) => get().pushVideo(u.trim()));
-          audM?.forEach((u) => get().pushAudio(u.trim()));
-          if (!imgM && !vidM && !audM && content.trim().length > 20) {
-            get().pushTextHighlight(content.trim().slice(0, 500));
-          }
-        } else if (evt.type === 'error') {
-          set((s) => ({
-            conversation: s.conversation.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: `⚠️ ${evt.text}` }
-                : m,
-            ),
-            error: evt.text,
-          }));
-        }
+      // Update the placeholder with the initial response from the server
+      set(s => {
+        const updated = s.conversation.map(m => m.id === assistantMsgId ? { ...assistantResponse, id: assistantMsgId } : m);
+        saveHistory(updated).catch(() => { /* best-effort */ });
+        return { conversation: updated };
+      });
+
+      // If we got a threadId, it means a background task started.
+      // We should connect to the WebSocket to get live updates for the task tree.
+      if (threadId) {
+        set({ taskThreadId: threadId });
+        // The polling logic can be replaced by a WebSocket connection handler
+        get().pollTaskThreadStatus(threadId).catch(() => {});
       }
+
     } catch (e) {
       const errText = e instanceof Error ? e.message : String(e);
-      // Replace the placeholder with the error
-      set((s) => ({
-        conversation: s.conversation.map((m) =>
-          m.id === assistantMsgId ? { ...m, content: `⚠️ ${errText}` } : m,
-        ),
-        error: errText,
+      set(s => ({
+        conversation: s.conversation.map(m => m.id === assistantMsgId ? { ...m, content: `⚠️ ${errText}` } : m),
+        error: errText
       }));
     } finally {
       set({ loading: false, streamingId: null });

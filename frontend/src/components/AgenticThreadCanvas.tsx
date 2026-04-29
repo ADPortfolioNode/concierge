@@ -262,14 +262,31 @@ const AgenticThreadCanvas: React.FC = () => {
       const cp2x = to.x - Math.max(160, Math.abs(to.x - from.x) * 0.32);
       const cp2y = to.y;
 
+      // Base edge (gray)
       const edgeFocused =
         !selectedNodeId || edge.fromId === selectedNodeId || edge.toId === selectedNodeId;
-      ctx.strokeStyle = edgeFocused ? 'rgba(96, 165, 250, 0.34)' : 'rgba(148, 163, 184, 0.18)';
-      ctx.lineWidth = edgeFocused ? 2.6 : 1.6;
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
       ctx.stroke();
+
+      // Progress bar on edge
+      const fromProgress = (from.metadata?.progress ?? 0) / 100;
+      if (fromProgress > 0) {
+        ctx.strokeStyle = edgeFocused ? 'rgba(96, 165, 250, 0.6)' : 'rgba(96, 165, 250, 0.4)';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        const step = 0.05;
+        for (let t = 0; t < fromProgress; t += step) {
+          const px = computeBezierPoint(Math.min(t + step, fromProgress), from.x, cp1x, cp2x, to.x);
+          const py = computeBezierPoint(Math.min(t + step, fromProgress), from.y, cp1y, cp2y, to.y);
+          ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
 
       const particlePosition = ((particleFrame.current + index * 12) % 180) / 180;
       const px = computeBezierPoint(particlePosition, from.x, cp1x, cp2x, to.x);
@@ -742,6 +759,25 @@ const AgenticThreadCanvas: React.FC = () => {
           </section>
         ) : null}
         <div className="agentic-thread-sidepanel__actions">
+          <button
+            className="agentic-thread-action"
+            onClick={async () => {
+              const celeryTaskId = selectedNode?.metadata?.celery_task_id;
+              if (!celeryTaskId) {
+                alert('Cannot kill task: Celery task ID not found in metadata.');
+                return;
+              }
+              try {
+                await fetch(makeApiUrl(`/api/v1/tasks/${encodeURIComponent(String(celeryTaskId))}/kill`), { method: 'POST' });
+                setStatusMessage(`Sent kill signal to task ${selectedNode.label}.`);
+              } catch (err) {
+                console.error('Failed to kill task', err);
+                alert('Failed to send kill signal.');
+              }
+            }}
+          >
+            Kill Task
+          </button>
           <button
             className="agentic-thread-action"
             onClick={() => {

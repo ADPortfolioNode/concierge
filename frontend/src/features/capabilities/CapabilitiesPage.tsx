@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { capabilitiesService, CapabilityItem } from '@/api/capabilitiesService';
+import React, { useEffect, useState, useCallback } from 'react';
+import { CapabilityItem } from '@/api/capabilitiesService';
 
 type Category = 'plugins' | 'tools' | 'integrations';
 
@@ -126,31 +126,93 @@ export default function CapabilitiesPage() {
     tools: null,
     integrations: null,
   });
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const fetchCapabilities = useCallback(async (force = false) => {
+    setLoading({ plugins: true, tools: true, integrations: true });
+    setErrors({ plugins: null, tools: null, integrations: null });
+
+    try {
+      const url = force ? '/api/v1/capabilities?force=true' : '/api/v1/capabilities';
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Network error: ${response.status} ${response.statusText}`);
+      }
+      const jsonResponse = await response.json();
+      if (jsonResponse.status !== 'success') {
+        throw new Error(jsonResponse.errors?.message ?? 'API returned an error');
+      }
+      const capabilities = jsonResponse.data;
+      setData({
+        plugins: capabilities.plugins || [],
+        tools: capabilities.tools || [],
+        integrations: capabilities.integrations || [],
+      });
+      setLastUpdated(new Date());
+    } catch (err: any) {
+      const errorMessage = err.message ?? 'Unknown error';
+      setErrors({
+        plugins: errorMessage,
+        tools: errorMessage,
+        integrations: errorMessage,
+      });
+    } finally {
+      setLoading({ plugins: false, tools: false, integrations: false });
+    }
+  }, []);
 
   useEffect(() => {
-    CATEGORIES.forEach(({ key }) => {
-      capabilitiesService[key]()
-        .then((items) => {
-          setData((prev) => ({ ...prev, [key]: items }));
-        })
-        .catch((err: Error) => {
-          setErrors((prev) => ({ ...prev, [key]: err.message ?? 'Unknown error' }));
-        })
-        .finally(() => {
-          setLoading((prev) => ({ ...prev, [key]: false }));
-        });
-    });
-  }, []);
+    fetchCapabilities();
+  }, [fetchCapabilities]);
+
+  const isAnyLoading = Object.values(loading).some(Boolean);
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: '0.5rem', color: 'var(--color-text, #e2e8f0)' }}>
-        Capabilities
-      </h1>
-      <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: 'var(--color-text, #e2e8f0)' }}>
+          Capabilities
+        </h1>
+        <button
+          onClick={() => fetchCapabilities(true)}
+          disabled={isAnyLoading}
+          title="Force a refresh, bypassing the cache"
+          style={{
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: '#fff',
+            borderRadius: 6,
+            padding: '6px 12px',
+            cursor: isAnyLoading ? 'not-allowed' : 'pointer',
+            opacity: isAnyLoading ? 0.6 : 1,
+          }}
+        >
+          {isAnyLoading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+      <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: '2rem', marginTop: 0 }}>
         Registered plugins, tools, and external integrations available to the orchestration engine.
       </p>
 
+      {lastUpdated && !isAnyLoading && (
+        <div style={{ textAlign: 'right', color: '#6b7280', fontSize: 12, marginTop: '-1.5rem', marginBottom: '1.5rem' }}>
+          Last updated: {lastUpdated.toLocaleTimeString()}
+        </div>
+      )}
+
+      {isAnyLoading && (
+        <div style={{
+          marginBottom: '2rem',
+          textAlign: 'center',
+          color: '#cbd5e1',
+          fontSize: 16,
+          padding: '1rem',
+          background: 'rgba(255,255,255,0.05)',
+          borderRadius: 8,
+        }}>
+          Loading capabilities...
+        </div>
+      )}
       {CATEGORIES.map(({ key, label }) => (
         <Section
           key={key}

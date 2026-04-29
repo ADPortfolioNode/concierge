@@ -30,9 +30,7 @@ services:
           - backend
     volumes:
       - .:/app
-      # Industry-standard hybrid memory pattern: persist ChromaDB data on a
-      # named Docker volume so embeddings survive container restarts and never
-      # hit a read-only file system inside the image layer.
+      # ChromaDB persistent volume locked in — data survives container restarts
       - chroma_data:/app/chroma
     depends_on:
       - chroma
@@ -55,7 +53,8 @@ services:
       # forward AI service keys from host .env or environment
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - CORS_ALLOW_ORIGINS=http://localhost:5173
+      - CORS_ALLOW_ORIGINS=*
+    restart: unless-stopped
 
   quesarc_worker:
     build:
@@ -70,6 +69,7 @@ services:
       - redis
       - app
     environment:
+      # Environment must match the `app` service for agents to work
       - VECTOR_DB=${VECTOR_DB:-chroma}
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
@@ -77,6 +77,9 @@ services:
       - QDRANT_PORT=6333
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    restart: unless-stopped
 
   flower:
     image: mher/flower:2.0
@@ -100,10 +103,14 @@ services:
       - "8000:8000"
     environment:
       - CHROMA_SERVER_ALLOW_ORIGIN=*
-    # healthcheck removed: the official image does not include curl, so the
-    # default check always fails and prevents dependent services from starting.
-    # If you need a healthcheck, add an appropriate command or build a custom
-    # image with curl/wget available.
+    # A more robust healthcheck that hits the ChromaDB heartbeat API endpoint.
+    # The official ChromaDB image does not include curl or wget, so a Python HTTP client is used.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import http.client, sys; try: conn = http.client.HTTPConnection('localhost', 8000, timeout=1); conn.request('GET', '/api/v1/heartbeat'); response = conn.getresponse(); sys.exit(0) if response.status == 200 else sys.exit(1); finally: conn.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     # containerized development server for React frontend. we mount the
@@ -123,12 +130,11 @@ services:
       - IN_DOCKER=true
       - VITE_BACKEND_URL=http://backend:8001
       - BACKEND_URL=http://backend:8001
-    # always run `npm ci` first to populate the container's node_modules, then
-    # launch the dev server. `npm ci` is fast when the lockfile hasn't changed.
-    # `--host` is redundant when `vite.config.ts` already sets `host: true`,
-    # but we include it here as a belt‑and‑suspenders measure so that the
-    # container's output explicitly tells us the server will accept external
-    # connections.
+    # Always run `npm ci` first to ensure dependencies in the container's
+    # node_modules volume are correct. Then, launch the Vite dev server.
+    # We pass `--host` to ensure Vite listens on all network interfaces
+    # (0.0.0.0), making it accessible from the host machine via the
+    # published port. This enables hot-reloading for development.
     command: ["sh","-c","npm ci && npm run dev -- --host"]
 
   qdrant:
