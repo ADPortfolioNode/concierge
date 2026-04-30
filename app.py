@@ -118,6 +118,50 @@ logger = logging.getLogger(__name__)
 # log version on startup
 logger.info(f"Concierge version {VERSION} starting")
 # Log presence of key environment variables (don't print secrets)
+
+# --- service registry ------------------------------------------------------
+async def update_service_registry(status: str, url: Optional[str] = None):
+    """Registers or updates this service's info in the Redis registry."""
+    try:
+        client = get_redis()
+        if not client:
+            logger.warning("Service registry unavailable: Redis client not configured.")
+            return
+
+        service_key = "service:registry:concierge-backend"
+        
+        service_data = {}
+        try:
+            existing_data_raw = client.get(service_key)
+            if existing_data_raw:
+                service_data = json.loads(existing_data_raw)
+        except Exception:
+            logger.warning("Could not parse existing service registry data. Starting fresh.")
+            service_data = {}
+
+        # Populate initial data if it's missing
+        if "service_id" not in service_data:
+            service_data.update({
+                "service_id": "concierge-backend",
+                "version": VERSION,
+                "start_time": datetime.utcnow().isoformat() + 'Z',
+                "pid": os.getpid(),
+            })
+
+        service_data["status"] = status
+        service_data["last_heartbeat"] = datetime.utcnow().isoformat() + 'Z'
+        
+        if url:
+            service_data["url"] = url
+        elif "url" not in service_data:
+            service_data["url"] = SERVER_URL # Use the globally defined SERVER_URL
+
+        client.set(service_key, json.dumps(service_data))
+        logger.info(f"Updated service registry with status '{status}' and URL '{service_data.get('url')}'.")
+
+    except Exception:
+        logger.exception("Failed to update service registry in Redis.")
+
 _openai_set = bool(os.getenv("OPENAI_API_KEY"))
 _gemini_set = bool(os.getenv("GEMINI_API_KEY"))
 logger.info(f"OPENAI_API_KEY set: {_openai_set}; GEMINI_API_KEY set: {_gemini_set}")
@@ -131,11 +175,13 @@ SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8001')
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
     # ── startup ──────────────────────────────────────────────────────────
+    logger.info("Application startup sequence initiated...")
     application.state.start_time = time.time()
     application.state.conversation = []  # in-memory history; cleared on restart
     import importlib
     global is_enabled
     # late-import configuration and core components
+    logger.info("Importing core modules...")
     cfg_mod = importlib.import_module('config.settings')
     settings = cfg_mod.get_settings()
 
@@ -148,6 +194,7 @@ async def _lifespan(application: FastAPI):
     orches_mod = importlib.import_module('orchestration.sacred_timeline')
     SacredTimeline = getattr(orches_mod, 'SacredTimeline')
 
+    logger.info("Initializing Celery app and registering tasks...")
     # Initialize Celery app
     celery_mod = importlib.import_module('tasks.celery_app')
     global _celery_app
@@ -164,6 +211,7 @@ async def _lifespan(application: FastAPI):
         llm_tool = llm_cls()
     except Exception:
         llm_tool = None
+    logger.info("Core modules imported.")
 
     # feature flag helper (populate module-level `is_enabled` so route handlers
     # can call it without requiring imports)
@@ -173,12 +221,15 @@ async def _lifespan(application: FastAPI):
     except Exception:
         is_enabled = lambda name: False
 
+    logger.info("Initializing application state components (concurrency, memory, timeline)...")
     application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents) # type: ignore
     application.state.memory = MemoryStore(collection_name=settings.memory_collection, llm_tool=llm_tool)
     application.state.timeline = SacredTimeline(
         concurrency_manager=application.state.concurrency,
         memory_store=application.state.memory,
     )
+    logger.info("Application state components initialized.")
+
     # start background media cleanup task
     async def _media_cleanup_loop():
         try:
@@ -203,6 +254,7 @@ async def _lifespan(application: FastAPI):
             return
 
     application.state.media_cleanup_task = asyncio.create_task(_media_cleanup_loop())
+    logger.info("Background media cleanup task started.")
     # attach observability endpoints and middleware (lazy import)
     try:
         obs_mod = importlib.import_module('core.observability')
@@ -210,8 +262,10 @@ async def _lifespan(application: FastAPI):
         MEDIA_SAVED = getattr(obs_mod, 'MEDIA_SAVED', None)
         REQUEST_COUNTER = getattr(obs_mod, 'REQUEST_COUNTER', None)
         observability_setup(application)
+        logger.info("Observability layer configured.")
     except Exception:
         logger.exception('Failed to initialize observability')
+
     # Register built-in tools
     try:
         tools_mod = importlib.import_module('tools.tool_registry')
@@ -233,8 +287,10 @@ async def _lifespan(application: FastAPI):
                     _register_tool(tool_cls())
             except Exception:
                 logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
+        logger.info("Built-in tools registered.")
     except Exception:
         # tools optional for minimal deployments
+        logger.warning("Could not register built-in tools.")
         pass
 
     # Load capability layers (plugins/integrations)
@@ -245,8 +301,10 @@ async def _lifespan(application: FastAPI):
         _plugin_reg = pr_mod
         if load_default_plugins:
             load_default_plugins()
+        logger.info("Plugins loaded.")
     except Exception:
         logger.exception('Failed to load plugins (continuing)')
+        _plugin_reg = None
 
     try:
         il_mod = importlib.import_module('integrations.integration_loader')
@@ -255,8 +313,10 @@ async def _lifespan(application: FastAPI):
         _intg_reg = ir_mod
         if load_default_integrations:
             load_default_integrations()
+        logger.info("Integrations loaded.")
     except Exception:
         logger.exception('Failed to load integrations (continuing)')
+        _intg_reg = None
 
     # Wire file-agent handlers and start the background task worker (optional)
     try:
@@ -266,10 +326,12 @@ async def _lifespan(application: FastAPI):
         _get_task_queue = getattr(tq_mod, 'get_queue')
         _register_task_handlers()
         await _get_task_queue().start_worker()
+        logger.info("Task worker started.")
     except Exception:
         logger.exception('Task worker not available or failed to start (continuing)')
 
     # Register routers from workstation/projects/tasks if available
+    logger.info("Registering feature routers...")
     try:
         ws_mod = importlib.import_module('workstation')
         _upload_router = getattr(ws_mod, 'upload_router', None)
@@ -303,9 +365,27 @@ async def _lifespan(application: FastAPI):
         _job_router = None
         _jobs_available = False
         _jobs_import_err_msg = str(_jobs_import_err)
-    yield
-    # ── shutdown (nothing to clean up yet) ───────────────────────────────
+    logger.info("Feature routers registered.")
 
+    logger.info("Application startup complete.")
+    yield
+    # ── shutdown ─────────────────────────────────────────────────────────
+    # Unregister from service registry
+    try:
+        await update_service_registry(status="offline")
+        logger.info("Service status updated to 'offline' in the registry.")
+    except Exception:
+        logger.exception("Failed to update service registry on shutdown.")
+
+    # Gracefully shutdown background tasks
+    if hasattr(application.state, 'media_cleanup_task'):
+        application.state.media_cleanup_task.cancel()
+    if _get_task_queue and hasattr(_get_task_queue(), 'is_running') and _get_task_queue().is_running():
+        try:
+            await _get_task_queue().stop_worker()
+            logger.info("Background task worker stopped.")
+        except Exception:
+            logger.exception("Error stopping background task worker.")
 
 app = FastAPI(lifespan=_lifespan)
 
@@ -356,10 +436,8 @@ def _expand_cors_origin_aliases(origins: list[str]) -> list[str]:
 
 def _get_cors_origins() -> list[str]:
     env_origins = _parse_cors_allow_origins(os.getenv("CORS_ALLOW_ORIGINS"))
-    if not env_origins:
-        return _DEFAULT_CORS_ORIGINS.copy()
-
-    return _expand_cors_origin_aliases(env_origins)
+    origins = env_origins if env_origins else _DEFAULT_CORS_ORIGINS
+    return _expand_cors_origin_aliases(origins)
 
 
 # CORS middleware for local React frontend on port 5173 calling backend on 8001
@@ -436,6 +514,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 class AskPayload(BaseModel):
     input: str
+
+
+class ServiceUrlPayload(BaseModel):
+    url: str
 
 
 from pydantic import model_validator
@@ -1177,10 +1259,74 @@ async def get_all_capabilities(request: Request):
     return _api_response(all_capabilities)
 
 
+# --- Service Registry Endpoints ---------------------------------------------
+
+@app.post('/api/v1/server/registry/update-url')
+async def update_server_url(payload: ServiceUrlPayload):
+    """Updates the public URL for this service in the registry."""
+    await update_service_registry(status="online", url=payload.url)
+    return _api_response({"status": "success", "message": f"Service URL updated to {payload.url}"})
+
+
+@app.get('/api/v1/server/registry/status')
+async def get_server_registry_status():
+    """Reads and returns the current service registration from Redis."""
+    try:
+        client = get_redis()
+        if not client:
+            raise HTTPException(status_code=503, detail="Service registry unavailable: Redis client not configured.")
+
+        service_key = "service:registry:concierge-backend"
+        service_data_raw = client.get(service_key)
+
+        if not service_data_raw:
+            raise HTTPException(status_code=404, detail="Service not found in registry.")
+
+        service_data = json.loads(service_data_raw)
+        return _api_response(service_data)
+    except Exception as e:
+        logger.exception("Failed to read from service registry.")
+        # Return a proper API response envelope for errors
+        resp = _api_response(None, status='error')
+        resp['errors'] = {'message': f"Failed to read from registry: {str(e)}"}
+        return JSONResponse(status_code=500, content=resp)
+
+
 # --- health endpoints ------------------------------------------------------
 @app.get('/health')
 async def health():
-    return JSONResponse(content={"status": "ok", "version": VERSION})
+    """Return 200 OK if the application's core components are initialized.
+    This endpoint is now an alias for /health/ready.
+    """
+    status = "ok"
+    messages = []
+
+    if not hasattr(app.state, 'timeline') or app.state.timeline is None:
+        status = "not ready"
+        messages.append("app.state.timeline is not initialized")
+    if not hasattr(app.state, 'memory') or app.state.memory is None:
+        status = "not ready"
+        messages.append("app.state.memory is not initialized")
+
+    return JSONResponse(content={"status": status, "version": VERSION, "messages": messages})
+
+@app.get('/health/ready')
+async def health_ready():
+    """Return 200 OK if the application's core components are initialized."""
+    status = "ok"
+    messages = []
+
+    if not hasattr(app.state, 'timeline') or app.state.timeline is None:
+        status = "not ready"
+        messages.append("app.state.timeline is not initialized")
+    if not hasattr(app.state, 'memory') or app.state.memory is None:
+        status = "not ready"
+        messages.append("app.state.memory is not initialized")
+
+    if status == "ok":
+        return JSONResponse(content={"status": "ok", "version": VERSION})
+    else:
+        return JSONResponse(status_code=503, content={"status": status, "version": VERSION, "messages": messages})
 
 @app.get('/health/system')
 async def health_system():
@@ -1307,56 +1453,41 @@ async def _health_api():
     return JSONResponse(content={"status": "ok"})
 
 
-@app.get('/assets/{path:path}', include_in_schema=False)
-async def serve_asset(path: str):
-    candidates = [
-        Path(__file__).parent / 'frontend' / 'dist' / 'assets' / path,
-        Path('/vercel/output') / 'frontend' / 'dist' / 'assets' / path,
-        Path('/vercel/output') / 'dist' / 'assets' / path,
-        Path('/vercel/output') / 'assets' / path,
+# --- SPA/Static Files Serving -----------------------------------------------
+# This logic replaces the manual /assets and /{path:path} fallbacks for better
+# consistency and robustness, using FastAPI's built-in StaticFiles.
+
+def _find_static_dir() -> Optional[Path]:
+    """Find the directory containing the built frontend assets."""
+    # Local development path from project root
+    local_path = Path(__file__).parent / 'frontend' / 'dist'
+    if local_path.exists() and (local_path / 'index.html').exists():
+        logger.info(f"Found static files for SPA at: {local_path}")
+        return local_path
+
+    # Vercel deployment paths
+    vercel_paths = [
+        Path('/vercel/output') / 'frontend' / 'dist',
+        Path('/vercel/output') / 'dist',
+        Path('/vercel/output'),
     ]
-    for candidate in candidates:
-        if candidate.exists():
-            return FileResponse(candidate)
-    raise HTTPException(status_code=404, detail='Not Found')
+    for path in vercel_paths:
+        if path.exists() and (path / 'index.html').exists():
+            logger.info(f"Found static files for SPA at: {path} (Vercel)")
+            return path
 
+    logger.warning("Built frontend directory not found. SPA serving will be disabled.")
+    return None
 
-@app.get('/{path:path}', include_in_schema=False)
-async def spa_fallback(path: str):
-    # Do not handle API, health, or media routes here.
-    if path.startswith(('api/', 'health', 'memory/', 'media/')):
-        raise HTTPException(status_code=404, detail='Not Found')
+STATIC_DIR = _find_static_dir()
 
-    # Heuristic: if path has a file extension or is in 'assets', it's a static file.
-    is_static_asset = path.startswith('assets/') or '.' in path.split('/')[-1]
-
-    if is_static_asset:
-        static_candidates = [
-            Path('/vercel/output') / 'frontend' / 'dist' / path,
-            Path('/vercel/output') / 'dist' / path,
-            Path('/vercel/output') / path,
-            Path(__file__).parent / 'frontend' / 'dist' / path,
-        ]
-        for candidate in static_candidates:
-            if candidate.exists() and candidate.is_file():
-                return FileResponse(candidate)
-        # If it looked like an asset but wasn't found, it's a 404.
-        raise HTTPException(status_code=404, detail='Static asset not found')
-
-    # Otherwise, it's a client-side route; serve the SPA entrypoint.
-    index_candidates = [
-        Path('/vercel/output') / 'frontend' / 'dist' / 'index.html',
-        Path('/vercel/output') / 'dist' / 'index.html',
-        Path('/vercel/output') / 'index.html',
-        Path(__file__).parent / 'frontend' / 'dist' / 'index.html',
-    ]
-    for candidate in index_candidates:
-        if candidate.exists():
-            return HTMLResponse(content=candidate.read_text(encoding='utf-8'), status_code=200)
-    raise HTTPException(status_code=404, detail='Not Found')
+if STATIC_DIR:
+    # This single mount replaces both `serve_asset` and `spa_fallback`.
+    # It serves static files and provides a fallback to index.html for client-side routing.
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="spa")
 
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8001")), reload=True)
+    
+    uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)

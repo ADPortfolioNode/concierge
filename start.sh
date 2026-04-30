@@ -314,6 +314,7 @@ Options:
     --install-full-reqs     install `requirements.full.txt` instead of `requirements.txt`
     --vite-api-url=<url>    pass VITE_API_URL build-arg into frontend build
     --no-docker, --local    start backend/frontend locally without Docker
+  --no-browser-open       do not automatically open the browser after startup
   -h, --help display this message
 
 Examples:
@@ -359,6 +360,7 @@ NO_DOCKER=false
 FRESH=false
 PAUSE=false
 INPUT_FLAGS=false
+NO_BROWSER_OPEN=false
 NGROK_URL_SET=false
 
 apply_arg() {
@@ -387,6 +389,7 @@ apply_arg() {
         --no-frontend) FRONTEND=false ;;
         --no-ngrok) NGROK=false ;;
         --clear) CLEAR=true ;;
+        --no-browser-open) NO_BROWSER_OPEN=true ;;
         --fresh) FRESH=true ;;
         --pause) PAUSE=true ;;
         --input-flags) INPUT_FLAGS=true ;;
@@ -422,6 +425,7 @@ fi
 echo "Startup flags:"
 echo "  PRUNE=${PRUNE} YES=${YES} BUILD=${BUILD} BUILD_DIST=${BUILD_DIST} DIAG=${DIAG} PORTS=${PORTS} LOGS=${LOGS} TEST=${TEST} STOP=${STOP}"
 echo "  FRONTEND=${FRONTEND} NGROK=${NGROK} CLEAR=${CLEAR} FRESH=${FRESH} NO_DOCKER=${NO_DOCKER}"
+echo "  NO_BROWSER_OPEN=${NO_BROWSER_OPEN}"
 echo "  DOCKER_BUILD=${DOCKER_BUILD} DOCKER_BUILDX=${DOCKER_BUILDX} PUSH_IMAGE=${PUSH_IMAGE}"
 echo "  IMAGE_TAG=${IMAGE_TAG} PLATFORMS=${PLATFORMS}"
 if [ -n "${VITE_API_URL_ARG:-}" ]; then
@@ -642,8 +646,8 @@ do_start_local() {
     if $FRONTEND; then
         write_frontend_env_for_local || true
     fi
-    start_local_backend
-    if wait_for_backend 127.0.0.1 8001 30; then
+    start_local_backend # Start the backend first
+    if wait_for_backend 127.0.0.1 8001 90; then # Increased timeout for robustness
         echo "Local backend ready."
     else
         echo "Warning: local backend did not become healthy on 127.0.0.1:8001 after first attempt." >&2
@@ -653,13 +657,14 @@ do_start_local() {
         fi
         clear_ports
         start_local_backend
-        if wait_for_backend 127.0.0.1 8001 30; then
+        if wait_for_backend 127.0.0.1 8001 90; then # Increased timeout for robustness
             echo "Local backend ready after retry."
         else
             echo "Error: local backend still did not become healthy on 127.0.0.1:8001 after retry." >&2
             show_port_status
             echo "--- tail of backend log ---" >&2
             tail -n 40 logs/backend.log >&2 || true
+            echo "Check logs/backend.log for more details on backend startup failure." >&2
             die "Local startup failed because the backend could not bind and become ready."
         fi
     fi
@@ -672,7 +677,9 @@ do_start_local() {
             echo "Warning: local frontend did not become healthy on 127.0.0.1:5173 after 30s." >&2
         fi
     fi
-    open_browser "http://localhost:5173"
+    if ! $NO_BROWSER_OPEN; then
+        open_browser "http://localhost:5173"
+    fi
     print_completion_urls
     echo "Local startup complete."
     exit 0
@@ -689,7 +696,7 @@ do_start_docker() {
         compose build || die "compose build failed"
     fi
 
-    echo "Starting services with compose up -d"
+    echo "Starting services with compose up -d (this may take a moment for all services to become healthy)"
     compose up -d || die "compose up failed"
 
     if $LOGS; then
@@ -700,11 +707,14 @@ do_start_docker() {
         echo "You can view live logs by running: tail -f start.log"
     fi
 
-    if wait_for_backend 127.0.0.1 8001 30; then
+    if wait_for_backend 127.0.0.1 8001 90; then # Increased timeout for robustness
         echo "Backend ready; starting ngrok."
     else
         echo "Backend did not become healthy; starting ngrok anyway." >&2
         show_port_status
+        echo "--- tail of app container logs ---" >&2
+        compose logs app --tail=40 >&2 || true
+        echo "Check 'docker compose logs app' for more details on backend startup failure." >&2
     fi
     start_ngrok
 
@@ -726,7 +736,9 @@ do_start_docker() {
             echo "Warning: frontend container did not become healthy on 127.0.0.1:5173 after 30s." >&2
         fi
         # check status and show logs if any container exited unexpectedly
-        open_browser "http://localhost:5173"
+        if ! $NO_BROWSER_OPEN; then
+            open_browser "http://localhost:5173"
+        fi
         for svc in app frontend; do
             # use docker ps filter to reliably detect exited containers by name
             if docker ps -a --filter "name=quesarc_${svc}" --filter "status=exited" --format '{{.Names}}' | grep -q .; then
@@ -795,116 +807,58 @@ wait_for_backend() {
     local port=${2:-8001}
     local timeout=${3:-30}
     local ticks=0
-    local preferred_path=${HEALTH_PATH:-/health}
-    local health_paths=()
     local start_time
     start_time=$(date +%s)
 
-    # Normalize paths and allow back compatible health endpoints.
-    if [ -n "$preferred_path" ]; then
-        if [[ "$preferred_path" != /* ]]; then
-            preferred_path="/${preferred_path}"
-        fi
-        health_paths+=("$preferred_path")
-    fi
-    health_paths+=("/_health" "/api/_health")
+    # Use the specific readiness endpoint. This endpoint returns a 503 until
+    # all startup components are initialized, which is the correct signal for readiness.
+    local health_paths=("/health/ready")
 
-    echo "Waiting for backend to become available on ${host}:${port}..."
-    while [ "$ticks" -lt "$timeout" ]; do
+    echo -n "Waiting for backend to become available on ${host}:${port} (timeout: ${timeout}s)"
+    while [ $(( $(date +%s) - start_time )) -lt "$timeout" ]; do # Use the passed timeout parameter
         if command -v curl >/dev/null 2>&1; then
             for path in "${health_paths[@]}"; do
                 if curl -fs "http://${host}:${port}${path}" >/dev/null 2>&1; then
-                    echo "Backend is available via ${path}."
+                    echo "" # newline after progress dots
+                    echo "Backend is available. Health check succeeded at endpoint: ${path}"
                     return 0
                 fi
             done
-        elif command -v nc >/dev/null 2>&1; then
-    # First, wait for the port to be open
-    while true; do
-        if command -v nc >/dev/null 2>&1; then
-            if nc -z "$host" "$port" >/dev/null 2>&1; then
-                echo "Backend port ${port} is open."
-                return 0
-                break
-            fi
         else
+            # Fallback to a simple socket check if curl is not available.
+            # This is less reliable as it only checks if the port is open, not if the app is ready.
             if (exec 3<>/dev/tcp/${host}/${port}) >/dev/null 2>&1; then
                 exec 3>&-
-                echo "Backend port ${port} is open."
+                echo "" # newline
+                echo "Backend port ${port} is open (basic check). Assuming ready."
                 return 0
-                break
             fi
         fi
-
-        current_time=$(date +%s)
-        if [ $((current_time - start_time)) -ge "$timeout" ]; then
-            echo "Warning: backend port did not open on ${host}:${port} after ${timeout}s." >&2
-            return 1
-        fi
+        echo -n "." # Show progress
         sleep 1
-        ticks=$((ticks + 1))
     done
 
+    echo "" # newline
     echo "Warning: backend did not become available on ${host}:${port} after ${timeout}s." >&2
-    # Now, verify critical API endpoints
-    echo "Verifying critical backend endpoints..."
-    local critical_endpoints=("/health" "/health/system" "/memory/health" "/api/v1/capabilities")
-    local all_ok=false
-    while [ $(( $(date +%s) - start_time )) -lt "$timeout" ]; do
-        all_ok=true
-        for endpoint in "${critical_endpoints[@]}"; do
-            if ! curl -fs "http://${host}:${port}${endpoint}" >/dev/null 2>&1; then
-                echo "  Endpoint ${endpoint} is not ready yet..."
-                all_ok=false
-                break
-            fi
-        done
-
-        if [ "$all_ok" = true ]; then
-            echo "All critical backend endpoints are responsive."
-            return 0
-        fi
-        sleep 2
-    done
-
-    echo "Warning: Not all critical backend endpoints became available after ${timeout}s." >&2
-    # Report which ones are still failing
-    for endpoint in "${critical_endpoints[@]}"; do
-        if ! curl -fs "http://${host}:${port}${endpoint}" >/dev/null 2>&1; then
-            echo "  Failed endpoint: http://${host}:${port}${endpoint}" >&2
-        fi
-    done
     return 1
 }
 
 wait_for_frontend() {
     local host=${1:-127.0.0.1}
-    local port=${2:-5173}
+    local port=${2:-5173} # Increased timeout for more robust startup
     local timeout=${3:-30}
-    local ticks=0
+    local start_time
+    start_time=$(date +%s)
 
     echo "Waiting for frontend to become available on ${host}:${port}..."
-    while [ "$ticks" -lt "$timeout" ]; do
+    while [ $(( $(date +%s) - start_time )) -lt "$timeout" ]; do
         if command -v curl >/dev/null 2>&1; then
             if curl -fs "http://${host}:${port}" >/dev/null 2>&1; then
                 echo "Frontend is available."
                 return 0
             fi
-        elif command -v nc >/dev/null 2>&1; then
-            if nc -z "$host" "$port" >/dev/null 2>&1; then
-                echo "Frontend port ${port} is open."
-                return 0
-            fi
-        else
-            # Fallback for very minimal environments
-            if (exec 3<>/dev/tcp/${host}/${port}) >/dev/null 2>&1; then
-                exec 3>&-
-                echo "Frontend port ${port} is open."
-                return 0
-            fi
         fi
         sleep 1
-        ticks=$((ticks + 1))
     done
 
     echo "Warning: frontend did not become available on ${host}:${port} after ${timeout}s." >&2
@@ -1055,7 +1009,6 @@ start_local_backend() {
     export PORT=8001
     export CORS_ALLOW_ORIGINS='*'
     local backend_cmd
-    set -f
     if "${py_cmd[@]}" -m uvicorn --help >/dev/null 2>&1; then
         backend_cmd=(
             "${py_cmd[@]}" -u -m uvicorn app:app
@@ -1068,9 +1021,8 @@ start_local_backend() {
     else
         backend_cmd=("${py_cmd[@]}" -u app.py)
     fi
-    set +f
 
-    echo "Starting local backend with: ${backend_cmd[*]}"
+    echo "Starting local backend with: ${backend_cmd[@]}"
     echo "  (Logs will be in logs/backend.log)"
     nohup "${backend_cmd[@]}" > logs/backend.log 2>&1 &
     BACKEND_PID=$!
@@ -1174,6 +1126,17 @@ start_ngrok() {
     local ngrok_url
     if ngrok_url=$(get_ngrok_public_url); then
         echo "Detected ngrok public URL: ${ngrok_url}"
+
+        echo "Updating service registry with ngrok URL..."
+        if command -v curl >/dev/null 2>&1; then
+            # The backend is on localhost:8001
+            curl -s -X POST http://127.0.0.1:8001/api/v1/server/registry/update-url \
+                 -H "Content-Type: application/json" \
+                 -d "{\"url\": \"${ngrok_url}\"}" > /dev/null || echo "Warning: Failed to update service registry with ngrok URL." >&2
+        else
+            echo "Warning: curl not found, cannot update service registry." >&2
+        fi
+
         if write_frontend_env "$ngrok_url"; then
             NGROK_URL_SET=true
         else

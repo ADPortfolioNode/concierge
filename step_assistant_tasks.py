@@ -12,36 +12,73 @@ from tools.llm_tool import LLMTool
 
 logger = logging.getLogger(__name__)
 
+# --- Performance Optimization ---
+# Initialize heavyweight clients once per worker process, not per task.
+# This avoids the overhead of creating new LLM and MemoryStore instances
+# for every single task, which can be a significant bottleneck.
+LLM_CLIENT = LLMTool()
+MEMORY_STORE_CLIENT = MemoryStore(llm_tool=LLM_CLIENT)
 
-def _run_agent(agent_class, thread_id, task_id, task_info, context):
-    llm = LLMTool()
-    memory = MemoryStore(llm_tool=llm)
-    agent = agent_class(memory=memory, llm=llm)
-    
+
+def _run_agent(agent_class, thread_id, task_id, task_info):
+    # Use the shared, pre-initialized clients for efficiency
+    agent = agent_class(memory=MEMORY_STORE_CLIENT, llm=LLM_CLIENT)
+
     # The agent's `execute` method is async, so we run it in an event loop.
     result = asyncio.run(agent.execute(task_info))
-    
+
     summary = result.get("summary") or result.get("output") or str(result)
-    upsert_task_node(thread_id, task_id, thread_id, progress=80, metadata={"result_summary": summary})
+    upsert_task_node(
+        thread_id,
+        task_id,
+        thread_id,
+        progress=100,
+        status="completed",
+        metadata={"result_summary": summary},
+    )
     return summary
 
 
 @celery_app.task(name="tasks.assistants.coding")
-def coding_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any], context: Dict[str, Any]):
+def coding_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any]):
     logger.info(f"[{thread_id}:{task_id}] Running CodingAgent")
-    return _run_agent(CodingAgent, thread_id, task_id, task_info, context)
+    upsert_task_node(thread_id, task_id, parent_id=thread_id, status="running", progress=15)
+    return _run_agent(CodingAgent, thread_id, task_id, task_info)
 
 
 @celery_app.task(name="tasks.assistants.research")
-def research_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any], context: Dict[str, Any]):
+def research_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any]):
     logger.info(f"[{thread_id}:{task_id}] Running ResearchAgent")
-    return _run_agent(ResearchAgent, thread_id, task_id, task_info, context)
+    upsert_task_node(thread_id, task_id, parent_id=thread_id, status="running", progress=15)
+    return _run_agent(ResearchAgent, thread_id, task_id, task_info)
 
 
 @celery_app.task(name="tasks.assistants.generic")
-def generic_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any], context: Dict[str, Any]):
+def generic_agent_task(thread_id: str, task_id: str, task_info: Dict[str, Any]):
     logger.info(f"[{thread_id}:{task_id}] Running Generic TaskAgent")
-    # TaskAgent has a different constructor
-    agent = TaskAgent(task_name=task_info.get("title"), task_input=task_info)
+    upsert_task_node(thread_id, task_id, parent_id=thread_id, status="running", progress=15)
+    # TaskAgent has a different constructor and run method
+    agent = TaskAgent(
+        task_name=task_info.get("title", "Generic Task"),
+        task_input=task_info,
+        memory=MEMORY_STORE_CLIENT,
+        llm_tool=LLM_CLIENT,
+    )
     result = asyncio.run(agent.run())
+
+    summary = result.get("output") or str(result)
+    agent_status = result.get("status")
+
+    final_status = "completed" if agent_status == "complete" else agent_status
+    final_progress = 100 if agent_status == "complete" else 80
+
+    upsert_task_node(
+        thread_id,
+        task_id,
+        thread_id,
+        progress=final_progress,
+        status=final_status,
+        metadata={"result_summary": summary},
+    )
+
     return result.get("output")
