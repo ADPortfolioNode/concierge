@@ -692,11 +692,13 @@ do_start_docker() {
     fi
 
     if $BUILD; then
-        echo "Building containers before start..."
+        echo "--- Building Docker Containers ---"
         compose build || die "compose build failed"
+        echo "--- Docker Containers Built ---"
     fi
 
     echo "Starting services with compose up -d (this may take a moment for all services to become healthy)"
+    echo "--- Starting Docker Services ---"
     compose up -d || die "compose up failed"
 
     if $LOGS; then
@@ -707,6 +709,7 @@ do_start_docker() {
         echo "You can view live logs by running: tail -f start.log"
     fi
 
+    echo "--- Waiting for Backend ---"
     if wait_for_backend 127.0.0.1 8001 90; then # Increased timeout for robustness
         echo "Backend ready; starting ngrok."
     else
@@ -716,12 +719,14 @@ do_start_docker() {
         compose logs app --tail=40 >&2 || true
         echo "Check 'docker compose logs app' for more details on backend startup failure." >&2
     fi
+    echo "--- Starting Ngrok ---"
     start_ngrok
 
     if $FRONTEND; then
         if ! $NGROK_URL_SET; then
             write_frontend_env_for_docker || true
         fi
+        echo "--- Installing Frontend Dependencies ---"
         install_frontend_dependencies "$FRESH"
         echo "Starting frontend container via docker-compose"
         # Ensure the frontend container is built if not already
@@ -730,6 +735,7 @@ do_start_docker() {
             compose build frontend || true # Build only frontend if not a full build
         fi
         compose up -d frontend || die "failed to start frontend container"
+        echo "--- Waiting for Frontend ---"
         if wait_for_frontend 127.0.0.1 5173 30; then
             echo "Frontend container ready."
         else
@@ -850,17 +856,21 @@ wait_for_frontend() {
     local start_time
     start_time=$(date +%s)
 
-    echo "Waiting for frontend to become available on ${host}:${port}..."
+    echo -n "Waiting for frontend to become available on ${host}:${port} (timeout: ${timeout}s)"
+    # TODO: For more robust readiness, consider checking a specific frontend readiness endpoint or a unique string in the HTML.
     while [ $(( $(date +%s) - start_time )) -lt "$timeout" ]; do
         if command -v curl >/dev/null 2>&1; then
             if curl -fs "http://${host}:${port}" >/dev/null 2>&1; then
+                echo "" # newline
                 echo "Frontend is available."
                 return 0
             fi
         fi
+        echo -n "." # Show progress
         sleep 1
     done
 
+    echo "" # newline
     echo "Warning: frontend did not become available on ${host}:${port} after ${timeout}s." >&2
     return 1
 }
@@ -1003,6 +1013,7 @@ start_local_backend() {
     local py
     local py_cmd
     py=$(find_python) || die "Python 3 is required for local backend startup"
+    echo "Using Python executable: $py"
     IFS=' ' read -r -a py_cmd <<< "$py"
     mkdir -p logs
 
@@ -1010,21 +1021,28 @@ start_local_backend() {
     export CORS_ALLOW_ORIGINS='*'
     local backend_cmd
     if "${py_cmd[@]}" -m uvicorn --help >/dev/null 2>&1; then
+        local uvicorn_opts=(--host 127.0.0.1 --port 8001 --reload)
+        local reload_excludes=(
+            "frontend/node_modules/*"
+            "frontend/.venv/*"
+            "frontend/.git/*"
+            "logs/*"
+        )
+        for exclude in "${reload_excludes[@]}"; do
+            uvicorn_opts+=(--reload-exclude "$exclude")
+        done
+        echo "Uvicorn command detected."
         backend_cmd=(
-            "${py_cmd[@]}" -u -m uvicorn app:app
-            --host 127.0.0.1 --port 8001 --reload
-            --reload-exclude "frontend/node_modules/*"
-            --reload-exclude "frontend/.venv/*"
-            --reload-exclude "frontend/.git/*"
-            --reload-exclude "logs/*"
+            "${py_cmd[@]}" -u -m uvicorn app:app "${uvicorn_opts[@]}"
         )
     else
-        backend_cmd=("${py_cmd[@]}" -u app.py)
+        die "Uvicorn not found or not runnable via '${py} -m uvicorn'. Please install it (e.g., 'pip install uvicorn' or 'pip install -r requirements.txt')."
     fi
-
+    
     echo "Starting local backend with: ${backend_cmd[@]}"
     echo "  (Logs will be in logs/backend.log)"
     nohup "${backend_cmd[@]}" > logs/backend.log 2>&1 &
+    sleep 2 # Give the backend a moment to start and write initial logs
     BACKEND_PID=$!
     echo "Local backend started with PID ${BACKEND_PID}; logs are in logs/backend.log"
 }
@@ -1090,11 +1108,11 @@ install_frontend_dependencies() {
     if frontend_needs_install; then
         if [ -f "frontend/package-lock.json" ]; then
             echo "Installing frontend dependencies via npm ci..."
-            if ! npm --prefix frontend ci --no-audit --no-fund --loglevel=error; then
+            if ! npm --prefix frontend ci --no-audit --no-fund; then
                 echo "npm ci failed; attempting npm install fallback" >&2
                 cleanup_frontend_node_modules
-                npm --prefix frontend cache clean --force --loglevel=error >/dev/null 2>&1 || true
-                npm --prefix frontend install --no-audit --no-fund --loglevel=error || die "npm install failed"
+                npm --prefix frontend cache clean --force >/dev/null 2>&1 || true
+                npm --prefix frontend install --no-audit --no-fund || die "npm install failed"
             fi
         else
             echo "Installing frontend dependencies via npm install..."

@@ -71,36 +71,42 @@ main {
 /* responsive layout grid */
 .app-container {
   display: grid;
-  /* Mobile: single column, 3 rows — header | content | chat */
-  min-height: 100vh;
+  /* Mobile: single column, 3 rows — header | content | chat bottom sheet */
+  min-height: 100dvh;
   grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(0, 1fr) minmax(260px, 45vh);
-  max-height: -webkit-fill-available;
+  grid-template-rows: auto minmax(0, 1fr) minmax(320px, 45dvh);
 }
 .app-header {
   grid-column: 1 / -1;
   grid-row: 1;
   position: sticky;
   top: 0;
-  z-index: 30;
-  background: var(--color-bg-primary, #0b0b0b);
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  z-index: 40;
+  background: rgba(11, 11, 11, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .app-header .header-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px var(--space-4);
-  gap: 16px;
+  padding: 10px 16px;
+  gap: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 /* nav links */
 .app-header a {
   color: rgba(255,255,255,0.5);
   text-decoration: none;
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
-  padding: 3px 0;
+  padding: 6px 2px;
   border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
@@ -114,9 +120,25 @@ main {
 }
 .header-nav {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 16px;
   align-items: center;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, black 90%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 90%, transparent 100%);
+}
+.header-nav::-webkit-scrollbar {
+  display: none;
+}
+.nav-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255,255,255,0.12);
+  display: inline-block;
+  flex-shrink: 0;
+  margin: 0 2px;
 }
 /* Mobile: page content in row 2, chat below in row 3 */
 .context-panel {
@@ -131,16 +153,36 @@ main {
   grid-row: 3;
   grid-column: 1;
   overflow: hidden;
-  min-height: 260px;
-  border-top: 1px solid rgba(255,255,255,0.06);
+  min-height: 320px;
   display: flex;
   flex-direction: column;
-  max-height: 45vh;
+  max-height: 45dvh;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255,255,255,0.12);
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.4);
+  z-index: 20;
+  position: relative;
+}
+.concierge-panel::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.15);
+  z-index: 10;
 }
 /* Tablet/Desktop 768 px+: 2-column side-by-side layout */
 @media (min-width: 768px) {
   .app-container {
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 320px 1fr;
     grid-template-rows: auto 1fr;  /* back to 2 rows */
   }
   .app-header {
@@ -152,17 +194,28 @@ main {
     grid-row: 2;
     border-top: none;
     border-right: 1px solid rgba(255,255,255,0.06);
+    border-radius: 0;
+    box-shadow: none;
+    background: #0d0d0d;
+    max-height: none;
+  }
+  .concierge-panel::before {
+    display: none;
   }
   .context-panel {
     grid-column: 2;
     grid-row: 2;
     padding: 0;
   }
+  .header-nav {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
 }
 
 @media (min-width: 1280px) {
   .app-container {
-    grid-template-columns: 340px 1fr;
+    grid-template-columns: 360px 1fr;
   }
 }
 
@@ -177,18 +230,19 @@ main {
 }
 
 @media (max-width: 640px) {
-  .app-header .header-inner {
-    padding: 12px 14px;
+  .nav-sep {
+    display: none;
   }
-
-  .app-header a {
-    white-space: normal;
-    font-size: 13px;
+  .app-header .header-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 16px 0;
   }
 
   .header-nav {
-    justify-content: center;
-    gap: 8px 10px;
+    width: 100%;
+    padding-bottom: 12px;
   }
 }
 
@@ -1290,22 +1344,6 @@ h1, h2, h3, h4, h5, h6 {
 @media (max-width: 640px) {
   .timeline-task-grid {
     padding-left: 22px;
-  }
-}
-
-@media (max-width: 640px) {
-  .app-header .header-inner {
-    padding: 12px 14px;
-  }
-
-  .app-header a {
-    white-space: normal;
-    font-size: 13px;
-  }
-
-  .header-nav {
-    justify-content: center;
-    gap: 8px 10px;
   }
 }
 
