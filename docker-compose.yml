@@ -30,13 +30,11 @@ services:
           - backend
     volumes:
       - .:/app
-      # ChromaDB persistent volume locked in — data survives container restarts
-      - chroma_data:/app/chroma
     depends_on:
       chroma:
-        condition: service_healthy
+        condition: service_started
       qdrant:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     environment:
@@ -48,8 +46,9 @@ services:
       - MEMORY_COMPRESS_THRESHOLD=999999
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
-      # ChromaDB persistence directory — mapped to the chroma_data named volume
-      - CHROMA_PATH=/app/chroma
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - PORT=8001
       - BACKEND_URL=http://backend:8001
       # Backend listens on 8001 in the container to avoid localhost:8000 conflicts
@@ -69,8 +68,10 @@ services:
     volumes:
       - .:/app
     depends_on:
-      - redis
-      - app
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
     environment:
       # Environment must match the `app` service for agents to work
       - VECTOR_DB=${VECTOR_DB:-chroma}
@@ -80,6 +81,9 @@ services:
       - QDRANT_PORT=6333
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
     restart: unless-stopped
@@ -106,14 +110,16 @@ services:
       - "8000:8000"
     environment:
       - CHROMA_SERVER_ALLOW_ORIGIN=*
-    # A more robust healthcheck that hits the ChromaDB heartbeat API endpoint.
-    # The official ChromaDB image does not include curl or wget, so a Python HTTP client is used.
+    volumes:
+      # ChromaDB persistent volume locked in — data survives container restarts
+      - chroma_data:/chroma/chroma
+    # A robust healthcheck that hits the ChromaDB heartbeat API endpoint.
     healthcheck:
-      test: ["CMD", "python", "-c", "import http.client, sys; try: conn = http.client.HTTPConnection('localhost', 8000, timeout=1); conn.request('GET', '/api/v1/heartbeat'); response = conn.getresponse(); sys.exit(0) if response.status == 200 else sys.exit(1); finally: conn.close()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 45s
 
   frontend:
     # containerized development server for React frontend. we mount the
@@ -131,14 +137,14 @@ services:
       - frontend_node_modules:/app/node_modules
     environment:
       - IN_DOCKER=true
-      - VITE_BACKEND_URL=http://backend:8001
-      - BACKEND_URL=http://backend:8001
-    # Always run `npm ci` first to ensure dependencies in the container's
+      - VITE_BACKEND_URL=http://localhost:8001
+      - BACKEND_URL=http://localhost:8001
+    # Always run `npm install` first to ensure dependencies in the container's
     # node_modules volume are correct. Then, launch the Vite dev server.
     # We pass `--host` to ensure Vite listens on all network interfaces
     # (0.0.0.0), making it accessible from the host machine via the
     # published port. This enables hot-reloading for development.
-    command: ["sh","-c","npm ci && npm run dev -- --host"]
+    command: ["sh","-c","npm install && npm run dev -- --host"]
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -148,7 +154,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/readyz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

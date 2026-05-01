@@ -441,10 +441,11 @@ def _get_cors_origins() -> list[str]:
 
 
 # CORS middleware for local React frontend on port 5173 calling backend on 8001
+cors_origins = _get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_get_cors_origins(),
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=False if "*" in cors_origins else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -838,6 +839,11 @@ async def concierge_timeline():
         logger.exception('Failed to fetch timeline plan')
         return _api_response({'error': 'timeline plan unavailable'}, status='error')
 
+@app.get('/api/tasks/status')
+async def alias_list_tasks():
+    """Alias returning all current tasks and their real status."""
+    return await list_tasks()
+
 @app.get('/api/v1/tasks')
 async def list_tasks():
     try:
@@ -862,6 +868,11 @@ async def list_tasks():
     except Exception:
         logger.exception('Failed to fetch task list')
         return _api_response({'error': 'task list unavailable'}, status='error')
+
+@app.post('/api/tasks/kill/{task_id}')
+async def alias_kill_task(task_id: str):
+    """Alias to kill hanging tasks."""
+    return await kill_task(task_id)
 
 @app.post('/api/v1/tasks/{task_id}/kill')
 async def kill_task(task_id: str):
@@ -912,7 +923,7 @@ async def concierge_timeline_graph():
 
 
 @app.get('/api/v1/concierge/timeline/stream')
-async def concierge_timeline_stream(thread_id: Optional[str] = None):
+async def concierge_timeline_stream(request: Request, thread_id: Optional[str] = None):
     """Server-Sent Events endpoint streaming timeline updates in real-time.
 
     Each event is a structured delta object and may include visual graph hints
@@ -920,7 +931,11 @@ async def concierge_timeline_stream(thread_id: Optional[str] = None):
     and plan metadata.
     This endpoint now streams task tree updates from Redis Pub/Sub.
     """
-    thread_id = request.query_params.get("thread_id")
+    thread_id = request.query_params.get("thread_id") or thread_id
+    try:
+        from jobs.task_tree_store import get_task_update_pubsub
+    except ImportError:
+        from tasks.task_tree_store import get_task_update_pubsub
     async def event_generator():
         pubsub = get_task_update_pubsub(thread_id)
         try:
@@ -950,6 +965,10 @@ async def concierge_timeline_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="thread_id is required")
         return
 
+    try:
+        from jobs.task_tree_store import get_task_update_pubsub
+    except ImportError:
+        from tasks.task_tree_store import get_task_update_pubsub
     pubsub = get_task_update_pubsub(thread_id)
     try:
         while True:

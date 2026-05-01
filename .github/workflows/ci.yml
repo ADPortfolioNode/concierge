@@ -51,9 +51,9 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          nohup python -m uvicorn app:app --host 0.0.0.0 --port 8001 &> uvicorn.log &
+          nohup python -m uvicorn app:app --host 0.0.0.0 --port 8001 &> uvicorn.log & # Consider adding --reload-exclude for node_modules here if running locally
           for i in {1..30}; do
-            if curl -sSf http://localhost:8001/health; then
+            if curl -fsS http://localhost:8001/health/ready; then # Use /health/ready for more accurate readiness check
               echo "backend healthy"; break
             fi
             sleep 1
@@ -109,7 +109,7 @@ jobs:
         run: |
           docker run -d --name concierge_test -p 8002:8001 concierge:test
           for i in {1..30}; do
-            if curl -sSf http://localhost:8002/health; then
+            if curl -fsS http://localhost:8002/health/ready; then # Use /health/ready for more accurate readiness check
               echo "container healthy"; break
             fi
             sleep 1

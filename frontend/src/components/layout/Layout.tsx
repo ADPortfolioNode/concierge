@@ -6,6 +6,7 @@ import ErrorBanner from '../ui/ErrorBanner';
 // ── nav group separator ───────────────────────────────────────────────────
 const NavSep: React.FC = () => (
   <span aria-hidden="true" style={{ width: 1, height: 16, background: 'rgba(255,255,255,0.1)', display: 'inline-block', flexShrink: 0 }} />
+  <span className="nav-sep" aria-hidden="true" />
 );
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -15,9 +16,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <header className="app-header">
         <div className="header-inner">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <NavLink to="/" end style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
               <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" className="brand-logo" style={{ height: 26 }} />
               <span style={{ color: '#c4b8ff', fontWeight: 800, fontSize: 15, letterSpacing: '-0.01em' }}>Concierge</span>
+              <span style={{ color: '#f8fafc', fontWeight: 800, fontSize: 17, letterSpacing: '-0.02em' }}>Concierge</span>
             </NavLink>
           </div>
 

@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional, Tuple
 import logging
 import asyncio
 import time
+import uuid
 from collections import deque
 
 from agents.planner import Planner
@@ -505,16 +506,21 @@ class SacredTimeline:
         # Shared context for all tasks in the chain
         context = {"goal": goal}
 
-        # Create a chain of Celery tasks for sequential execution
+        # Create a chain of Celery tasks for sequential execution.
+        # We use `.si()` (immutable signature) instead of `.s()` to prevent Celery 
+        # from implicitly passing the return value of one task as the first argument 
+        # to the next task. This ensures the tasks run sequentially and hand off 
+        # cleanly without throwing a TypeError that leaves tasks stuck in "pending".
+        logger.info("Creating sequential task chain for %d tasks...", len(sorted_tasks))
         task_chain = chain(
-            execute_step_task.s(task=task, thread_id=thread_id, context=context)
+            execute_step_task.si(task=task, thread_id=thread_id, context=context)
             for task in sorted_tasks
         )
 
         # Execute the chain asynchronously
-        task_chain.apply_async()
+        result = task_chain.apply_async()
 
-        logger.info("Dispatched task chain for thread_id: %s", thread_id)
+        logger.info("Dispatched task chain for thread_id: %s (Celery Chain ID: %s)", thread_id, result.id)
 
         # This Celery task now only sets up the chain. The return value is
         # less critical as the client will monitor the task tree via WebSocket.
@@ -769,47 +775,6 @@ class SacredTimeline:
         except Exception:
             # As a last resort, return a 1x1 transparent PNG (avoid 500)
             return b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc``\x00\x00\x00\x04\x00\x01\x0e\x11\x02\xb5\x00\x00\x00\x00IEND\xaeB`\x82'
-        if 'last_evaluation' in locals() and last_evaluation is not None:
-            if isinstance(last_evaluation, dict):
-                eval_out = last_evaluation
-            else:
-                eval_out = {"decision": last_evaluation}
-        result_out: Dict[str, Any] = {"status": status_out if 'status_out' in locals() else "success", "goal": goal, "task_map": serializable_map, "final": final_result, "evaluation": eval_out}
-        # append any information about the LLM provider that was used, as well
-        # as any fallback notice (error message).  This makes it easy for
-        # callers (and the frontend) to display which service generated the
-        # text and whether a failover occurred.
-        llm_provider = getattr(self._llm, "last_provider", None)
-        if llm_provider:
-            result_out["llm_provider"] = llm_provider
-        if getattr(self._llm, "last_fallback", None):
-            result_out["llm_error"] = self._llm.last_fallback
-        # attach reflection flag if available
-        if 'context' in locals():
-            result_out["reflection_reused"] = context.get("reflection_reused", False)
-        # queued notice override if present (should generally be None)
-        if queued_notice:
-            result_out.setdefault("notice", queued_notice)
-        # add any user notices collected by the LLM tool
-        if getattr(self._llm, "last_fallback", None):
-            notice = f"Note: {self._llm.last_fallback}."
-            result_out.setdefault("notice", notice)
-            # track that we had to fail over
-            self.metrics.failovers += 1
-
-        # surface the final summary as a top-level "response" field so app.py
-        # and other callers don't need to dig into the nested "final" dict.
-        _final_summary = ""
-        if isinstance(final_result, dict):
-            _final_summary = final_result.get("summary") or ""
-        result_out["response"] = _final_summary or str(final_result)
-        if thread_id:
-            # housekeeping: prune low-confidence graph entries after run
-            try:
-                self._memory.prune_graph()
-            except Exception:
-                logger.exception("Pruning graph failed")
-        return result_out
 
     async def stream_user_input(self, user_input: str, thread_id: Optional[str] = None):
         """
