@@ -1,5 +1,8 @@
-import matplotlib
+try:
+    import matplotlib
 
-# Use a non-interactive backend for matplotlib during tests to avoid
-# GUI/Tkinter issues in CI and headless environments.
-matplotlib.use('Agg')
+    # Use a non-interactive backend for matplotlib during tests to avoid
+    # GUI/Tkinter issues in CI and headless environments.
+    matplotlib.use('Agg')
+except ImportError:
+    pass
