@@ -354,10 +354,15 @@ const AgenticThreadCanvas: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, [resizeCanvas]);
 
+  const drawSceneRef = useRef(drawScene);
+  useEffect(() => {
+    drawSceneRef.current = drawScene;
+  }, [drawScene]);
+
   useEffect(() => {
     const loop = () => {
       particleFrame.current += 1;
-      drawScene();
+      drawSceneRef.current();
       rafId.current = window.requestAnimationFrame(loop);
     };
     rafId.current = window.requestAnimationFrame(loop);
@@ -366,7 +371,7 @@ const AgenticThreadCanvas: React.FC = () => {
         window.cancelAnimationFrame(rafId.current);
       }
     };
-  }, [drawScene]);
+  }, []);
 
   const connectTimelineStream = useCallback(
     (threadId: string, onEvent: (payload: TimelineEventPayload) => void) => {
@@ -634,12 +639,14 @@ const AgenticThreadCanvas: React.FC = () => {
     (event: React.PointerEvent<HTMLDivElement>) => {
       const point = transformPoint(event.clientX, event.clientY);
       const hoverId = findNodeAtPoint(point);
-      setHoveredNodeId(hoverId);
+      setHoveredNodeId((prev) => (prev !== hoverId ? hoverId : prev));
       if (isPanning && lastPointer.current) {
         const dx = event.clientX - lastPointer.current.x;
         const dy = event.clientY - lastPointer.current.y;
-        setViewState((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
-        lastPointer.current = { x: event.clientX, y: event.clientY };
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          setViewState((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+          lastPointer.current = { x: event.clientX, y: event.clientY };
+        }
       }
     },
     [findNodeAtPoint, isPanning, transformPoint]
