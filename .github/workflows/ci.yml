@@ -40,7 +40,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install flake8
-          flake8 --max-line-length=120 .
+          python -c "import sys; sys.setrecursionlimit(2000); from flake8.main.cli import main; main(['--verbose', '.'])"
 
       - name: Run unit tests
         env:
