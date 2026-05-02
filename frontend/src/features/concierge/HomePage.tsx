@@ -63,7 +63,7 @@ const USE_CASES = [
     prompts: [
       "I've uploaded a PDF spec — summarise the authentication requirements.",
       'Attach the financial model CSV to the Q2 Planning project.',
-      'Transcribe the audio file I uploaded and summarise it.',
+      'What does the attached document say about project milestones?',
     ],
   },
 ];

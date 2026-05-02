@@ -58,7 +58,7 @@ import httpx
 import hashlib
 import re
 from datetime import datetime 
-from jobs.task_tree_store import get_redis, get_task_tree
+from task_tree_store import get_redis, get_task_tree
 
 # Defer heavy/optional imports to runtime to keep module imports small for
 # serverless builds. Populate these in the lifespan startup.
@@ -157,6 +157,17 @@ async def update_service_registry(status: str, url: Optional[str] = None):
             service_data["url"] = SERVER_URL # Use the globally defined SERVER_URL
 
         client.set(service_key, json.dumps(service_data))
+        
+        # --- Unified CORS Registry ---
+        # Announce this server's URL to the site-wide dynamic CORS registry
+        if service_data.get("url"):
+            client.sadd("cors:allowed_origins", service_data["url"].rstrip('/'))
+            
+        # Seed explicitly configured origins (like frontend) into the mesh
+        if status == "online":
+            for default_origin in _get_cors_origins():
+                client.sadd("cors:allowed_origins", default_origin.rstrip('/'))
+                
         logger.info(f"Updated service registry with status '{status}' and URL '{service_data.get('url')}'.")
 
     except Exception:
@@ -175,6 +186,7 @@ SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8001')
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
     # ── startup ──────────────────────────────────────────────────────────
+    _total_start = time.time()
     logger.info("Application startup sequence initiated...")
     application.state.start_time = time.time()
     application.state.conversation = []  # in-memory history; cleared on restart
@@ -182,6 +194,7 @@ async def _lifespan(application: FastAPI):
     global is_enabled
     # late-import configuration and core components
     logger.info("Importing core modules...")
+    _step_t0 = time.time()
     cfg_mod = importlib.import_module('config.settings')
     settings = cfg_mod.get_settings()
 
@@ -191,18 +204,24 @@ async def _lifespan(application: FastAPI):
     memory_mod = importlib.import_module('memory.memory_store')
     MemoryStore = getattr(memory_mod, 'MemoryStore')
 
-    orches_mod = importlib.import_module('orchestration.sacred_timeline')
-    SacredTimeline = getattr(orches_mod, 'SacredTimeline')
+    try:
+        orches_mod = importlib.import_module('orchestration.sacred_timeline')
+        SacredTimeline = getattr(orches_mod, 'SacredTimeline')
+    except Exception:
+        logger.exception("Isolated startup issue: Failed to import orchestration.sacred_timeline")
+        SacredTimeline = None
 
     logger.info("Initializing Celery app and registering tasks...")
     # Initialize Celery app
-    celery_mod = importlib.import_module('tasks.celery_app')
-    global _celery_app
-    _celery_app = getattr(celery_mod, 'celery_app')
-    # Import tasks to register them with Celery
-    importlib.import_module('tasks.main_tasks')
-    importlib.import_module('tasks.step_assistant_tasks')
-    importlib.import_module('tasks.step_assistant_tasks')
+    try:
+        celery_mod = importlib.import_module('tasks.celery_app')
+        global _celery_app
+        _celery_app = getattr(celery_mod, 'celery_app')
+        # Import tasks to register them with Celery
+        importlib.import_module('tasks.main_tasks')
+        importlib.import_module('tasks.step_assistant_tasks')
+    except Exception:
+        logger.exception("Isolated startup issue: Failed to load Celery app or tasks")
     # optional LLM wrapper for memory embedding support
     llm_tool = None
     try:
@@ -211,10 +230,11 @@ async def _lifespan(application: FastAPI):
         llm_tool = llm_cls()
     except Exception:
         llm_tool = None
-    logger.info("Core modules imported.")
+    logger.info(f"Core modules imported in {time.time() - _step_t0:.3f}s.")
 
     # feature flag helper (populate module-level `is_enabled` so route handlers
     # can call it without requiring imports)
+    _step_t0 = time.time()
     try:
         ff_mod = importlib.import_module('core.feature_flags')
         is_enabled = getattr(ff_mod, 'is_enabled')
@@ -222,15 +242,17 @@ async def _lifespan(application: FastAPI):
         is_enabled = lambda name: False
 
     logger.info("Initializing application state components (concurrency, memory, timeline)...")
-    application.state.concurrency = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents) # type: ignore
     application.state.memory = MemoryStore(collection_name=settings.memory_collection, llm_tool=llm_tool)
-    application.state.timeline = SacredTimeline(
-        concurrency_manager=application.state.concurrency,
-        memory_store=application.state.memory,
-    )
-    logger.info("Application state components initialized.")
+    if SacredTimeline:
+        application.state.timeline = SacredTimeline(
+            memory_store=application.state.memory,
+        )
+    else:
+        application.state.timeline = None
+    logger.info(f"Application state components initialized in {time.time() - _step_t0:.3f}s.")
 
     # start background media cleanup task
+    _step_t0 = time.time()
     async def _media_cleanup_loop():
         try:
             media_images = settings.media_images_dir
@@ -254,7 +276,6 @@ async def _lifespan(application: FastAPI):
             return
 
     application.state.media_cleanup_task = asyncio.create_task(_media_cleanup_loop())
-    logger.info("Background media cleanup task started.")
     # attach observability endpoints and middleware (lazy import)
     try:
         obs_mod = importlib.import_module('core.observability')
@@ -262,11 +283,12 @@ async def _lifespan(application: FastAPI):
         MEDIA_SAVED = getattr(obs_mod, 'MEDIA_SAVED', None)
         REQUEST_COUNTER = getattr(obs_mod, 'REQUEST_COUNTER', None)
         observability_setup(application)
-        logger.info("Observability layer configured.")
     except Exception:
         logger.exception('Failed to initialize observability')
+    logger.info(f"Background tasks & observability configured in {time.time() - _step_t0:.3f}s.")
 
     # Register built-in tools
+    _step_t0 = time.time()
     try:
         tools_mod = importlib.import_module('tools.tool_registry')
         _register_tool = getattr(tools_mod, 'register_tool')
@@ -287,13 +309,14 @@ async def _lifespan(application: FastAPI):
                     _register_tool(tool_cls())
             except Exception:
                 logger.exception("Failed to register built-in tool %r", tool_cls.__name__)
-        logger.info("Built-in tools registered.")
     except Exception:
         # tools optional for minimal deployments
         logger.warning("Could not register built-in tools.")
         pass
+    logger.info(f"Built-in tools registered in {time.time() - _step_t0:.3f}s.")
 
     # Load capability layers (plugins/integrations)
+    _step_t0 = time.time()
     try:
         pl_mod = importlib.import_module('plugins.plugin_loader')
         load_default_plugins = getattr(pl_mod, 'load_default_plugins')
@@ -301,7 +324,6 @@ async def _lifespan(application: FastAPI):
         _plugin_reg = pr_mod
         if load_default_plugins:
             load_default_plugins()
-        logger.info("Plugins loaded.")
     except Exception:
         logger.exception('Failed to load plugins (continuing)')
         _plugin_reg = None
@@ -313,12 +335,13 @@ async def _lifespan(application: FastAPI):
         _intg_reg = ir_mod
         if load_default_integrations:
             load_default_integrations()
-        logger.info("Integrations loaded.")
     except Exception:
         logger.exception('Failed to load integrations (continuing)')
         _intg_reg = None
+    logger.info(f"Capabilities & integrations loaded in {time.time() - _step_t0:.3f}s.")
 
     # Wire file-agent handlers and start the background task worker (optional)
+    _step_t0 = time.time()
     try:
         tw_mod = importlib.import_module('tasks.task_worker')
         _register_task_handlers = getattr(tw_mod, 'register_default_handlers') # type: ignore
@@ -326,12 +349,13 @@ async def _lifespan(application: FastAPI):
         _get_task_queue = getattr(tq_mod, 'get_queue')
         _register_task_handlers()
         await _get_task_queue().start_worker()
-        logger.info("Task worker started.")
     except Exception:
         logger.exception('Task worker not available or failed to start (continuing)')
+    logger.info(f"Task worker started in {time.time() - _step_t0:.3f}s.")
 
     # Register routers from workstation/projects/tasks if available
     logger.info("Registering feature routers...")
+    _step_t0 = time.time()
     try:
         ws_mod = importlib.import_module('workstation')
         _upload_router = getattr(ws_mod, 'upload_router', None)
@@ -365,9 +389,15 @@ async def _lifespan(application: FastAPI):
         _job_router = None
         _jobs_available = False
         _jobs_import_err_msg = str(_jobs_import_err)
-    logger.info("Feature routers registered.")
+    logger.info(f"Feature routers registered in {time.time() - _step_t0:.3f}s.")
 
-    logger.info("Application startup complete.")
+    logger.info(f"Application startup complete in {time.time() - _total_start:.3f}s total.")
+    
+    try:
+        await update_service_registry(status="online")
+    except Exception:
+        logger.exception("Failed to announce service online status during startup.")
+        
     yield
     # ── shutdown ─────────────────────────────────────────────────────────
     # Unregister from service registry
@@ -398,6 +428,8 @@ from fastapi.middleware.cors import CORSMiddleware
 _DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "https://deoismconcierge.vercel.app",
     "https://deoismconcierge-adportfolionodes-projects.vercel.app",
 ]
@@ -440,15 +472,41 @@ def _get_cors_origins() -> list[str]:
     return _expand_cors_origin_aliases(origins)
 
 
-# CORS middleware for local React frontend on port 5173 calling backend on 8001
 cors_origins = _get_cors_origins()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=False if "*" in cors_origins else True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+_dynamic_cors_cache: set[str] = set()
+_dynamic_cors_last_sync: float = 0.0
+
+class DynamicCORSMiddleware(CORSMiddleware):
+    """Industry-standard unified registry CORS middleware.
+    Validates against static rules first, then queries the unified Redis registry
+    to allow distributed servers to dynamically register valid origins site-wide."""
+    def is_allowed_origin(self, origin: str) -> bool:
+        if super().is_allowed_origin(origin):
+            return True
+        
+        global _dynamic_cors_cache, _dynamic_cors_last_sync
+        now = time.time()
+        if now - _dynamic_cors_last_sync > 30:  # 30-second TTL for registry sync
+            try:
+                from jobs.task_tree_store import get_redis
+                client = get_redis()
+                if client:
+                    dynamic_origins = client.smembers("cors:allowed_origins")
+                    if dynamic_origins:
+                        new_cache = set()
+                        for b_orig in dynamic_origins:
+                            o = b_orig.decode('utf-8') if isinstance(b_orig, bytes) else str(b_orig)
+                            new_cache.add(o)
+                            alias = _LOCALHOST_CORS_ALIASES.get(o)
+                            if alias:
+                                new_cache.add(alias)
+                        _dynamic_cors_cache = new_cache
+                    _dynamic_cors_last_sync = now
+            except Exception as e:
+                logger.debug(f"Failed to sync dynamic CORS origins from registry: {e}")
+
+        return origin in _dynamic_cors_cache
 
 # Serve generated media (images/audio/video) from /media
 try:
@@ -495,6 +553,16 @@ async def log_requests(request: Request, call_next):
         logger.exception("Unhandled error in request middleware for %s %s", request.method, request.url)
         raise
 
+# CORS middleware MUST be added after @app.middleware so it is the outermost layer.
+# This prevents other middlewares from intercepting errors and dropping CORS headers.
+app.add_middleware(
+    DynamicCORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=False if "*" in cors_origins else True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 # Global exception handler that returns the ApiResponse envelope with error details
 @app.exception_handler(Exception)
@@ -847,8 +915,8 @@ async def alias_list_tasks():
 @app.get('/api/v1/tasks')
 async def list_tasks():
     try:
-        from tasks.task_tree_store import get_redis, get_task_tree_key
-        client = get_redis() # This get_redis is from jobs.task_tree_store, not tasks.task_tree_store
+        from task_tree_store import get_redis
+        client = get_redis()
         task_keys = list(client.scan_iter(match='task_tree:*', count=100))
         tasks = []
         for key in task_keys: # type: ignore
@@ -879,10 +947,12 @@ async def kill_task(task_id: str):
     """Endpoint to kill a running Celery task."""
     if _celery_app is None:
         raise HTTPException(status_code=503, detail="Celery app not initialized.")
+
+    from task_tree_store import update_task_node
+
     try:
         # Revoke the task, terminating it immediately
         _celery_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
-        from tasks.task_tree_store import update_task_node
         # Update the task status in the task tree
         # Note: task_id is used as thread_id here if it's a root task, otherwise it's the actual task_id
         # A more robust solution might involve finding the thread_id associated with the task_id first.
@@ -932,10 +1002,8 @@ async def concierge_timeline_stream(request: Request, thread_id: Optional[str] =
     This endpoint now streams task tree updates from Redis Pub/Sub.
     """
     thread_id = request.query_params.get("thread_id") or thread_id
-    try:
-        from jobs.task_tree_store import get_task_update_pubsub
-    except ImportError:
-        from tasks.task_tree_store import get_task_update_pubsub
+    from task_tree_store import get_task_update_pubsub
+    
     async def event_generator():
         pubsub = get_task_update_pubsub(thread_id)
         try:
@@ -965,10 +1033,8 @@ async def concierge_timeline_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="thread_id is required")
         return
 
-    try:
-        from jobs.task_tree_store import get_task_update_pubsub
-    except ImportError:
-        from tasks.task_tree_store import get_task_update_pubsub
+    from task_tree_store import get_task_update_pubsub
+    
     pubsub = get_task_update_pubsub(thread_id)
     try:
         while True:
@@ -993,7 +1059,7 @@ async def concierge_timeline_websocket(websocket: WebSocket):
 @app.get('/api/v1/concierge/threads/{thread_id}/nodes/{node_id}/memories')
 async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
     """Return memory snippets related to a thread node for visualizer side panels."""
-    from tasks.task_tree_store import get_task_tree, _find_node_in_tree
+    from task_tree_store import get_task_tree, _find_node_in_tree
     _ensure_timeline_available()
     if top_k < 1:
         top_k = 1

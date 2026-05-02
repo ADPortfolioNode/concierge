@@ -42,9 +42,11 @@ const MessageInput: React.FC = () => {
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = '0px';
-    const desired = Math.min(el.scrollHeight, 24 * MAX_LINES);
-    el.style.height = desired + 'px';
+    requestAnimationFrame(() => {
+      el.style.height = '0px';
+      const desired = Math.min(el.scrollHeight, 24 * MAX_LINES);
+      el.style.height = desired + 'px';
+    });
   }, [value]);
 
   const handleKeyDown = useCallback(

@@ -22,9 +22,7 @@ from agents.coding_agent import CodingAgent
 from agents.critic_agent import CriticAgent
 from agents.synthesizer_agent import SynthesizerAgent
 from agents.base_agent import BaseAgent
-from core.concurrency import AsyncConcurrencyManager
 from memory.memory_store import MemoryStore
-from task_agent import TaskAgent
 from tools.vector_search_tool import VectorSearchTool
 from config.settings import get_settings 
 from tools.tool_registry import register_tool
@@ -154,7 +152,6 @@ class Metrics:
 class SacredTimeline:
     def __init__(
         self,
-        concurrency_manager: Optional[AsyncConcurrencyManager] = None,
         memory_store: Optional[MemoryStore] = None,
         planner: Optional[Planner] = None,
         summarizer: Optional[Summarizer] = None,
@@ -162,10 +159,6 @@ class SacredTimeline:
     ) -> None:
         settings = get_settings()
         self.metrics = Metrics()
-        self._concurrency = concurrency_manager or AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
-        # limit the number of simultaneous handle_user_input calls to avoid
-        # flooding the LLM/backend.  Additional requests queue until a slot
-        # frees up, providing a simple back-pressure mechanism.
         self._request_sem = asyncio.Semaphore(settings.max_concurrent_requests)
         # create a shared LLM instance and pass it into components that can use it
         from tools.llm_tool import LLMTool
@@ -218,15 +211,12 @@ class SacredTimeline:
         # generic capability prompt question
         if any(k in lower for k in ("what can you", "what do you", "capabilit", "features")):
             hint = (
-                " You might mention that I can generate images, transcribe audio or "
-                "video, analyse uploaded files, plan projects, and much more. "
-                "Describe your goal and I’ll suggest a starting prompt."
+                " You might mention that I can generate images, analyse uploaded files, "
+                "plan projects, write code, and much more. Describe your goal and I’ll suggest a starting prompt."
             )
         # keywords signalling features we support
         cap_keywords = {
             "image": "You can generate or analyse images using the 📷 button.",
-            "audio": "Try uploading an audio clip for transcription.",
-            "video": "I can analyse videos and describe them.",
             "file": "Attach a file and ask me to read or summarise it.",
             "goal": "Describe a goal and I'll decompose it into tasks.",
         }
@@ -245,72 +235,6 @@ class SacredTimeline:
         except Exception:
             logger.exception("Chat reply generation failed; echoing input")
             return user_input
-
-    async def _track_agent(self, agent_obj: Any, manager_agent_id: str, result_future: asyncio.Future, task_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Await an agent coroutine result, summarize and store it in memory.
-
-        `agent_obj` may be a BaseAgent or TaskAgent instance. `task_info` is
-        the original task dict for metadata.
-        """
-        try:
-            result = await result_future
-        except asyncio.CancelledError:
-            logger.warning("Agent %s was cancelled", manager_agent_id)
-            return {"status": "cancelled", "manager_agent_id": manager_agent_id}
-        except Exception as exc:
-            logger.exception("Agent %s raised an error", manager_agent_id)
-            result = {"agent_id": getattr(agent_obj, 'id', None), "status": "failed", "output": str(exc)}
-
-        output_text = _extract_result_text(result)
-
-        # Summarize the output (best-effort)
-        try:
-            summary = await self._summarizer.summarize(output_text)
-        except Exception:
-            logger.exception("Summarizer failed")
-            summary = output_text
-
-        # Store in memory with metadata
-        metadata = {
-            "task_id": task_info.get("task_id"),
-            "task_name": task_info.get("title") or task_info.get("task_id"),
-            "status": _result_status(result),
-            "agent_id": getattr(agent_obj, 'id', None),
-            "manager_agent_id": manager_agent_id,
-            "agent_type": getattr(agent_obj, 'name', getattr(agent_obj, '__class__', {}).__name__),
-        }
-        # if context contains prior_ids, treat them as parent relationships
-        ctx = task_info.get("context") if isinstance(task_info.get("context"), dict) else None
-        if ctx:
-            pids = ctx.get("prior_ids")
-            if pids:
-                metadata["parent_ids"] = pids
-        summary_id = await self._memory.store_summary(task_name=metadata.get("task_name", "task"), summary=summary, metadata=metadata)
-
-        # publish a timeline update for subscribers (task-level update)
-        try:
-            update = {
-                "type": "task_update",
-                "thread_id": task_info.get("thread_id") if isinstance(task_info, dict) else None,
-                "task_id": metadata.get("task_id"),
-                "task_name": metadata.get("task_name"),
-                "manager_agent_id": manager_agent_id,
-                "agent_id": metadata.get("agent_id"),
-                "status": metadata.get("status"),
-                "progress": 100,
-                "summary_id": summary_id,
-                "summary": summary,
-            }
-            for q in list(self._timeline_subscribers):
-                try:
-                    q.put_nowait(update)
-                except Exception:
-                    # subscriber queue may be full or closed; ignore
-                    continue
-        except Exception:
-            logger.exception("Failed to publish timeline task_update")
-
-        return {"status": "spawned", "manager_agent_id": manager_agent_id, "agent_id": metadata.get("agent_id"), "result": result, "summary_id": summary_id}
 
     def _publish_timeline_event(self, event: Dict[str, Any]) -> None:
         for q in list(self._timeline_subscribers):
@@ -927,11 +851,10 @@ if __name__ == "__main__":
 
     async def _demo():
         settings = get_settings()
-        cm = AsyncConcurrencyManager(max_agents=settings.max_concurrent_agents)
         ms = MemoryStore(collection_name=settings.memory_collection)
         planner = Planner()
         summarizer = Summarizer()
-        root = SacredTimeline(cm, ms, planner, summarizer)
+        root = SacredTimeline(memory_store=ms, planner=planner, summarizer=summarizer)
         out = await root.handle_user_input("Please process and summarize this dataset")
         print(out)
 

@@ -697,6 +697,10 @@ do_start_docker() {
         echo "--- Docker Containers Built ---"
     fi
 
+    echo "Clearing stale Python bytecode to prevent startup cache issues..."
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+    find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
     echo "Starting services with compose up -d (this may take a moment for all services to become healthy)"
     echo "--- Starting Docker Services ---"
     compose up -d || die "compose up failed"

@@ -10,8 +10,8 @@ from celery import Task
 
 from agents.coding_agent import CodingAgent
 from agents.research_agent import ResearchAgent
-from agents.task_agent import TaskAgent
-from jobs.task_tree_store import upsert_task_node
+from task_agent import TaskAgent
+from task_tree_store import upsert_task_node
 from memory.memory_store import MemoryStore
 from tools.llm_tool import LLMTool
 
@@ -19,6 +19,21 @@ from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
+
+# --- Performance Optimization ---
+# Initialize heavyweight clients lazily per worker process, not per task.
+# This avoids the overhead of creating new LLM and MemoryStore instances
+# for every single task, which can be a significant bottleneck.
+_LLM_CLIENT = None
+_MEMORY_STORE_CLIENT = None
+
+def _get_clients():
+    global _LLM_CLIENT, _MEMORY_STORE_CLIENT
+    if _LLM_CLIENT is None:
+        _LLM_CLIENT = LLMTool()
+    if _MEMORY_STORE_CLIENT is None:
+        _MEMORY_STORE_CLIENT = MemoryStore(llm_tool=_LLM_CLIENT)
+    return _LLM_CLIENT, _MEMORY_STORE_CLIENT
 
 class StepAssistant(Task):
     """
@@ -85,8 +100,7 @@ def execute_step_task(self, task: dict, thread_id: str, context: dict):
         metadata={"task_name": task_name, "start_time": time.time(), "celery_task_id": celery_task_id},
     )
 
-    llm = LLMTool()
-    memory = MemoryStore(llm_tool=llm)
+    llm, memory = _get_clients()
     agent = _route_task_to_agent(task, memory, llm)
     task_with_context = {**task, "context": context}
 

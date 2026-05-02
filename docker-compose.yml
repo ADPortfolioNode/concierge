@@ -21,6 +21,7 @@ services:
       args:
         INSTALL_FULL_REQUIREMENTS: "1"
     container_name: quesarc_app
+    image: concierge-app-local  # Give the image a name to prevent parallel builds
     # avoid port clash with chroma service; expose on 8001 host port instead
     ports:
       - "8001:8001"
@@ -59,10 +60,7 @@ services:
     restart: unless-stopped
 
   quesarc_worker:
-    build:
-      context: .
-      args:
-        INSTALL_FULL_REQUIREMENTS: "1"
+    image: concierge-app-local  # Use the same image built for the 'app' service
     container_name: quesarc_worker
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=4
     volumes:
