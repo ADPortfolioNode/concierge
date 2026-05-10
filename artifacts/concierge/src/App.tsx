@@ -34,10 +34,11 @@ class AppErrorBoundary extends Component<{ children?: React.ReactNode }, { hasEr
 const App: React.FC = () => {
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      (window as any).__APP_HOOK__ = useAppStore;
-      (window as any).__APP_STORE__ = useAppStore.getState();
+      const w = window as Window & { __APP_HOOK__?: unknown; __APP_STORE__?: unknown };
+      w.__APP_HOOK__ = useAppStore;
+      w.__APP_STORE__ = useAppStore.getState();
       useAppStore.subscribe((s) => {
-        (window as any).__APP_STORE__ = s;
+        w.__APP_STORE__ = s;
       });
     }
   }, []);
