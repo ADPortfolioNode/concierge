@@ -1,0 +1,12 @@
+<svg viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Design workflow illustration">
+  <rect width="320" height="240" rx="24" fill="#111827"/>
+  <rect x="48" y="72" width="72" height="56" rx="14" fill="#312e81" stroke="#c7d2fe" stroke-width="2"/>
+  <rect x="128" y="56" width="96" height="68" rx="18" fill="#1e293b" stroke="#c4b5fd" stroke-width="2"/>
+  <rect x="232" y="90" width="36" height="40" rx="8" fill="#0ea5e9"/>
+  <rect x="72" y="150" width="176" height="60" rx="18" fill="#111827" stroke="#60a5fa" stroke-width="2"/>
+  <path d="M82 168 H132 M82 188 H154 M82 208 H136" stroke="#c7d2fe" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="160" cy="90" r="10" fill="#f8fafc"/>
+  <path d="M160 110 L160 142" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M160 142 L132 170" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <text x="58" y="46" fill="#f8fafc" font-family="Inter, sans-serif" font-size="14" font-weight="600">Workflow design</text>
+</svg>
