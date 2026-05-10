@@ -1011,15 +1011,20 @@ async def concierge_timeline_stream(request: Request, thread_id: Optional[str] =
         pubsub = get_task_update_pubsub(thread_id)
         try:
             while True:
-                await asyncio.sleep(0.1) # Prevent busy-waiting
-                # Use a timeout to prevent blocking indefinitely and allow for cleanup
-                message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
-                if message and message['data']:
-                    yield f"data: {message['data']}\n\n"
-                await asyncio.sleep(0.1) # Prevent busy-waiting
+                await asyncio.sleep(0.5)
+                if pubsub is None:
+                    # Redis unavailable — send a keepalive comment so the
+                    # connection stays open without crashing.
+                    yield ": keepalive\n\n"
+                    continue
+                try:
+                    message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+                    if message and message.get('data'):
+                        yield f"data: {message['data']}\n\n"
+                except Exception:
+                    yield ": keepalive\n\n"
         finally:
             try:
-                # Unsubscribe from Redis Pub/Sub
                 if pubsub:
                     pubsub.unsubscribe()
                     pubsub.close()
