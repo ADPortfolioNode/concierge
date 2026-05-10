@@ -34,19 +34,24 @@ const MediaPage: React.FC = () => {
   );
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div className="page-content" style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 32 }}>Multimedia</h1>
-          <p style={{ color: 'rgba(255,255,255,0.65)', marginTop: 8 }}>Review all media attached to the current chat session.</p>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>🎬 Multimedia</h1>
+          <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: 8, fontSize: 14, lineHeight: 1.7 }}>Review all media attached to the current chat session.</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Link to="/" style={{ color: '#c4b8ff', textDecoration: 'none', fontWeight: 600 }}>Back to chat</Link>
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <Link
+            to="/"
+            style={{ display: 'inline-flex', alignItems: 'center', padding: '8px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', color: '#c4b8ff', textDecoration: 'none', fontWeight: 600, fontSize: 13 }}
+          >
+            ← Home
+          </Link>
           <button
             onClick={() => clearMediaLayers()}
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', borderRadius: 8, padding: '8px 12px', cursor: 'pointer' }}
+            style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.22)', color: '#fca5a5', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
-            Clear media
+            Clear all
           </button>
         </div>
       </div>

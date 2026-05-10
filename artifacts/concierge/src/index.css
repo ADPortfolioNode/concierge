@@ -66,8 +66,20 @@ aside {
 
 main {
   flex: 1;
-  padding: 16px;
   box-sizing: border-box;
+}
+
+/* Shared responsive page wrapper — used by inner pages */
+.page-content {
+  padding: 28px 28px 60px;
+  color: #e2e8f0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 639px) {
+  .page-content {
+    padding: 20px 16px 48px;
+  }
 }
 
 /* responsive layout grid */

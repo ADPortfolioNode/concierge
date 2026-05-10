@@ -186,7 +186,7 @@ const TasksPage: React.FC = () => {
   };
 
   return (
-    <div style={{ padding: '28px 28px 60px', maxWidth: 950, margin: '0 auto', color: '#e2e8f0' }}>
+    <div className="page-content" style={{ maxWidth: 950, margin: '0 auto' }}>
       <ProcessingBanner />
       <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>✅ Tasks</h1>
       <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 24px', lineHeight: 1.7 }}>
@@ -242,7 +242,7 @@ const TasksPage: React.FC = () => {
       {!loading && offline && (
         <div style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: 8, padding: '10px 16px', marginBottom: 24, fontSize: 13, color: '#fca5a5', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>⚠️</span>
-          <span>Cannot reach the API backend. Make sure the backend is running (check your <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 5px', borderRadius: 4 }}>VITE_API_URL</code> / local server) then refresh.</span>
+          <span>Cannot reach the API backend. Make sure the Python Backend workflow is running, then refresh.</span>
         </div>
       )}
 
@@ -251,7 +251,7 @@ const TasksPage: React.FC = () => {
         <h2 style={{ fontSize: 15, fontWeight: 700, color: '#a78bfa', margin: '0 0 6px' }}>🚀 Distributed Agent Job</h2>
         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '0 0 16px', lineHeight: 1.6 }}>
           Jobs are queued via Celery + Redis and executed in a background worker. Results are polled every 3 seconds.
-          Monitor the Flower dashboard at <code style={{ background: 'rgba(255,255,255,0.07)', padding: '1px 5px', borderRadius: 4 }}>localhost:5555</code>.
+          Redis is required for distributed jobs — without it, tasks fall back to synchronous execution.
         </p>
         <form onSubmit={handleSubmitJob} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input
