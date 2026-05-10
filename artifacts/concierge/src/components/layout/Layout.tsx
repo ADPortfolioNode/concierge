@@ -8,6 +8,29 @@ const NavSep: React.FC = () => (
   <span className="nav-sep" aria-hidden="true" />
 );
 
+// ── mobile nav separator ──────────────────────────────────────────────────
+const MobileNavSep: React.FC = () => (
+  <div className="mobile-nav-sep" aria-hidden="true" />
+);
+
+// ── hamburger icon (animates to X when open) ──────────────────────────────
+const HamburgerIcon: React.FC<{ open: boolean }> = ({ open }) => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+    {open ? (
+      <>
+        <line x1="3" y1="3" x2="15" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="15" y1="3" x2="3" y2="15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </>
+    ) : (
+      <>
+        <line x1="2" y1="5" x2="16" y2="5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+        <line x1="2" y1="13" x2="16" y2="13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+      </>
+    )}
+  </svg>
+);
+
 // ── Exponential backoff with full jitter (AWS/Google pattern) ──────────────
 // delay = random(0, min(cap, base * 2^attempt))
 const BACKOFF_BASE_MS  = 500;
@@ -80,6 +103,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [progress, setProgress] = useState(0);
   const [steps, setSteps] = useState<StartupStep[]>(INITIAL_STEPS);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // attempt = which retry we're on (0-based); null = succeeded; BACKOFF_MAX_TRIES = exhausted
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -253,43 +277,62 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
+  const closeNav = () => setMobileNavOpen(false);
+
   // responsive layout styles handled via CSS grid in index.css
   return (
     <div className="app-container">
-      <header className="app-header">
+      <header className="app-header" style={{ position: 'relative' }}>
         <div className="header-inner">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <NavLink to="/" end style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
-            <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" className="brand-logo" style={{ height: 26 }} fetchPriority="high" />
+            <NavLink to="/" end onClick={closeNav} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
+              <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" className="brand-logo" style={{ height: 26 }} fetchPriority="high" />
               <span style={{ color: '#f8fafc', fontWeight: 800, fontSize: 17, letterSpacing: '-0.02em' }}>Concierge</span>
             </NavLink>
           </div>
 
-          {/* Grouped navigation: Achieve | Execute | Resources */}
+          {/* Desktop navigation */}
           <nav className="header-nav" aria-label="Main navigation">
-            {/* hub */}
             <NavLink to="/" end title="Dashboard">Home</NavLink>
-
             <NavSep />
-
-            {/* achieve / plan */}
-            <NavLink to="/goals"    title="Set and track your goals">Goals</NavLink>
-            <NavLink to="/strategy" title="Strategic planning & frameworks">Strategy</NavLink>
-
+            <NavLink to="/goals"        title="Set and track your goals">Goals</NavLink>
+            <NavLink to="/strategy"     title="Strategic planning & frameworks">Strategy</NavLink>
             <NavSep />
-
-            {/* execute / do */}
-            <NavLink to="/tasks"     title="Automate and run background tasks">Tasks</NavLink>
-            <NavLink to="/workspace" title="Files, projects and context">Workspace</NavLink>
-            <NavLink to="/media" title="View multimedia output">Media</NavLink>
-
+            <NavLink to="/tasks"        title="Automate and run background tasks">Tasks</NavLink>
+            <NavLink to="/workspace"    title="Files, projects and context">Workspace</NavLink>
+            <NavLink to="/media"        title="View multimedia output">Media</NavLink>
             <NavSep />
-
-            {/* learn */}
             <NavLink to="/howto"        title="How-to guide and tutorials">Guide</NavLink>
             <NavLink to="/capabilities" title="Registered plugins and integrations">Integrations</NavLink>
           </nav>
+
+          {/* Hamburger — mobile/tablet only */}
+          <button
+            className="hamburger-btn"
+            aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={mobileNavOpen}
+            onClick={() => setMobileNavOpen(o => !o)}
+          >
+            <HamburgerIcon open={mobileNavOpen} />
+          </button>
         </div>
+
+        {/* Mobile/tablet drawer */}
+        {mobileNavOpen && (
+          <nav className="mobile-nav" aria-label="Mobile navigation">
+            <NavLink to="/" end onClick={closeNav}>Home</NavLink>
+            <MobileNavSep />
+            <NavLink to="/goals"        onClick={closeNav}>Goals</NavLink>
+            <NavLink to="/strategy"     onClick={closeNav}>Strategy</NavLink>
+            <MobileNavSep />
+            <NavLink to="/tasks"        onClick={closeNav}>Tasks</NavLink>
+            <NavLink to="/workspace"    onClick={closeNav}>Workspace</NavLink>
+            <NavLink to="/media"        onClick={closeNav}>Media</NavLink>
+            <MobileNavSep />
+            <NavLink to="/howto"        onClick={closeNav}>Guide</NavLink>
+            <NavLink to="/capabilities" onClick={closeNav}>Integrations</NavLink>
+          </nav>
+        )}
       </header>
 
       <main className="app-main">{children}</main>
