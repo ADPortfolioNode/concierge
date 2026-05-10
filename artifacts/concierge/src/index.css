@@ -1,3 +1,4 @@
+@import "tailwindcss";
 @import "./theme/tokens.css";
 
 /* global resets and theme tokens */
