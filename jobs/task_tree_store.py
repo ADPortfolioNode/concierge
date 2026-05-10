@@ -11,6 +11,8 @@ DEFAULT_REDIS_URL = 'redis://redis:6379/1'
 REDIS_URL = os.getenv('REDIS_URL') or os.getenv('CELERY_RESULT_BACKEND') or DEFAULT_REDIS_URL
 
 _redis_client: Optional[redis.Redis] = None
+_redis_available: Optional[bool] = None  # None = untested, True/False = cached result
+_mem_store: Dict[str, Any] = {}          # in-memory fallback when Redis is not available
 
 
 def _build_redis_client(url: str) -> redis.Redis:
@@ -30,12 +32,23 @@ def _resolve_redis_url(url: str) -> str:
     return url
 
 
-def get_redis() -> redis.Redis:
-    global _redis_client
-    if _redis_client is None:
+def get_redis() -> Optional[redis.Redis]:
+    """Return a Redis client, or None if Redis is unavailable (cached per process)."""
+    global _redis_client, _redis_available
+    if _redis_available is False:
+        return None
+    if _redis_client is not None:
+        return _redis_client
+    try:
         resolved_url = _resolve_redis_url(REDIS_URL)
-        _redis_client = redis.from_url(resolved_url, decode_responses=True)
-    return _redis_client
+        client = redis.from_url(resolved_url, decode_responses=True)
+        client.ping()
+        _redis_client = client
+        _redis_available = True
+        return _redis_client
+    except Exception:
+        _redis_available = False
+        return None
 
 
 def _make_key(thread_id: str) -> str:
@@ -59,18 +72,30 @@ def _ensure_tree(tree: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_task_tree(thread_id: str) -> Optional[Dict[str, Any]]:
-    data = get_redis().get(_make_key(thread_id))
-    if not data:
-        return None
+    r = get_redis()
+    if r is None:
+        raw = _mem_store.get(_make_key(thread_id))
+        if raw is None:
+            return None
+        return json.loads(raw) if isinstance(raw, str) else raw
     try:
-        tree = json.loads(data)
-        return tree
+        data = r.get(_make_key(thread_id))
+        if not data:
+            return None
+        return json.loads(data)
     except Exception:
         return None
 
 
 def _save_task_tree(thread_id: str, tree: Dict[str, Any]) -> None:
-    get_redis().set(_make_key(thread_id), json.dumps(tree))
+    r = get_redis()
+    if r is None:
+        _mem_store[_make_key(thread_id)] = json.dumps(tree)
+        return
+    try:
+        r.set(_make_key(thread_id), json.dumps(tree))
+    except Exception:
+        _mem_store[_make_key(thread_id)] = json.dumps(tree)
 
 
 def initialize_thread(thread_id: str, metadata: Optional[Dict[str, Any]] = None) -> None:
@@ -170,4 +195,12 @@ def append_task_logs(thread_id: str, task_id: str, log_entry: str) -> None:
 
 
 def clear_task_tree(thread_id: str) -> None:
-    get_redis().delete(_make_key(thread_id))
+    r = get_redis()
+    key = _make_key(thread_id)
+    if r is None:
+        _mem_store.pop(key, None)
+        return
+    try:
+        r.delete(key)
+    except Exception:
+        _mem_store.pop(key, None)

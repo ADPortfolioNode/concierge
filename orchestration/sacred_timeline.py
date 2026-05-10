@@ -430,24 +430,32 @@ class SacredTimeline:
         # Shared context for all tasks in the chain
         context = {"goal": goal}
 
-        # Create a chain of Celery tasks for sequential execution.
-        # We use `.si()` (immutable signature) instead of `.s()` to prevent Celery 
-        # from implicitly passing the return value of one task as the first argument 
-        # to the next task. This ensures the tasks run sequentially and hand off 
-        # cleanly without throwing a TypeError that leaves tasks stuck in "pending".
+        # Try Celery chain first; fall back to direct thread-pool execution when
+        # Redis is not available (graceful degradation for environments without Redis).
+        # IMPORTANT: apply_async() is blocking (Redis I/O + retries), so run it in a
+        # thread-pool executor to avoid blocking the asyncio event loop.
         logger.info("Creating sequential task chain for %d tasks...", len(sorted_tasks))
-        task_chain = chain(
-            execute_step_task.si(task=task, thread_id=thread_id, context=context)
-            for task in sorted_tasks
-        )
+        loop = asyncio.get_event_loop()
+        try:
+            task_sigs = [
+                execute_step_task.si(task=task, thread_id=thread_id, context=context)
+                for task in sorted_tasks
+            ]
+            task_chain = chain(*task_sigs)
+            result = await loop.run_in_executor(None, task_chain.apply_async)
+            logger.info("Dispatched task chain for thread_id: %s (Celery Chain ID: %s)", thread_id, result.id)
+        except Exception as celery_exc:
+            logger.warning("Celery unavailable (%s); running tasks inline via thread pool.", celery_exc)
+            for task in sorted_tasks:
+                try:
+                    _t, _tid, _ctx = task, thread_id, context
+                    await loop.run_in_executor(
+                        None,
+                        lambda t=_t, tid=_tid, ctx=_ctx: execute_step_task(task=t, thread_id=tid, context=ctx),
+                    )
+                except Exception as task_exc:
+                    logger.exception("Inline task %s failed: %s", task.get("task_id"), task_exc)
 
-        # Execute the chain asynchronously
-        result = task_chain.apply_async()
-
-        logger.info("Dispatched task chain for thread_id: %s (Celery Chain ID: %s)", thread_id, result.id)
-
-        # This Celery task now only sets up the chain. The return value is
-        # less critical as the client will monitor the task tree via WebSocket.
         return {
             "status": "processing",
             "response": "I have created a plan and started executing the tasks sequentially. You can monitor the progress.",
@@ -828,16 +836,15 @@ class SacredTimeline:
                     reply = await self._generate_chat_reply(user_input)
                     return {"status": "success", "response": reply}
 
-            # This is a real goal. Dispatch it to Celery and return immediately.
-            from tasks.main_tasks import run_autonomous_task
-
+            # This is a real goal. Dispatch as a background asyncio task so
+            # the HTTP response returns immediately without requiring Celery/Redis.
             thread_id = thread_id or str(uuid.uuid4())
             initialize_thread(thread_id, {
                 'task_name': f'Goal: {user_input[:80]}',
                 'start_time': time.time(),
                 'metadata': {'goal': user_input},
             })
-            run_autonomous_task.delay(goal=user_input, thread_id=thread_id)
+            asyncio.ensure_future(self.run_autonomous(user_input, thread_id=thread_id))
             return {"status": "processing", "thread_id": thread_id}
 
         # no tasks at all: still conversational
