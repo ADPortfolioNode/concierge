@@ -47,13 +47,13 @@ const Section: React.FC<{ title: string; defaultOpen?: boolean; children: React.
 
 // ── page ─────────────────────────────────────────────────────────────────────
 const HowToPage: React.FC = () => (
-  <div style={{ padding: '28px 28px 60px', maxWidth: 820, margin: '0 auto', color: '#e2e8f0' }}>
+  <div className="page-content" style={{ maxWidth: 820, margin: '0 auto' }}>
     <H1>📖 How to Use Concierge</H1>
     <P>This guide walks you through the core workflows: chatting, setting Goals, running Tasks, and organising your Workspace.</P>
 
     {/* ── CHAT ── */}
     <Section title="💬 Chat — Getting answers instantly">
-      <P>The chat panel (always visible on the left) is your primary interface. Type freely — Concierge decides whether to answer directly or kick off an autonomous agent run.</P>
+      <P>The chat panel (always visible on the right on desktop, below content on mobile/tablet) is your primary interface. Type freely — Concierge decides whether to answer directly or kick off an autonomous agent run.</P>
       <H3>How it works</H3>
       <Step n={1} title="Type a message and press Enter">
         <P>Simple questions and conversational input return immediately. The response streams token-by-token so you see it as it's generated.</P>
@@ -111,7 +111,7 @@ const HowToPage: React.FC = () => (
     <Section title="✅ Tasks — Running background operations">
       <P>Tasks are discrete, queued operations: read a file, generate code, analyse a dataset. They run asynchronously so the UI stays responsive.</P>
       <H2>Task types</H2>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10, marginBottom: 16 }}>
         {[
           { type: 'read_file',        desc: 'Read text content from an uploaded file.' },
           { type: 'write_file',       desc: 'Write or overwrite a file in your upload sandbox.' },

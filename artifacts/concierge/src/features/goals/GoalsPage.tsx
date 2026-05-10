@@ -51,7 +51,7 @@ const PROMPT_GROUPS = [
 import ProcessingBanner from '@/components/ProcessingBanner';
 
 const GoalsPage: React.FC = () => (
-  <div style={{ padding: '28px 28px 60px', maxWidth: 900, margin: '0 auto', color: '#e2e8f0' }}>
+  <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
     <ProcessingBanner />
     {/* header */}
     <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>

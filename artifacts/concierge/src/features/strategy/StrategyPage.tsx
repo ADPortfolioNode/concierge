@@ -65,7 +65,7 @@ const PROMPT_GROUPS = [
 ];
 
 const StrategyPage: React.FC = () => (
-  <div style={{ padding: '28px 28px 60px', maxWidth: 950, margin: '0 auto', color: '#e2e8f0' }}>
+  <div className="page-content" style={{ maxWidth: 950, margin: '0 auto' }}>
     <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>🗺️ Strategy</h1>
     <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 28px', lineHeight: 1.7 }}>
       Use Concierge as your strategic thinking partner. Apply frameworks, build roadmaps, analyse

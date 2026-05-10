@@ -25,7 +25,6 @@ const MessageInput: React.FC = () => {
       useAppStore.subscribe((s) => {
         (window as any).__APP_STORE__ = s;
       });
-      console.log('MessageInput effect bound store helpers');
     }
   }, []);
 

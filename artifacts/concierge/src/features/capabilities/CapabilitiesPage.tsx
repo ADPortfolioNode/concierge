@@ -20,8 +20,8 @@ function CapabilityCard({ item }: { item: CapabilityItem }) {
   return (
     <div
       style={{
-        background: 'var(--color-surface, #1e1e2f)',
-        border: '1px solid var(--color-border, #333)',
+        background: 'rgba(255,255,255,0.025)',
+        border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: 8,
         padding: '1rem',
         display: 'flex',
@@ -83,7 +83,7 @@ function Section({
 }) {
   return (
     <section style={{ marginBottom: '2rem' }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1rem', color: 'var(--color-text, #e2e8f0)' }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1rem', color: '#e2e8f0' }}>
         {title}
         <span style={{ fontWeight: 400, fontSize: 13, color: '#9ca3af', marginLeft: 8 }}>
           ({loading ? '…' : items.length})
@@ -168,9 +168,9 @@ export default function CapabilitiesPage() {
   const isAnyLoading = Object.values(loading).some(Boolean);
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+    <div className="page-content" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: 'var(--color-text, #e2e8f0)' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: '-0.01em', color: '#e2e8f0' }}>
           Capabilities
         </h1>
         <button
