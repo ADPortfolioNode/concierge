@@ -32,8 +32,8 @@ An AI agent assistant with a Python FastAPI backend and a Vite+React frontend, p
 ## Architecture decisions
 
 - Vite proxy forwards `/api`, `/media`, `/ws` → `http://localhost:8000` so frontend uses relative URLs
-- Pages are eagerly imported (not lazy) to avoid Zustand/React duplicate instance issue with Vite's CJS interop
-- `optimizeDeps.include: ["react", "react-dom", "axios"]` and `exclude: ["zustand"]` prevent the Vite pre-bundler from creating a separate CJS React copy inside Zustand
+- Pages use `React.lazy()` with Suspense; zustand is in `optimizeDeps.include` so Vite pre-bundles it with the shared ESM React (eliminates duplicate-React / invalid-hook-call bug)
+- `optimizeDeps.include: ["react", "react-dom", "axios", "zustand"]` — all bundled together to share one React instance
 - `resolve.conditions: ["import", "module", "browser", "default"]` forces ESM resolution for all deps
 - Redis/Celery features (task queuing, pub/sub) gracefully degrade when Redis is not running
 - **Artifact routing**: `artifacts/concierge/artifact.toml` has ONE service (`web`, port 20721). The `artifacts/api-server/artifact.toml` uses path `/node-api` (NOT `/api`) so it never intercepts the Python API traffic. All `/api/*` requests flow: Replit proxy → Vite (20721) → Vite proxy → uvicorn (8000). If you ever see 502s on `/api`, check that no other artifact claims `/api` in its `paths`.
@@ -42,7 +42,7 @@ An AI agent assistant with a Python FastAPI backend and a Vite+React frontend, p
 ## Product
 
 Concierge AI is an agentic assistant with:
-- Chat interface (left sidebar on desktop)
+- Chat panel on the **left** on desktop (380px), page content on the right
 - Live timeline/planning view with task graph visualization
 - Goals, Strategy, Tasks, Workspace, Media, Guide, and Integrations pages
 - Background job submission and polling
