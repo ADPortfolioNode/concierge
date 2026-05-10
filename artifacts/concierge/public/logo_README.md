@@ -16,5 +16,4 @@ Export to PNG (local):
 
 Optimization tips:
 - The `logo-optimized.svg` is already compact. For further size reductions, run it through `svgo`.
-
-Would you like me to generate a PNG now (requires `cairosvg` or `inkscape` available), or produce additional sizes/colors?
+
