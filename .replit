@@ -29,7 +29,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "PORT=20721 BASE_PATH=/ pnpm --filter @workspace/concierge run dev"
+args = "uvicorn app:app --host 0.0.0.0 --port 8000 & PORT=20721 BASE_PATH=/ pnpm --filter @workspace/concierge run dev"
 waitForPort = 20721
 
 [agent]
