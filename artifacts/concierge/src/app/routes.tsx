@@ -1,15 +1,14 @@
 import React, { Suspense, Component, ErrorInfo } from 'react';
 import { Routes as Switch, Route, Navigate } from 'react-router-dom';
 
-// eager-loaded pages (avoids Suspense/lazy issues with dual React instances)
-import HomePage from '../features/concierge/HomePage';
-import TasksPage from '../features/tasks/TasksPage';
-import GoalsPage from '../features/goals/GoalsPage';
-import WorkspacePage from '../features/workspace/WorkspacePage';
-import MediaPage from '../features/media/MediaPage';
-import StrategyPage from '../features/strategy/StrategyPage';
-import HowToPage from '../features/concierge/HowToPage';
-import CapabilitiesPage from '../features/capabilities/CapabilitiesPage';
+const HomePage = React.lazy(() => import('../features/concierge/HomePage'));
+const TasksPage = React.lazy(() => import('../features/tasks/TasksPage'));
+const GoalsPage = React.lazy(() => import('../features/goals/GoalsPage'));
+const WorkspacePage = React.lazy(() => import('../features/workspace/WorkspacePage'));
+const MediaPage = React.lazy(() => import('../features/media/MediaPage'));
+const StrategyPage = React.lazy(() => import('../features/strategy/StrategyPage'));
+const HowToPage = React.lazy(() => import('../features/concierge/HowToPage'));
+const CapabilitiesPage = React.lazy(() => import('../features/capabilities/CapabilitiesPage'));
 
 import Layout from '../components/layout/Layout';
 

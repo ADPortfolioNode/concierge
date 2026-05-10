@@ -54,7 +54,6 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- **Never use `React.lazy()` for page routes** — Vite's CJS interop inserts `"use strict"` before the React Fast Refresh preamble in modules that transitively import CJS libs (axios, etc.), causing an "Invalid hook call" error. Use eager imports in `src/app/routes.tsx` instead.
 - Redis must be running for task queue, pub/sub timeline streaming, and job history to work. Without it, those features log errors but the app stays functional.
 - The `PORT` and `BASE_PATH` env vars are required by `vite.config.ts` — it throws if either is missing.
 - Always run `sed -i 's/\r//' src/**/*.ts src/**/*.tsx` after importing files from Windows to strip CRLF line endings.

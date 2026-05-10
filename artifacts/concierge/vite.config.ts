@@ -29,8 +29,7 @@ export default defineConfig({
       : []),
   ],
   optimizeDeps: {
-    include: ["react", "react-dom", "axios"],
-    exclude: ["zustand"],
+    include: ["react", "react-dom", "axios", "zustand"],
   },
   resolve: {
     alias: {
