@@ -191,7 +191,10 @@ async def _lifespan(application: FastAPI):
     application.state.start_time = time.time()
     application.state.conversation = []  # in-memory history; cleared on restart
     import importlib
-    global is_enabled
+    global is_enabled, load_default_plugins, _plugin_reg, load_default_integrations, _intg_reg
+    global _list_tool_names, _get_tool, _register_tool, observability_setup, MEDIA_SAVED, REQUEST_COUNTER
+    global SacredTimeline, AsyncConcurrencyManager, MemoryStore, _celery_app
+    global _upload_router, _project_router, _task_router, _get_task_queue, _register_task_handlers, _job_router
     # late-import configuration and core components
     logger.info("Importing core modules...")
     _step_t0 = time.time()
