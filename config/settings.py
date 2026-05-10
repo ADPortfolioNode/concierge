@@ -21,6 +21,7 @@ def _resolve_path(env_name: str, default: str) -> Path:
 class Settings:
     """Runtime settings for Concierge."""
     max_concurrent_agents: int = int(os.getenv("MAX_CONCURRENT_AGENTS", "3"))
+    vector_db: str = os.getenv("VECTOR_DB", "chroma")
     memory_collection: str = os.getenv("MEMORY_COLLECTION", "quesarc_memory")
     # priority score weights
     relevance_weight: float = float(os.getenv("RELEVANCE_WEIGHT", "1.0"))
@@ -33,6 +34,8 @@ class Settings:
     autonomous_task_priority: float = float(os.getenv("AUTONOMOUS_TASK_PRIORITY", "2.0"))
     contradiction_risk_threshold: float = float(os.getenv("CONTRADICTION_RISK_THRESHOLD", "0.5"))
     low_confidence_threshold: float = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.3"))
+    vector_db_init_timeout: int = int(os.getenv("VECTOR_DB_INIT_TIMEOUT", "200"))
+    redis_init_timeout: int = int(os.getenv("REDIS_INIT_TIMEOUT", "60"))
     # how many user requests may be processed concurrently by the timeline
     max_concurrent_requests: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "2"))
     # media storage configuration

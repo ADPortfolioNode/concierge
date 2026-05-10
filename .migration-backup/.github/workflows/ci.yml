@@ -7,120 +7,136 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    services: {}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install frontend deps & build
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+      - name: Install Python dependencies and linter
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+      - name: Run linter (flake8)
+        run: |
+          flake8 --max-line-length=120 .
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Run linter (flake8)
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8
-          flake8 --max-line-length=120 .
-
       - name: Run unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: pytest -q
-
-      - name: Start backend (uvicorn)
-        env:
-          PYTHONPATH: ${{ github.workspace }}
+  
+  integration-test:
+    name: "Integration & E2E Tests"
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [lint, unit-tests]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - name: Install Python dependencies
         run: |
-          nohup python -m uvicorn app:app --host 0.0.0.0 --port 8001 &> uvicorn.log & # Consider adding --reload-exclude for node_modules here if running locally
-          for i in {1..30}; do
-            if curl -fsS http://localhost:8001/health/ready; then # Use /health/ready for more accurate readiness check
-              echo "backend healthy"; break
-            fi
-            sleep 1
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Install frontend dependencies for test runner
+        working-directory: frontend
+        run: npm ci
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build production-like Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: concierge-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            INSTALL_FULL_REQUIREMENTS=1
+            BUILD_FRONTEND=1
+      - name: Run backend services with Docker Compose
+        run: |
+          export APP_VERSION=ci
+          # Start all services except the frontend dev server, which is now built into the app image.
+          docker-compose up -d --scale frontend=0
+      - name: Wait for 'app' service to be healthy
+        run: |
+          echo "Waiting for 'app' service to be healthy..."
+          for i in {1..60}; do
+            status=$(docker inspect --format '{{.State.Health.Status}}' quesarc_app 2>/dev/null)
+            if [ "$status" == "healthy" ]; then echo "App container is healthy."; exit 0; fi
+            echo "App container status: $status. Waiting... (${i}/60)"
+            sleep 2
           done
-
-      - name: Run smoke endpoint checks
-        env:
-          PYTHONPATH: ${{ github.workspace }}
-        run: python scripts/check_endpoints.py
-
+          echo "App container did not become healthy."
+          docker-compose logs
+          exit 1
+      - name: Run container smoke checks
+        run: python3 scripts/check_endpoints.py --base-url http://localhost:8000
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
       - name: Install Playwright browsers
         working-directory: frontend
         run: |
           npx playwright install --with-deps
-
-      - name: Start frontend preview
-        working-directory: frontend
-        run: |
-          nohup npm run preview -- --port 5173 &> preview.log &
-          for i in {1..20}; do
-            if curl -sSf http://localhost:5173/; then
-              echo "frontend preview up"; break
-            fi
-            sleep 1
-          done
-
       - name: Run Playwright E2E
         working-directory: frontend
         env:
-          BASE_URL: http://localhost:5173
-        run: |
-          npm ci
-          npm run test:e2e
-
-  docker_integration:
-    needs: test
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Build Docker image
-        run: |
-          docker build -t concierge:test .
-
-      - name: Run container
-        run: |
-          docker run -d --name concierge_test -p 8002:8001 concierge:test
-          for i in {1..30}; do
-            if curl -fsS http://localhost:8002/health/ready; then # Use /health/ready for more accurate readiness check
-              echo "container healthy"; break
-            fi
-            sleep 1
-          done
-
-      - name: Run container smoke checks
-        run: |
-          # Run the same endpoint checker against container port 8002
-          python3 scripts/check_endpoints.py --base-url http://localhost:8002
-
+          # Point tests to the backend, which now serves the built frontend
+          BASE_URL: http://localhost:8000
+        run: npm run test:e2e
       - name: Stop and remove container
         if: always()
         run: |
-          docker rm -f concierge_test || true
+          docker-compose logs
+          docker-compose down -v --remove-orphans || true

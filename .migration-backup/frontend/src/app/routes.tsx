@@ -12,11 +12,12 @@ const HowToPage = lazy(() => import('../features/concierge/HowToPage'));
 const CapabilitiesPage = lazy(() => import('../features/capabilities/CapabilitiesPage'));
 
 import Layout from '../components/layout/Layout';
+import Preloader from '../components/layout/Preloader';
 
 const Routes: React.FC = () => {
   return (
     <Layout>
-      <Suspense fallback={<div>Loading...</div>}>
+      <Suspense fallback={<Preloader />}>
         <Switch>
           <Route path="/" element={<HomePage />} />
           <Route path="/tasks" element={<TasksPage />} />

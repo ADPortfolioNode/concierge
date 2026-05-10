@@ -1,0 +1,86 @@
+ Image concierge-app Building 
+ Image concierge-quesarc_worker Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 947B done
+#1 DONE 0.0s
+
+#2 [quesarc_worker internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.42kB 0.1s
+#2 transferring dockerfile: 2.42kB 0.1s done
+#2 DONE 0.3s
+
+#3 [quesarc_worker internal] load metadata for docker.io/library/node:18-alpine
+#3 DONE 0.9s
+
+#4 [app internal] load metadata for docker.io/library/python:3.11-slim
+#4 DONE 0.8s
+
+#5 [app internal] load .dockerignore
+#5 transferring context: 1.15kB 0.0s done
+#5 transferring context: 1.15kB 0.0s done
+#5 DONE 0.2s
+
+#6 [quesarc_worker internal] load build context
+#6 DONE 0.0s
+
+#7 [quesarc_worker frontend-build 1/6] FROM docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e
+#7 resolve docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e
+#7 resolve docker.io/library/node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e 0.5s done
+#7 DONE 0.5s
+
+#8 [quesarc_worker base 1/3] FROM docker.io/library/python:3.11-slim@sha256:9358444059ed78e2975ada2c189f1c1a3144a5dab6f35bff8c981afb38946634
+#8 resolve docker.io/library/python:3.11-slim@sha256:9358444059ed78e2975ada2c189f1c1a3144a5dab6f35bff8c981afb38946634 0.4s done
+#8 DONE 0.4s
+
+#6 [quesarc_worker internal] load build context
+#6 transferring context: 252.56kB 0.9s done
+#6 DONE 1.1s
+
+#9 [app base 3/3] RUN apt-get update && apt-get install -y --no-install-recommends         build-essential         ca-certificates         && rm -rf /var/lib/apt/lists/*
+#9 CACHED
+
+#10 [app base 2/3] WORKDIR /app
+#10 CACHED
+
+#11 [app frontend-build 2/6] WORKDIR /build
+#11 CACHED
+
+#12 [quesarc_worker runtime 1/6] COPY requirements.txt ./
+#12 CACHED
+
+#13 [quesarc_worker frontend-build 3/6] COPY frontend/package.json frontend/package-lock.json ./
+#13 CACHED
+
+#14 [quesarc_worker frontend-build 4/6] RUN npm ci --no-audit --no-fund
+#14 ...
+
+#15 [quesarc_worker runtime 2/6] COPY requirements.full.txt ./ || true
+#15 ERROR: cannot copy to non-directory: /var/lib/docker/buildkit/containerd-overlayfs/cachemounts/buildkit1538955860/app/true
+
+#14 [quesarc_worker frontend-build 4/6] RUN npm ci --no-audit --no-fund
+#14 CANCELED
+------
+ > [quesarc_worker runtime 2/6] COPY requirements.full.txt ./ || true:
+------
+Dockerfile:51
+
+--------------------
+
+  49 |     # Copy requirements
+
+  50 |     COPY requirements.txt ./
+
+  51 | >>> COPY requirements.full.txt ./ || true
+
+  52 |     
+
+  53 |     # Upgrade pip and install requirements; prefer full if requested and present
+
+--------------------
+
+target quesarc_worker: failed to solve: cannot copy to non-directory: /var/lib/docker/buildkit/containerd-overlayfs/cachemounts/buildkit1538955860/app/true
+
+
+
+View build details: docker-desktop://dashboard/build/default/default/6o9o3lalcl4619r6fbrxw4w1c
+

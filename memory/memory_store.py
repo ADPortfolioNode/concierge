@@ -10,6 +10,7 @@ import os
 import asyncio
 import json
 import logging
+import time
 import tempfile
 import uuid
 from datetime import datetime
@@ -125,142 +126,14 @@ class MemoryStore:
         self._qdrant_vector_dim = int(os.getenv("QDRANT_VECTOR_DIM", "8"))
 
         # Initialize selected vector DB client if available. Prefer Chroma when
-        # configured, otherwise attempt Qdrant. If optional libraries are
-        # missing fall back to the in-memory JSONL-backed store.
-        if self._vector_db == "chroma":
-            if chromadb is not None:
-                def _init_chroma_http_client(host: str, port: str):
-                    try:
-                        return chromadb.HttpClient(host=host, port=port)
-                    except TypeError:
-                        return chromadb.HttpClient(url=f"http://{host}:{port}")
-
-                def _ensure_collection(client):
-                    if hasattr(client, "get_or_create_collection"):
-                        return client.get_or_create_collection(name=self._collection_name)
-                    return client.create_collection(name=self._collection_name)
-
-                use_remote_chroma = False
-                if _ONNX_AVAILABLE:
-                    try:
-                        chroma_path = os.getenv("CHROMA_PATH", "/app/chroma")
-                        try:
-                            os.makedirs(chroma_path, exist_ok=True)
-                        except OSError as _mk_err:
-                            logger.warning("Could not create ChromaDB directory %s: %s", chroma_path, _mk_err)
-
-                        try:
-                            self._client = chromadb.PersistentClient(path=chroma_path)
-                            logger.info("ChromaDB PersistentClient initialised at %s", chroma_path)
-                        except Exception as exc:
-                            logger.warning("ChromaDB PersistentClient failed; trying HTTP fallback at %s:%s (%s)", chroma_host, chroma_port, exc)
-                            use_remote_chroma = True
-                    except Exception:
-                        logger.exception("Failed to initialize chromadb persistent client; using in-memory fallback")
-                        self._client = None
-
-                    if self._client is None:
-                        use_remote_chroma = True
-
-                    if use_remote_chroma:
-                        try:
-                            self._client = _init_chroma_http_client(chroma_host, chroma_port)
-                            logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
-                        except Exception:
-                            logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
-                            self._client = None
-                else:
-                    if chroma_host in ("localhost", "127.0.0.1") and chroma_port == os.getenv("PORT", "8000"):
-                        logger.warning(
-                            "onnxruntime not available and CHROMA_HOST/CHROMA_PORT point at the app itself (%s:%s); using in-memory fallback instead",
-                            chroma_host,
-                            chroma_port,
-                        )
-                        self._client = None
-                    else:
-                        logger.warning("onnxruntime not available; attempting remote Chroma HTTP client at %s:%s", chroma_host, chroma_port)
-                        try:
-                            self._client = _init_chroma_http_client(chroma_host, chroma_port)
-                            logger.info("ChromaDB HttpClient initialised at %s:%s", chroma_host, chroma_port)
-                        except Exception:
-                            logger.exception("Failed to initialize Chroma HTTP client; using in-memory fallback")
-                            self._client = None
-
-                if self._client is not None:
-                    try:
-                        self._collection = _ensure_collection(self._client)
-                    except Exception:
-                        logger.exception("Failed to create/get chroma collection; disabling chroma")
-                        if _ONNX_AVAILABLE and not use_remote_chroma:
-                            try:
-                                self._client = _init_chroma_http_client(chroma_host, chroma_port)
-                                self._collection = _ensure_collection(self._client)
-                                logger.info("ChromaDB HttpClient initialised after PersistentClient failure")
-                            except Exception:
-                                logger.exception("Failed to create/get chroma collection via HTTP fallback; disabling chroma")
-                                self._client = None
-                                self._collection = None
-                        else:
-                            self._client = None
-                            self._collection = None
-            else:
-                logger.warning("chromadb package is unavailable; skipping Chroma initialization and using in-memory fallback")
-
-        elif self._vector_db == "qdrant":
-            if QdrantClient is not None:
-                try:
-                    try:
-                        self._client = QdrantClient(host=qdrant_host, port=int(qdrant_port))
-                    except Exception:
-                        try:
-                            self._client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
-                        except Exception:
-                            self._client = None
-
-                    if self._client is not None:
-                        try:
-                            exists = None
-                            try:
-                                exists = self._client.get_collection(collection_name=self._collection_name)
-                            except Exception:
-                                exists = None
-
-                            if qdrant_models is not None:
-                                vectors_config = {
-                                    "embedding": qdrant_models.VectorParams(
-                                        size=1536, distance=qdrant_models.Distance.COSINE
-                                    )
-                                }
-                            else:
-                                vectors_config = {"embedding": {"size": 1536, "distance": "Cosine"}}
-
-                            dev_mode = os.getenv("DEV_MODE", "false").lower() in ("1", "true", "yes")
-                            if not exists:
-                                if dev_mode:
-                                    self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
-                                    logger.info("Qdrant collection recreated (dev): %s", self._collection_name)
-                                else:
-                                    try:
-                                        self._client.create_collection(collection_name=self._collection_name, vectors_config=vectors_config)
-                                        logger.info("Qdrant collection created: %s", self._collection_name)
-                                    except Exception:
-                                        self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
-                                        logger.info("Qdrant collection recreated (fallback): %s", self._collection_name)
-                            else:
-                                logger.info("Qdrant collection exists: %s", self._collection_name)
-                                logger.info("Qdrant vector config: %s", vectors_config)
-
-                            logger.info("Connected to Qdrant at %s:%s", qdrant_host, qdrant_port)
-                        except Exception:
-                            logger.exception("Qdrant collection create failed; disabling qdrant")
-                            self._client = None
-                        else:
-                            self._is_qdrant = True
-                except Exception:
-                    logger.exception("Failed to initialize Qdrant client; using in-memory fallback")
-                    self._client = None
-            else:
-                logger.warning("Qdrant client not installed; using in-memory fallback")
+        # configured, otherwise attempt Qdrant. If optional libraries are missing,
+        # fall back to the in-memory JSONL-backed store.
+        # The actual connection is deferred to async_init() to avoid blocking
+        # the main thread during application startup.
+        self._chroma_host = chroma_host
+        self._chroma_port = chroma_port
+        self._qdrant_host = qdrant_host
+        self._qdrant_port = qdrant_port
 
         self._in_memory: List[Dict[str, Any]] = []
         # intelligence graph structures
@@ -344,6 +217,132 @@ class MemoryStore:
             self.load_local_backup = _load_backup  # type: ignore[attr-defined]
         except Exception:
             pass
+
+    async def async_init(self, timeout: int = 60, retry_interval: int = 2, progress_callback: Optional[callable] = None) -> None:
+        """Asynchronously initialize the vector DB client and collection.
+
+        This method should be called during the application's async startup
+        lifespan to prevent blocking the main thread.
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if progress_callback:
+                progress_callback(f"Attempting to connect to {self._vector_db}...")
+            try:
+                if self._vector_db == "chroma":
+                    if chromadb is None:
+                        logger.warning("chromadb package is unavailable; skipping Chroma initialization")
+                        if progress_callback:
+                            progress_callback("Chroma package not found, skipping.")
+                        break
+
+                    def _init_chroma_http_client(host: str, port: str):
+                        try:
+                            return chromadb.HttpClient(host=host, port=port)
+                        except TypeError:
+                            return chromadb.HttpClient(url=f"http://{host}:{port}")
+
+                    def _ensure_collection(client):
+                        if hasattr(client, "get_or_create_collection"):
+                            return client.get_or_create_collection(name=self._collection_name)
+                        return client.create_collection(name=self._collection_name)
+
+                    use_remote_chroma = False
+                    if _ONNX_AVAILABLE:
+                        try:
+                            chroma_path = os.getenv("CHROMA_PATH", os.path.join(os.getcwd(), "chroma_db"))
+                            os.makedirs(chroma_path, exist_ok=True)
+                            self._client = chromadb.PersistentClient(path=chroma_path)
+                            logger.info("ChromaDB PersistentClient initialised at %s", chroma_path)
+                        except Exception as exc:
+                            logger.warning("ChromaDB PersistentClient failed; trying HTTP fallback at %s:%s (%s)", self._chroma_host, self._chroma_port, exc)
+                            use_remote_chroma = True
+                    else:
+                        if self._chroma_host in ("localhost", "127.0.0.1") and self._chroma_port == os.getenv("PORT", "8000"):
+                            logger.warning(
+                                "onnxruntime not available and CHROMA_HOST/CHROMA_PORT point at the app itself (%s:%s); using in-memory fallback instead",
+                                self._chroma_host,
+                                self._chroma_port,
+                            )
+                            if progress_callback:
+                                progress_callback("ONNX unavailable, using in-memory fallback.")
+                            break # Exit retry loop, fall back to in-memory
+                        else:
+                            logger.warning("onnxruntime not available; attempting remote Chroma HTTP client at %s:%s", self._chroma_host, self._chroma_port)
+                            use_remote_chroma = True
+
+                    if use_remote_chroma:
+                        self._client = _init_chroma_http_client(self._chroma_host, self._chroma_port)
+                        logger.info("ChromaDB HttpClient initialised at %s:%s", self._chroma_host, self._chroma_port)
+
+                    if self._client is not None:
+                        self._collection = _ensure_collection(self._client)
+                        logger.info("ChromaDB collection '%s' ready.", self._collection_name)
+                        if progress_callback:
+                            progress_callback(f"ChromaDB collection '{self._collection_name}' is ready.")
+                        return # Success, exit retry loop
+
+                elif self._vector_db == "qdrant":
+                    if QdrantClient is None:
+                        logger.warning("Qdrant client not installed; skipping Qdrant initialization")
+                        if progress_callback:
+                            progress_callback("Qdrant package not found, skipping.")
+                        break
+
+                    try:
+                        self._client = QdrantClient(host=self._qdrant_host, port=int(self._qdrant_port))
+                    except Exception:
+                        self._client = QdrantClient(url=f"http://{self._qdrant_host}:{self._qdrant_port}")
+
+                    if self._client is not None:
+                        exists = None
+                        try:
+                            exists = self._client.get_collection(collection_name=self._collection_name)
+                        except Exception:
+                            exists = None
+
+                        if qdrant_models is not None:
+                            vectors_config = {
+                                "embedding": qdrant_models.VectorParams(
+                                    size=1536, distance=qdrant_models.Distance.COSINE
+                                )
+                            }
+                        else:
+                            vectors_config = {"embedding": {"size": 1536, "distance": "Cosine"}}
+
+                        dev_mode = os.getenv("DEV_MODE", "false").lower() in ("1", "true", "yes")
+                        if not exists:
+                            if dev_mode:
+                                self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
+                                logger.info("Qdrant collection recreated (dev): %s", self._collection_name)
+                            else:
+                                try:
+                                    self._client.create_collection(collection_name=self._collection_name, vectors_config=vectors_config)
+                                    logger.info("Qdrant collection created: %s", self._collection_name)
+                                except Exception:
+                                    self._client.recreate_collection(collection_name=self._collection_name, vectors_config=vectors_config)
+                                    logger.info("Qdrant collection recreated (fallback): %s", self._collection_name)
+                        else:
+                            logger.info("Qdrant collection exists: %s", self._collection_name)
+                            logger.info("Qdrant vector config: %s", vectors_config)
+
+                        logger.info("Connected to Qdrant at %s:%s", self._qdrant_host, self._qdrant_port)
+                        self._is_qdrant = True
+                        if progress_callback:
+                            progress_callback(f"Qdrant connection to '{self._qdrant_host}:{self._qdrant_port}' is ready.")
+                        return # Success, exit retry loop
+
+            except Exception as e:
+                logger.debug(f"Vector DB initialization failed: {e}. Retrying in {retry_interval}s...")
+                if progress_callback:
+                    progress_callback(f"Connection to {self._vector_db} failed, retrying...")
+            await asyncio.sleep(retry_interval)
+
+        logger.warning("Timed out connecting to vector DB. Falling back to in-memory store.")
+        if progress_callback:
+            progress_callback("Timed out connecting to vector DB. Using in-memory store.")
+        self._client = None
+        self._collection = None
 
     async def _update_confidence(self, node_id: str, score: float) -> None:
         """Deterministically update confidence of an existing node.

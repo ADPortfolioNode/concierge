@@ -1,0 +1,58 @@
+
+Running 14 tests using 1 worker
+
+BROWSER: [vite] connecting...
+BROWSER: [vite] connected.
+BROWSER: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+BROWSER: MessageInput effect bound store helpers
+BROWSER: ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+BROWSER: ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+BROWSER: App effect running - exposing store
+BROWSER: MessageInput effect bound store helpers
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+BROWSER: Failed to load resource: the server responded with a status of 503 (Service Unavailable)
+  x   1 [chromium] › tests\e2e.spec.ts:15:7 › Concierge UI › loads homepage and posts a message (30.3s)
+[31mTesting stopped early after 1 maximum allowed failures.[39m
+
+
+  1) [chromium] › tests\e2e.spec.ts:15:7 › Concierge UI › loads homepage and posts a message ───────
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('text=AI Ops Concierge')
+    Expected: visible
+    Error: strict mode violation: locator('text=AI Ops Concierge') resolved to 2 elements:
+        1) <div>AI Ops Concierge</div> aka getByLabel('AI Concierge chat').getByText('AI Ops Concierge')
+        2) <span>AI Ops Concierge</span> aka getByRole('main').getByText('AI Ops Concierge')
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('text=AI Ops Concierge')[22m
+
+
+      19 |
+      20 |     // Check the landing text
+    > 21 |     await expect(page.locator('text=AI Ops Concierge')).toBeVisible();
+         |                                                         ^
+      22 |
+      23 |     // stub the API so that when the UI sends a message we immediately return
+      24 |     // a minimal success payload; verify the conversation updates accordingly.
+        at e:\2024 RESET\concierge\frontend\tests\e2e.spec.ts:21:57
+
+    Error Context: test-results\e2e-Concierge-UI-loads-homepage-and-posts-a-message-chromium\error-context.md
+
+  1 failed
+    [chromium] › tests\e2e.spec.ts:15:7 › Concierge UI › loads homepage and posts a message ────────
+  13 did not run
+  1 error was not a part of any test, see above for details

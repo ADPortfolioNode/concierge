@@ -8,33 +8,45 @@ Adding a new built-in plugin
 ----------------------------
 1.  Create a file in ``plugins/`` (e.g. ``my_plugin.py``) with a class that
     subclasses :class:`~plugins.base_plugin.BasePlugin`.
-2.  Import it here and add an instance to ``_BUILTIN_PLUGINS``.
+2.  The plugin will be auto-discovered and loaded at startup.
 """
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import logging
-from typing import List
+import pkgutil
+from pathlib import Path
 
 from .base_plugin import BasePlugin
 from .plugin_registry import register_plugin
-from .summarization_plugin import SummarizationPlugin
-from .image_generation_plugin import ImageGenerationPlugin
 
 logger = logging.getLogger(__name__)
 
-# Ordered list of built-in plugin instances
-_BUILTIN_PLUGINS: List[BasePlugin] = [
-    SummarizationPlugin(),
-    ImageGenerationPlugin(),
-]
-
 
 def load_default_plugins() -> None:
-    """Register all built-in plugins in the global registry."""
-    for plugin in _BUILTIN_PLUGINS:
+    """Dynamically discover and register all plugins in the 'plugins' directory."""
+    plugins_dir = Path(__file__).parent
+    registered_count = 0
+    
+    module_infos = list(pkgutil.iter_modules([str(plugins_dir)]))
+
+    for module_info in module_infos:
+        # Skip special modules, e.g. `_` prefixed, base, registry, and the loader itself
+        if module_info.name.startswith('_') or module_info.name in ("base_plugin", "plugin_registry", "plugin_loader"):
+            continue
+
         try:
-            register_plugin(plugin)
+            module = importlib.import_module(f"{__package__}.{module_info.name}")
+
+            for _, obj in inspect.getmembers(module, inspect.isclass):
+                if issubclass(obj, BasePlugin) and obj is not BasePlugin and obj.__module__ == module.__name__:
+                    logger.info("Found plugin class: %s in module %s", obj.__name__, module_info.name)
+                    plugin_instance = obj()
+                    register_plugin(plugin_instance)
+                    registered_count += 1
         except Exception:
-            logger.exception("Failed to register plugin %r — skipping", plugin.name)
-    logger.info("Plugin loader: registered %d built-in plugin(s)", len(_BUILTIN_PLUGINS))
+            logger.exception("Failed to load or register plugin from module %s — skipping", module_info.name)
+
+    logger.info("Plugin loader: registered %d plugin(s)", registered_count)

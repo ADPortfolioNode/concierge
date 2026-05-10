@@ -38,6 +38,10 @@ class AsyncSacredTimeline:
 
 async def main():
     timeline = AsyncSacredTimeline()
+    
+    # Asynchronously initialize the vector DB client and collection
+    await timeline.memory.async_init()
+    
     output = await timeline.handle_user_input("run task")
     print("Async Test Output:", output)
 

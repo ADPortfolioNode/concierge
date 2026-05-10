@@ -87,6 +87,10 @@ async def main():
     # set a low threshold so we can exercise compression in the test.
     dummy_llm = DummyLLM()
     memory = MemoryStore(collection_name="phase5_test_memory", llm_tool=dummy_llm, compress_threshold=5)
+    
+    # Asynchronously initialize the vector DB client and collection
+    await memory.async_init()
+
     vector = VectorSearchTool(memory)
     concurrency = AsyncConcurrencyManager(max_agents=3)
 
@@ -99,7 +103,10 @@ async def main():
     print(json.dumps(plan, indent=2))
 
     # Create SacredTimeline with injected planner and run autonomous loop
-    timeline = SacredTimeline(concurrency_manager=concurrency, memory_store=memory, planner=planner, vector_tool=vector)
+    timeline = SacredTimeline(memory_store=memory)
+    timeline.concurrency_manager = concurrency
+    timeline.planner = planner
+    timeline.vector_tool = vector
 
     print("\nStarting autonomous run...\n")
     result = await timeline.run_autonomous(goal, max_depth=3, max_tasks=10, per_task_timeout=30)

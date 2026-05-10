@@ -17,8 +17,8 @@ test.describe('Concierge UI', () => {
     // tell the store to use POST instead of streaming
     await page.evaluate(() => (window as any).USE_POST = true);
 
-    // Check the landing text
-    await expect(page.locator('text=AI Ops Concierge')).toBeVisible();
+    // Check the landing text. The h1 contains a <br/> which is normalized to a space.
+    await expect(page.locator('h1:has-text("Build smarter workflows, see results visually.")')).toBeVisible();
 
     // stub the API so that when the UI sends a message we immediately return
     // a minimal success payload; verify the conversation updates accordingly.

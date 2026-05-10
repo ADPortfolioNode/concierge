@@ -1,0 +1,34 @@
+ INFO:     Will watch for changes in these directories: ['E:\\2024 RESET\\concierge']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [5600] using WatchFiles
+INFO:app:Concierge version 1.0.0 starting
+INFO:app:OPENAI_API_KEY set: True; GEMINI_API_KEY set: True
+INFO:     Started server process [3356]
+INFO:     Waiting for application startup.
+WARNING:memory.memory_store:onnxruntime not available; skipping Chroma initialization and using in-memory fallback
+INFO:plugins.plugin_registry:PluginRegistry: registered plugin 'summarization' (v0.2.0)
+INFO:plugins.plugin_registry:PluginRegistry: registered plugin 'image_generation' (v0.2.0)
+INFO:plugins.plugin_loader:Plugin loader: registered 2 built-in plugin(s)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'openai' (service='OpenAI', v0.2.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'gemini' (service='GoogleGemini', v0.1.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'stripe' (service='Stripe', v0.2.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'slack' (service='Slack', v0.2.0)
+INFO:integrations.integration_loader:Integration loader: registered 4 built-in integration(s)
+INFO:tasks.task_queue:TaskQueue: registered handler for 'read_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'write_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'append_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'generate_code'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'dataset_analysis'
+INFO:tasks.task_worker:TaskWorker: default handlers registered.
+INFO:tasks.task_queue:TaskQueue worker started.
+INFO:     Application startup complete.
+WARNING:  WatchFiles detected changes in 'concurrency.py'. Reloading...
+ INFO:app:Incoming request: GET http://127.0.0.1:8000/health
+INFO:app:Response status: 200 for GET http://127.0.0.1:8000/health
+INFO:     127.0.0.1:54097 - "GET /health HTTP/1.1" 200 OK
+INFO:app:Incoming request: GET http://127.0.0.1:8000/api/v1/concierge/media
+INFO:app:Response status: 200 for GET http://127.0.0.1:8000/api/v1/concierge/media
+INFO:     127.0.0.1:54099 - "GET /api/v1/concierge/media HTTP/1.1" 200 OK
+INFO:app:Incoming request: GET http://127.0.0.1:8000/media/images/img_00ca9b65d4_1773874646.png
+INFO:app:Response status: 200 for GET http://127.0.0.1:8000/media/images/img_00ca9b65d4_1773874646.png
+INFO:     127.0.0.1:54131 - "GET /media/images/img_00ca9b65d4_1773874646.png HTTP/1.1" 200 OK

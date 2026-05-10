@@ -11,6 +11,7 @@ import json
 import os
 import time
 import traceback
+import threading
 import uuid
 from typing import Any, Optional, Deque
 from pathlib import Path 
@@ -50,19 +51,29 @@ except ImportError:
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pathlib import Path
 import httpx
+import redis
 import hashlib
-import re
+import re #
 from datetime import datetime 
-from task_tree_store import get_redis, get_task_tree
+from task_tree_store import get_redis, get_task_tree, upsert_task_node, _find_node_in_tree #
 
 # Defer heavy/optional imports to runtime to keep module imports small for
 # serverless builds. Populate these in the lifespan startup.
 SacredTimeline = None
+# Lazy import for browser utility to avoid top-level overhead
+_open_browser_func = None
+def open_browser(url: str, delay: float = 0.0):
+    global _open_browser_func
+    if _open_browser_func is None:
+        from core.browser import open_browser as _ob
+        _open_browser_func = _ob
+    _open_browser_func(url, delay=delay)
+
 AsyncConcurrencyManager = None
 MemoryStore = None
 
@@ -128,47 +139,45 @@ async def update_service_registry(status: str, url: Optional[str] = None):
             logger.warning("Service registry unavailable: Redis client not configured.")
             return
 
-        service_key = "service:registry:concierge-backend"
-        
-        service_data = {}
-        try:
-            existing_data_raw = client.get(service_key)
-            if existing_data_raw:
-                service_data = json.loads(existing_data_raw)
-        except Exception:
-            logger.warning("Could not parse existing service registry data. Starting fresh.")
+        def _do_update():
+            service_key = "service:registry:concierge-backend"
             service_data = {}
+            try:
+                existing_data_raw = client.get(service_key)
+                if existing_data_raw:
+                    service_data = json.loads(existing_data_raw)
+            except Exception:
+                logger.warning("Could not parse existing service registry data. Starting fresh.")
+                service_data = {}
 
-        # Populate initial data if it's missing
-        if "service_id" not in service_data:
-            service_data.update({
-                "service_id": "concierge-backend",
-                "version": VERSION,
-                "start_time": datetime.utcnow().isoformat() + 'Z',
-                "pid": os.getpid(),
-            })
+            # Populate initial data if it's missing
+            if "service_id" not in service_data:
+                service_data.update({
+                    "service_id": "concierge-backend",
+                    "version": VERSION,
+                    "start_time": datetime.utcnow().isoformat() + 'Z',
+                    "pid": os.getpid(),
+                })
 
-        service_data["status"] = status
-        service_data["last_heartbeat"] = datetime.utcnow().isoformat() + 'Z'
-        
-        if url:
-            service_data["url"] = url
-        elif "url" not in service_data:
-            service_data["url"] = SERVER_URL # Use the globally defined SERVER_URL
-
-        client.set(service_key, json.dumps(service_data))
-        
-        # --- Unified CORS Registry ---
-        # Announce this server's URL to the site-wide dynamic CORS registry
-        if service_data.get("url"):
-            client.sadd("cors:allowed_origins", service_data["url"].rstrip('/'))
+            service_data["status"] = status
+            service_data["last_heartbeat"] = datetime.utcnow().isoformat() + 'Z'
             
-        # Seed explicitly configured origins (like frontend) into the mesh
-        if status == "online":
-            for default_origin in _get_cors_origins():
-                client.sadd("cors:allowed_origins", default_origin.rstrip('/'))
+            if url:
+                service_data["url"] = url
+            elif "url" not in service_data:
+                service_data["url"] = SERVER_URL
+
+            client.set(service_key, json.dumps(service_data))
+            
+            if service_data.get("url"):
+                client.sadd("cors:allowed_origins", service_data["url"].rstrip('/'))
                 
-        logger.info(f"Updated service registry with status '{status}' and URL '{service_data.get('url')}'.")
+            if status == "online":
+                for default_origin in _get_cors_origins():
+                    client.sadd("cors:allowed_origins", default_origin.rstrip('/'))
+
+        await asyncio.to_thread(_do_update)
+        logger.info(f"Updated service registry with status '{status}' and URL '{url or SERVER_URL}'.")
 
     except Exception:
         logger.exception("Failed to update service registry in Redis.")
@@ -180,23 +189,84 @@ if not _jobs_available and _jobs_import_err_msg:
     logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
 settings = get_settings()
-SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8001')
+SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8000')
 
 
 @asynccontextmanager
 async def _lifespan(application: FastAPI):
     # ── startup ──────────────────────────────────────────────────────────
     _total_start = time.time()
-    logger.info("Application startup sequence initiated...")
+    try:
+        from tqdm import tqdm
+        import sys
+        # Only show the progress bar in an interactive TTY. In logs (e.g., Docker),
+        # the carriage returns create messy output. Fall back to plain logging.
+        # Allow forcing TQDM via environment variable for Docker Compose.
+        force_tqdm = os.getenv("FORCE_TQDM", "false").lower() == "true"
+        if sys.stderr.isatty() or force_tqdm:
+            # Corrected total and added dynamic_ncols for better rendering
+            pbar = tqdm(total=12, desc="🚀 Starting Concierge", unit="step", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}] {desc}", dynamic_ncols=True)
+        else:
+            pbar = None
+            logger.info("Non-TTY environment detected; using standard logs for startup.")
+    except ImportError:
+        pbar = None
+        logger.info("Application startup sequence initiated...")
+
+    def set_pbar_status(description: str):
+        """Updates the progress bar's description without advancing it."""
+        if pbar:
+            pbar.set_description(f"Status: {description}")
+            pbar.refresh() # Force update
+        else:
+            # For logging, we only want to see major steps, not every status update.
+            # So this function will do nothing if there's no progress bar.
+            pass
+
+    def update_pbar(description: str):
+        """Advances the progress bar by one step and updates its description."""
+        if pbar:
+            pbar.set_description(f"Status: {description}")
+            pbar.update()
+        else:
+            logger.info(f"Startup: {description}...")
+
+    async def _wait_for_url(url: str, service_name: str, timeout: int = 60) -> bool:
+        """Polls a URL until it gets a 2xx response or times out."""
+        set_pbar_status(f"Connecting to {service_name}")
+        start_time = time.time()
+        async with httpx.AsyncClient() as client:
+            while time.time() - start_time < timeout:
+                try:
+                    # Use a short timeout for each individual request
+                    response = await client.get(url, timeout=2)
+                    if 200 <= response.status_code < 300:
+                        set_pbar_status(f"Connection to {service_name} successful.")
+                        logger.info(f"{service_name} is ready at {url}.")
+                        return True
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout):
+                    set_pbar_status(f"Connecting to {service_name} (retrying)...")
+                    # These are expected if the service isn't up yet
+                    pass
+                except Exception:
+                    logger.exception(f"Unexpected error while waiting for {service_name}")
+                await asyncio.sleep(2)
+        set_pbar_status(f"Timed out connecting to {service_name}.")
+        logger.warning(f"Timed out waiting for {service_name} to be ready at {url}.")
+        return False
+
     application.state.start_time = time.time()
+    application.state.startup_complete = False # Set initial status
     application.state.conversation = []  # in-memory history; cleared on restart
     import importlib
-    global is_enabled, load_default_plugins, _plugin_reg, load_default_integrations, _intg_reg
+    global is_enabled
+    global settings, AsyncConcurrencyManager, MemoryStore, SacredTimeline
+    global _celery_app, load_default_plugins, _plugin_reg, load_default_integrations, _intg_reg
     global _list_tool_names, _get_tool, _register_tool, observability_setup, MEDIA_SAVED, REQUEST_COUNTER
-    global SacredTimeline, AsyncConcurrencyManager, MemoryStore, _celery_app
-    global _upload_router, _project_router, _task_router, _get_task_queue, _register_task_handlers, _job_router
-    # late-import configuration and core components
-    logger.info("Importing core modules...")
+    global _upload_router, _project_router, _task_router, _get_task_queue, _register_task_handlers
+    global _job_router, _jobs_available, _jobs_import_err_msg
+    # late-import configuration and core components, advancing progress bar at each major step
+    update_pbar("Importing core modules")
     _step_t0 = time.time()
     cfg_mod = importlib.import_module('config.settings')
     settings = cfg_mod.get_settings()
@@ -213,15 +283,67 @@ async def _lifespan(application: FastAPI):
     except Exception:
         logger.exception("Isolated startup issue: Failed to import orchestration.sacred_timeline")
         SacredTimeline = None
+    logger.info(f"Core modules imported in {time.time() - _step_t0:.3f}s.")
 
-    logger.info("Initializing Celery app and registering tasks...")
-    # Initialize Celery app
+    # NEW: Wait for Redis
+    update_pbar("Connecting to Redis")
+    _redis_ready = False
+    _redis_start_time = time.time() # Use the configurable timeout
+    _redis_timeout = getattr(settings, "redis_init_timeout", 30)
+    while time.time() - _redis_start_time < _redis_timeout:
+        try:
+            r = get_redis()
+            if r is None:
+                set_pbar_status("Redis not configured, skipping.")
+                logger.info("Redis is not configured. Skipping wait.")
+                _redis_ready = True
+                break
+            
+            # Enforce a strict timeout so a hanging socket doesn't trap the thread and event loop
+            is_ready = await asyncio.wait_for(asyncio.to_thread(r.ping), timeout=2.0)
+            if is_ready:
+                set_pbar_status("Redis connection successful.")
+                logger.info("Redis is ready.")
+                _redis_ready = True
+                break
+            await asyncio.sleep(2)
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, asyncio.TimeoutError, ConnectionRefusedError):
+            set_pbar_status("Redis connection failed, retrying...")
+            await asyncio.sleep(2)
+        except Exception:
+            logger.exception("Unexpected error while waiting for Redis")
+            break # Don't get stuck in a loop on unexpected errors
+    if not _redis_ready:
+        set_pbar_status("Timed out connecting to Redis.")
+        logger.warning("Timed out waiting for Redis. Continuing, but some features may fail.")
+
+    # NEW: Wait for Vector DB
+    # Safely get vector_db, providing a default if the attribute is missing from settings.
+    # This handles cases where config.settings might not have 'vector_db' defined.
+    configured_vector_db = getattr(settings, "vector_db", "chroma")
+    _vector_db_url = ""
+    _vector_db_name = ""
+    if configured_vector_db == "chroma":
+        _vector_db_name = "ChromaDB"
+        _vector_db_url = f"http://{getattr(settings, 'chroma_host', 'localhost')}:{getattr(settings, 'chroma_port', 8000)}/api/v2/heartbeat"
+    elif configured_vector_db == "qdrant":
+        _vector_db_name = "Qdrant"
+        _vector_db_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/readyz"
+    
+    _vdb_timeout = getattr(settings, 'vector_db_init_timeout', 30)
+    if _vector_db_url:
+        update_pbar(f"Connecting to {_vector_db_name}")
+        await _wait_for_url(_vector_db_url, _vector_db_name, timeout=_vdb_timeout)
+    else:
+        update_pbar("Vector DB not configured, skipping")
+
+    # Initialize Celery app and pass the configurable timeout
+    update_pbar("Initializing task engine (Celery)")
     try:
         celery_mod = importlib.import_module('tasks.celery_app')
-        global _celery_app
         _celery_app = getattr(celery_mod, 'celery_app')
         # Import tasks to register them with Celery
-        importlib.import_module('tasks.main_tasks')
+        importlib.import_module('tasks.agent_tasks')
         importlib.import_module('tasks.step_assistant_tasks')
     except Exception:
         logger.exception("Isolated startup issue: Failed to load Celery app or tasks")
@@ -233,33 +355,46 @@ async def _lifespan(application: FastAPI):
         llm_tool = llm_cls()
     except Exception:
         llm_tool = None
-    logger.info(f"Core modules imported in {time.time() - _step_t0:.3f}s.")
+    logger.info(f"Celery and LLM tools initialized in {time.time() - _step_t0:.3f}s.")
 
-    # feature flag helper (populate module-level `is_enabled` so route handlers
-    # can call it without requiring imports)
+    # Initialize vector memory store, which may involve network calls.
+    update_pbar("Initializing vector memory store")
+    _step_t0 = time.time()
+    application.state.memory = MemoryStore(collection_name=getattr(settings, 'memory_collection', 'concierge'), llm_tool=llm_tool)
+    # Asynchronously initialize the vector DB client and collection
+    # This handles retries and prevents blocking the main thread, using the configurable timeout.
+    await application.state.memory.async_init(
+        timeout=getattr(settings, 'vector_db_init_timeout', 30), 
+        retry_interval=2,
+        progress_callback=set_pbar_status
+    )
+
+    # feature flag helper (populate module-level `is_enabled` so route handlers can call it without requiring imports)
+    logger.info(f"Vector memory initialized in {time.time() - _step_t0:.3f}s.")
+
+    update_pbar("Initializing orchestrator (Sacred Timeline)...")
     _step_t0 = time.time()
     try:
         ff_mod = importlib.import_module('core.feature_flags')
         is_enabled = getattr(ff_mod, 'is_enabled')
     except Exception:
         is_enabled = lambda name: False
-
-    logger.info("Initializing application state components (concurrency, memory, timeline)...")
-    application.state.memory = MemoryStore(collection_name=settings.memory_collection, llm_tool=llm_tool)
+    
     if SacredTimeline:
         application.state.timeline = SacredTimeline(
             memory_store=application.state.memory,
         )
     else:
         application.state.timeline = None
-    logger.info(f"Application state components initialized in {time.time() - _step_t0:.3f}s.")
+    logger.info(f"Application state (timeline) initialized in {time.time() - _step_t0:.3f}s.")
 
     # start background media cleanup task
+    update_pbar("Configuring background services")
     _step_t0 = time.time()
     async def _media_cleanup_loop():
         try:
-            media_images = settings.media_images_dir
-            max_age = settings.media_max_age_seconds
+            media_images = getattr(settings, "media_images_dir", Path("/tmp/media/images"))
+            max_age = getattr(settings, "media_max_age_seconds", 86400)
             while True:
                 try:
                     now = time.time()
@@ -291,6 +426,7 @@ async def _lifespan(application: FastAPI):
     logger.info(f"Background tasks & observability configured in {time.time() - _step_t0:.3f}s.")
 
     # Register built-in tools
+    update_pbar("Registering tools")
     _step_t0 = time.time()
     try:
         tools_mod = importlib.import_module('tools.tool_registry')
@@ -319,6 +455,7 @@ async def _lifespan(application: FastAPI):
     logger.info(f"Built-in tools registered in {time.time() - _step_t0:.3f}s.")
 
     # Load capability layers (plugins/integrations)
+    update_pbar("Loading capabilities")
     _step_t0 = time.time()
     try:
         pl_mod = importlib.import_module('plugins.plugin_loader')
@@ -344,6 +481,7 @@ async def _lifespan(application: FastAPI):
     logger.info(f"Capabilities & integrations loaded in {time.time() - _step_t0:.3f}s.")
 
     # Wire file-agent handlers and start the background task worker (optional)
+    update_pbar("Connecting to task broker")
     _step_t0 = time.time()
     try:
         tw_mod = importlib.import_module('tasks.task_worker')
@@ -351,13 +489,22 @@ async def _lifespan(application: FastAPI):
         tq_mod = importlib.import_module('tasks')
         _get_task_queue = getattr(tq_mod, 'get_queue')
         _register_task_handlers()
-        await _get_task_queue().start_worker()
+        # Use a configurable, more generous timeout for the task worker connection
+        # to improve startup stability on slow networks or busy systems.
+        _task_worker_timeout = getattr(settings, "task_worker_init_timeout", 30)
+        await asyncio.wait_for(_get_task_queue().start_worker(), timeout=_task_worker_timeout)
+        set_pbar_status("Task broker connection successful.")
+        logger.info(f"Task worker connection established in {time.time() - _step_t0:.3f}s.")
+    except asyncio.TimeoutError:
+        set_pbar_status("Timed out connecting to task broker.")
+        logger.warning("Timed out connecting to task broker. Worker will be unavailable.")
     except Exception:
+        set_pbar_status("Task broker connection failed.")
         logger.exception('Task worker not available or failed to start (continuing)')
-    logger.info(f"Task worker started in {time.time() - _step_t0:.3f}s.")
+    
 
-    # Register routers from workstation/projects/tasks if available
-    logger.info("Registering feature routers...")
+    # Register routers from features like workstation/projects/tasks if available
+    update_pbar("Registering feature routers and API endpoints...")
     _step_t0 = time.time()
     try:
         ws_mod = importlib.import_module('workstation')
@@ -394,18 +541,53 @@ async def _lifespan(application: FastAPI):
         _jobs_import_err_msg = str(_jobs_import_err)
     logger.info(f"Feature routers registered in {time.time() - _step_t0:.3f}s.")
 
-    logger.info(f"Application startup complete in {time.time() - _total_start:.3f}s total.")
-    
+    update_pbar("Announcing service online")
     try:
-        await update_service_registry(status="online")
+        # Use a configurable, more generous timeout for the service registry connection.
+        _registry_timeout = getattr(settings, "service_registry_init_timeout", 10)
+        await asyncio.wait_for(
+            update_service_registry(status="online"),
+            timeout=_registry_timeout
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Timed out connecting to service registry (Redis). Skipping.")
     except Exception:
         logger.exception("Failed to announce service online status during startup.")
-        
+
+    set_pbar_status("Redirecting to dashboard...")
+    if os.getenv("AUTO_OPEN_BROWSER", "false").lower() == "true":
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        open_browser(frontend_url, delay=1.0)
+
+    if pbar:
+        pbar.close()
+        # Final startup message after progress bar
+        logger.info(f"🚀 Concierge startup complete in {time.time() - _total_start:.3f}s total.")
+    else:
+        logger.info(f"Application startup complete in {time.time() - _total_start:.3f}s total.")
+
+    # Signal that the application has completed its startup sequence.
+    application.state.startup_complete = True
+    logger.info("Application is now ready to accept connections.")
+
+    # Load desktop application if available
+    try:
+        desktop_mod = importlib.import_module('desktop')
+        start_desktop = getattr(desktop_mod, 'start', None)
+        if callable(start_desktop):
+            logger.info("Starting desktop application...")
+            threading.Thread(target=start_desktop, daemon=True).start()
+    except ImportError:
+        pass
+    except Exception:
+        logger.exception("Error occurred while loading desktop application")
+
     yield
     # ── shutdown ─────────────────────────────────────────────────────────
+    application.state.startup_complete = False
     # Unregister from service registry
     try:
-        await update_service_registry(status="offline")
+        await asyncio.wait_for(update_service_registry(status="offline"), timeout=2.0)
         logger.info("Service status updated to 'offline' in the registry.")
     except Exception:
         logger.exception("Failed to update service registry on shutdown.")
@@ -429,19 +611,20 @@ from fastapi.middleware.cors import CORSMiddleware
 # and production deployments.
 
 _DEFAULT_CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:5174", "http://127.0.0.1:5174",
+    "http://localhost:5175", "http://127.0.0.1:5175",
+    "http://localhost:5176", "http://127.0.0.1:5176",
+    "http://localhost:5177", "http://127.0.0.1:5177",
+    "http://localhost:5178", "http://127.0.0.1:5178",
+    "http://localhost:5179", "http://127.0.0.1:5179",
+    "http://localhost:8000", # Add backend's own port for Swagger UI
+    "http://127.0.0.1:8000", # Add backend's own port for Swagger UI
+    "http://localhost:8001", # Docker-compose host port for backend
+    "http://127.0.0.1:8001", # Docker-compose host port for backend
     "https://deoismconcierge.vercel.app",
     "https://deoismconcierge-adportfolionodes-projects.vercel.app",
 ]
-
-_LOCALHOST_CORS_ALIASES = {
-    "http://localhost:5173": "http://127.0.0.1:5173",
-    "http://127.0.0.1:5173": "http://localhost:5173",
-}
-
 
 def _parse_cors_allow_origins(raw_value: str | None) -> list[str]:
     if not raw_value:
@@ -455,17 +638,26 @@ def _parse_cors_allow_origins(raw_value: str | None) -> list[str]:
 
 
 def _expand_cors_origin_aliases(origins: list[str]) -> list[str]:
+    """Auto-expands localhost/127.0.0.1 aliases for any http origin."""
     expanded: list[str] = []
     seen: set[str] = set()
     for origin in origins:
+        origin = origin.rstrip('/')
         if origin in seen:
             continue
         seen.add(origin)
         expanded.append(origin)
-        alias = _LOCALHOST_CORS_ALIASES.get(origin)
-        if alias and alias not in seen:
-            seen.add(alias)
-            expanded.append(alias)
+        # Auto-add localhost/127.0.0.1 aliases for any http origin
+        if origin.startswith("http://localhost"):
+            alias = origin.replace("http://localhost", "http://127.0.0.1", 1)
+            if alias not in seen:
+                seen.add(alias)
+                expanded.append(alias)
+        elif origin.startswith("http://127.0.0.1"):
+            alias = origin.replace("http://127.0.0.1", "http://localhost", 1)
+            if alias not in seen:
+                seen.add(alias)
+                expanded.append(alias)
     return expanded
 
 
@@ -480,6 +672,36 @@ cors_origins = _get_cors_origins()
 _dynamic_cors_cache: set[str] = set()
 _dynamic_cors_last_sync: float = 0.0
 
+async def _refresh_cors_cache():
+    try:
+        client = get_redis()
+        if not client:
+            return
+            
+        def _fetch():
+            return client.smembers("cors:allowed_origins")
+            
+        dynamic_origins = await asyncio.to_thread(_fetch)
+        if dynamic_origins:
+            global _dynamic_cors_cache
+            new_cache = set()
+            decoded_origins = [o.decode('utf-8') if isinstance(o, bytes) else str(o) for o in dynamic_origins]
+            # Expand aliases for all dynamically fetched origins
+            for origin in decoded_origins:
+                origin = origin.rstrip('/')
+                if origin in new_cache:
+                    continue
+                new_cache.add(origin)
+                if origin.startswith("http://localhost"):
+                    alias = origin.replace("http://localhost", "http://127.0.0.1", 1)
+                    new_cache.add(alias)
+                elif origin.startswith("http://127.0.0.1"):
+                    alias = origin.replace("http://127.0.0.1", "http://localhost", 1)
+                    new_cache.add(alias)
+            _dynamic_cors_cache = new_cache
+    except Exception as e:
+        logger.debug(f"Failed to sync dynamic CORS origins from registry: {e}")
+
 class DynamicCORSMiddleware(CORSMiddleware):
     """Industry-standard unified registry CORS middleware.
     Validates against static rules first, then queries the unified Redis registry
@@ -491,27 +713,18 @@ class DynamicCORSMiddleware(CORSMiddleware):
         global _dynamic_cors_cache, _dynamic_cors_last_sync
         now = time.time()
         if now - _dynamic_cors_last_sync > 30:  # 30-second TTL for registry sync
+            _dynamic_cors_last_sync = now
             try:
-                from jobs.task_tree_store import get_redis
-                client = get_redis()
-                if client:
-                    dynamic_origins = client.smembers("cors:allowed_origins")
-                    if dynamic_origins:
-                        new_cache = set()
-                        for b_orig in dynamic_origins:
-                            o = b_orig.decode('utf-8') if isinstance(b_orig, bytes) else str(b_orig)
-                            new_cache.add(o)
-                            alias = _LOCALHOST_CORS_ALIASES.get(o)
-                            if alias:
-                                new_cache.add(alias)
-                        _dynamic_cors_cache = new_cache
-                    _dynamic_cors_last_sync = now
-            except Exception as e:
-                logger.debug(f"Failed to sync dynamic CORS origins from registry: {e}")
+                # Spawn a background task to refresh the cache asynchronously.
+                # This prevents blocking the main event loop during health checks or normal routing.
+                loop = asyncio.get_running_loop()
+                loop.create_task(_refresh_cors_cache())
+            except Exception:
+                pass
 
         return origin in _dynamic_cors_cache
 
-# Serve generated media (images/audio/video) from /media
+# Serve generated media (images/audio/video) from /media (fallback to /tmp for serverless)
 try:
     media_path = settings.media_dir
     try:
@@ -585,21 +798,14 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 class AskPayload(BaseModel):
-    input: Optional[str] = None
-    message: Optional[str] = None
-
-    @model_validator(mode='before')
-    @classmethod
-    def _normalize(cls, values):
-        v = values.get('input') or values.get('message')
-        if not v or not str(v).strip():
-            raise ValueError("either 'input' or 'message' field must be provided")
-        values['input'] = v
-        return values
+    input: str
 
 
 class ServiceUrlPayload(BaseModel):
     url: str
+
+
+from pydantic import model_validator
 
 
 class ConciergeMessagePayload(BaseModel):
@@ -657,41 +863,14 @@ def _ensure_timeline_available():
         raise HTTPException(status_code=503, detail='service temporarily unavailable')
 
 
-def _find_task_node(tree: Any, task_id: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(tree, dict):
-        return None
-    if tree.get("task_id") == task_id:
-        return tree
-    for child in tree.get("children", []) or []:
-        found = _find_task_node(child, task_id)
-        if found is not None:
-            return found
-    return None
-
-
 # startup logic moved to _lifespan context manager above
 
 
 # versioned endpoints are used by the frontend; we keep the old
 # `/ask` path as an unversioned alias for compatibility but wrap all
 # responses in our standard JSON envelope as well.  This makes it easier
-# to relocate the logic under `/api/v1` later if desired.
-@app.post("/ask")
-async def ask(payload: AskPayload):
-    _ensure_timeline_available()
-    if not payload.input:
-        # return our error envelope rather than raw HTTPException
-        return JSONResponse(status_code=400, content={
-            "error": "input required",
-            "code": 400,
-        })
-    result = await app.state.timeline.handle_user_input(payload.input)
-    # wrap result to guarantee JSON output
-    return JSONResponse(content={
-        "response": result,
-        "thread_id": None,
-        "metadata": {},
-    })
+# to relocate the logic under `/api/v1` later if desired. Legacy aliases
+# have been removed to simplify the API surface.
 
 
 @app.post('/api/v1/concierge/message')
@@ -699,77 +878,10 @@ async def concierge_message(payload: ConciergeMessagePayload, request: Request):
     return await _handle_chat_message(payload, request)
 
 
-@app.post('/chat')
-async def chat_alias(payload: ConciergeMessagePayload, request: Request):
-    """Legacy compatibility alias. The canonical endpoint is /api/v1/concierge/message."""
-    return await _handle_chat_message(payload, request)
-
-
-_STATUS_QUERY_RE = re.compile(
-    r'\b(what(?:\'s| is| are) (?:you |it |the )?(?:doing|running|happening|status|progress|working on)'
-    r'|status|what tasks?|are you running|current(?:ly)? (?:running|doing|working)'
-    r'|show (?:me )?(?:the )?(?:running |active )?tasks?'
-    r'|how (?:is|are) (?:it|things|the tasks?) (?:going|doing|progressing)'
-    r'|any (?:active|running) tasks?'
-    r'|(?:task|thread) (?:status|progress|update))\b',
-    re.IGNORECASE,
-)
-
-
-def _build_status_reply() -> str:
-    """Return a human-readable summary of all currently known task trees."""
-    try:
-        from task_tree_store import get_redis
-        r = get_redis()
-        keys = r.keys('task_tree:*') if r else []
-        summaries: list[str] = []
-        for key in (keys or []):
-            thread_id = key.decode() if isinstance(key, bytes) else key
-            thread_id = thread_id.split(':', 1)[1] if ':' in thread_id else thread_id
-            from task_tree_store import get_task_tree
-            tree = get_task_tree(thread_id)
-            if not tree:
-                continue
-            status = tree.get('status', 'unknown')
-            name = tree.get('task_name') or thread_id[:8]
-            progress = tree.get('progress', 0)
-            children = tree.get('children') or []
-            running = [c for c in children if isinstance(c, dict) and c.get('status') == 'running']
-            done = [c for c in children if isinstance(c, dict) and c.get('status') in ('done', 'completed')]
-            summaries.append(
-                f"• **{name}** — {status} ({progress}% done, "
-                f"{len(running)} running, {len(done)}/{len(children)} subtasks complete)"
-            )
-        if not summaries:
-            return (
-                "I don't have any active background tasks at the moment. "
-                "I'm ready to help — ask me to create a plan, set a goal, or run a task."
-            )
-        lines = ["Here's what I'm currently working on:\n"] + summaries
-        return '\n'.join(lines)
-    except Exception as exc:
-        logger.warning("Status reply failed: %s", exc)
-        return "I couldn't retrieve task status right now. Please try again in a moment."
-
-
 async def _handle_chat_message(payload: ConciergeMessagePayload, request: Request):
     # the Pydantic validator above guarantees we have a nonempty `message`
     msg = payload.message
     _ensure_timeline_available()
-
-    # ── Dual-mode: status queries get an inline live answer, no new thread ──
-    if _STATUS_QUERY_RE.search(msg):
-        status_content = _build_status_reply()
-        now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
-        data = {
-            'id': str(int(time.time() * 1000)),
-            'role': 'assistant',
-            'content': status_content,
-            'meta': {'llm': {'provider': 'status-query', 'error': None}},
-            'timestamp': now,
-        }
-        return _api_response(data)
-
     thread_id = str(uuid.uuid4())
     result = await app.state.timeline.handle_user_input(msg, thread_id=thread_id)
 
@@ -813,131 +925,6 @@ async def _handle_chat_message(payload: ConciergeMessagePayload, request: Reques
         'timestamp': now,
     }
 
-    # Persist any remote images found in the assistant response and rewrite
-    # their URLs to point at our local `/media/images/` mount so the frontend
-    # always renders a stable, local copy.
-    def _request_base_url(request: Request) -> str:
-        forwarded_proto = request.headers.get('x-forwarded-proto') or request.headers.get('x-forwarded-protocol')
-        forwarded_host = request.headers.get('x-forwarded-host') or request.headers.get('host')
-        if forwarded_proto and forwarded_host:
-            return f"{forwarded_proto.rstrip('://')}://{forwarded_host}"
-        if forwarded_host:
-            scheme = request.url.scheme or 'https'
-            return f"{scheme}://{forwarded_host}"
-        return str(request.base_url).rstrip('/')
-
-    async def _persist_and_rewrite_images(text: str, request: Request) -> str:
-        if not text or not isinstance(text, str):
-            return text
-        # simple heuristic: match http/https URLs that likely point to images
-        url_re = re.compile(r"(https?://[^\s\)\"]+\.(?:png|jpe?g|gif|webp))", re.IGNORECASE)
-        found = list(url_re.finditer(text))
-        if not found:
-            # try a looser match (no extension) and check content-type
-            url_re2 = re.compile(r"(https?://[^\s\)\"]+)")
-            candidates = [m.group(1) for m in url_re2.finditer(text)]
-        else:
-            candidates = [m.group(1) for m in found]
-
-        media_dir = settings.media_images_dir
-        media_dir.mkdir(parents=True, exist_ok=True)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            for url in candidates:
-                try:
-                    # HEAD first to check content-type quickly
-                    head = await client.head(url, follow_redirects=True)
-                    ctype = head.headers.get('content-type', '') if head is not None else ''
-                    if not ctype.startswith('image'):
-                        # try GET anyway for some hosts that don't respond to HEAD
-                        resp = await client.get(url, follow_redirects=True)
-                        if resp.status_code != 200 or not resp.headers.get('content-type', '').startswith('image'):
-                            continue
-                    else:
-                        resp = await client.get(url, follow_redirects=True)
-                    if resp.status_code != 200:
-                        continue
-                    img_bytes = resp.content
-                    # derive extension from content-type or url
-                    ext = None
-                    if 'jpeg' in resp.headers.get('content-type', ''):
-                        ext = 'jpg'
-                    elif 'png' in resp.headers.get('content-type', ''):
-                        ext = 'png'
-                    elif 'gif' in resp.headers.get('content-type', ''):
-                        ext = 'gif'
-                    elif 'webp' in resp.headers.get('content-type', ''):
-                        ext = 'webp'
-                    else:
-                        # fallback: try to take extension from URL
-                        parsed = url.split('?')[0]
-                        if '.' in parsed:
-                            ext = parsed.rsplit('.', 1)[-1][:4]
-                        else:
-                            ext = 'png'
-                    # filename deterministic-ish
-                    sha = hashlib.sha1(img_bytes).hexdigest()[:12]
-                    ts = int(time.time())
-                    fname = f"img_{sha}_{ts}.{ext}"
-                    fpath = media_dir / fname
-                    fpath.write_bytes(img_bytes)
-                    # sidecar metadata
-                    sidecar = {
-                        'filename': fname,
-                        'prompt': None,
-                        'mime_type': resp.headers.get('content-type', ''),
-                        'created_at': datetime.utcnow().isoformat() + 'Z',
-                        'size': len(img_bytes),
-                        'source': 'remote',
-                        'remote_url': url,
-                    }
-                    try:
-                        (media_dir / (fname + '.json')).write_text(json.dumps(sidecar))
-                    except Exception:
-                        logger.exception('Failed to write sidecar for %s', fname)
-                    # replace occurrences of the original URL with our local path
-                    if is_enabled('media_absolute_urls'):
-                        try:
-                            base = _request_base_url(request)
-                            local_url = f"{base}/media/images/{fname}"
-                        except Exception:
-                            local_url = f"/media/images/{fname}"
-                    else:
-                        local_url = f"/media/images/{fname}"
-                    text = text.replace(url, local_url)
-                except Exception:
-                    logger.exception('Failed to fetch or persist image %s', url)
-                    continue
-        return text
-
-    # rewrite content_val and raw metadata if they contain remote image URLs
-    # This logic is now primarily for the initial response.
-    # Actual image processing from LLM responses should be handled within Celery tasks.
-    # try:
-    #     data['content'] = await _persist_and_rewrite_images(data['content'], request)
-    # except Exception:
-    #     logger.exception('Error persisting images found in initial assistant content')
-    # try:
-    #     # if result is a dict/structured object, stringify nested response text
-    #     if isinstance(data['meta']['raw'], dict):
-    #         try:
-    #             # run the rewrite for top-level known keys
-    #             if 'response' in data['meta']['raw'] and isinstance(data['meta']['raw']['response'], str):
-    #                 data['meta']['raw']['response'] = await _persist_and_rewrite_images(data['meta']['raw']['response'], request)
-    #             if 'media' in data['meta']['raw'] and isinstance(data['meta']['raw']['media'], list):
-    #                 new_media = []
-    #                 for m in data['meta']['raw']['media']:
-    #                     if isinstance(m, str):
-    #                         new_media.append(await _persist_and_rewrite_images(m, request))
-    #                     elif isinstance(m, dict):
-    #                         if 'url' in m and isinstance(m['url'], str):
-    #                             m['url'] = await _persist_and_rewrite_images(m['url'], request)
-    #                         new_media.append(m)
-    #                 data['meta']['raw']['media'] = new_media
-    #         except Exception:
-    #             logger.exception('Failed to rewrite nested URLs in result dict for initial response')
-    # except Exception:
-    #     logger.exception('Error scanning initial response for images')
-
     # append entries to conversation state (used by /conversation endpoint)
     app.state.conversation.append(user_entry)
     app.state.conversation.append(data)
@@ -978,22 +965,20 @@ async def concierge_timeline():
         logger.exception('Failed to fetch timeline plan')
         return _api_response({'error': 'timeline plan unavailable'}, status='error')
 
-@app.get('/api/tasks/status')
-async def alias_list_tasks():
-    """Alias returning all current tasks and their real status."""
-    return await list_tasks()
-
 @app.get('/api/v1/tasks')
 async def list_tasks():
     try:
         from task_tree_store import get_redis
         client = get_redis()
         task_keys = list(client.scan_iter(match='task_tree:*', count=100))
+        if not client:
+            logger.warning("Cannot list tasks, Redis is not available.")
+            return _api_response([])
         tasks = []
-        for key in task_keys: # type: ignore
+        for key in await asyncio.to_thread(client.scan_iter, match='task_tree:*', count=100):
             thread_id = key.split(':', 1)[1] if ':' in key else key
-            task_tree = get_task_tree(thread_id)
-            if not task_tree:
+            task_tree = await get_task_tree(thread_id)
+            if not task_tree: # type: ignore
                 continue
             metadata = task_tree.get('metadata') or {}
             tasks.append({
@@ -1008,42 +993,33 @@ async def list_tasks():
         logger.exception('Failed to fetch task list')
         return _api_response({'error': 'task list unavailable'}, status='error')
 
-@app.post('/api/tasks/kill/{task_id}')
-async def alias_kill_task(task_id: str):
-    """Alias to kill hanging tasks."""
-    return await kill_task(task_id)
-
 @app.post('/api/v1/tasks/{task_id}/kill')
 async def kill_task(task_id: str):
     """Endpoint to kill a running Celery task."""
-    from task_tree_store import upsert_task_node
-
     if _celery_app is None:
-        # No Celery — mark the node killed in the in-memory store and return success
-        try:
-            upsert_task_node(task_id, task_id, status="KILLED", result="Task killed by user.")
-        except Exception:
-            pass
-        return _api_response({"status": "success", "message": f"Task {task_id} marked killed (no Celery)."})
+        raise HTTPException(status_code=503, detail="Celery app not initialized.")
 
     try:
         # Revoke the task, terminating it immediately
-        _celery_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
-        logger.info(f"Task {task_id} sent SIGKILL.")
+        await asyncio.to_thread(_celery_app.control.revoke, task_id, terminate=True, signal='SIGKILL')
+        # Update the task status in the task tree
+        # Note: task_id is used as thread_id here if it's a root task, otherwise it's the actual task_id
+        # A more robust solution might involve finding the thread_id associated with the task_id first.
+        upsert_task_node(thread_id=task_id, task_id=task_id, parent_id=None, status="KILLED", result="Task killed by user.")
+        logger.info(f"Task {task_id} sent SIGKILL and marked as KILLED.")
+        return _api_response({"status": "success", "message": f"Task {task_id} kill signal sent."})
     except Exception as e:
-        logger.warning(f"Celery revoke failed for {task_id} (broker unavailable?): {e}")
-    # Always mark killed in local store regardless of Celery connectivity
-    try:
-        upsert_task_node(task_id, task_id, status="KILLED", result="Task killed by user.")
-    except Exception:
-        pass
-    return _api_response({"status": "success", "message": f"Task {task_id} kill signal sent."})
+        logger.exception(f"Failed to kill task {task_id}")
+        return JSONResponse(status_code=500, content={
+            "status": "error",
+            "message": f"Failed to send kill signal to task {task_id}: {e!s}"
+        })
 
 
 @app.get('/api/v1/tasks/{task_id}/status')
 async def task_status(task_id: str):
     try:
-        task_tree = get_task_tree(task_id)
+        task_tree = await get_task_tree(task_id)
     except Exception as exc:
         logger.exception('Failed to fetch task status for %s', task_id)
         resp = _api_response(None, status='error')
@@ -1066,37 +1042,47 @@ async def concierge_timeline_graph():
 
 
 @app.get('/api/v1/concierge/timeline/stream')
-async def concierge_timeline_stream(request: Request, thread_id: Optional[str] = None):
+async def concierge_timeline_stream(request: Request):
     """Server-Sent Events endpoint streaming timeline updates in real-time.
 
-    Subscribes to the in-process asyncio queue published by SacredTimeline so
-    events flow even when Redis is unavailable.  Each event is a structured
-    delta object: node_add, node_update, edge_add, task_update, or plan.
+    Each event is a structured delta object and may include visual graph hints
+    for the frontend visualizer: node_add, node_update, edge_add, task_update,
+    and plan metadata.
+    This endpoint now streams task tree updates from Redis Pub/Sub.
     """
-    thread_id = request.query_params.get("thread_id") or thread_id
-    _ensure_timeline_available()
-    timeline = app.state.timeline
-    q = timeline.subscribe_timeline()
+    thread_id = request.query_params.get("thread_id")
+    if not thread_id:
+        return Response("thread_id query parameter is required.", status_code=400, media_type="text/plain")
 
+    from task_tree_store import get_task_update_pubsub
+    
     async def event_generator():
+        pubsub = None
         try:
+            pubsub = get_task_update_pubsub(thread_id)
+            if pubsub is None:
+                logger.warning(f"SSE stream for thread {thread_id} disabled: Redis is not available.")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Real-time updates are unavailable because the connection to the streaming server could not be made.'})}\n\n"
+                return
+            logger.info(f"SSE stream opened for thread_id: {thread_id}")
             while True:
                 if await request.is_disconnected():
+                    logger.info(f"SSE client for thread_id {thread_id} disconnected.")
                     break
-                try:
-                    event = await asyncio.wait_for(q.get(), timeout=5.0)
-                    # Filter by thread_id when the client requested a specific one
-                    ev_thread = event.get('thread_id')
-                    if thread_id and ev_thread and ev_thread != thread_id:
-                        continue
-                    yield f"data: {json.dumps(event)}\n\n"
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+                # Use asyncio.to_thread to run the blocking get_message call
+                message = await asyncio.to_thread(pubsub.get_message, ignore_subscribe_messages=True, timeout=1.0)
+                if message and message.get('data'):
+                    data = message['data']
+                    if isinstance(data, bytes):
+                        data = data.decode('utf-8')
+                    yield f"data: {data}\n\n"
+                await asyncio.sleep(0.1)  # Yield control to the event loop
         finally:
-            timeline.unsubscribe_timeline(q)
+            if pubsub:
+                pubsub.close() # pubsub.unsubscribe() is called by pubsub.close()
+                logger.info(f"SSE resources cleaned up for thread_id: {thread_id}")
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
-
 
 @app.websocket('/api/v1/concierge/timeline/ws')
 async def concierge_timeline_websocket(websocket: WebSocket):
@@ -1106,35 +1092,41 @@ async def concierge_timeline_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="thread_id is required")
         return
 
-    _ensure_timeline_available()
-    timeline = app.state.timeline
-    q = timeline.subscribe_timeline()
+    from task_tree_store import get_task_update_pubsub
+    
+    pubsub = get_task_update_pubsub(thread_id)
+    if pubsub is None:
+        logger.warning(f"WebSocket for thread {thread_id} disabled: Redis is not available.")
+        try:
+            await websocket.send_text(json.dumps({'type': 'error', 'message': 'Real-time updates are unavailable because the connection to the streaming server could not be made.'}))
+        except Exception:
+            pass # Client might have already disconnected
+        await websocket.close(code=1011, reason="Real-time updates unavailable.")
+        return
     try:
         while True:
-            try:
-                event = await asyncio.wait_for(q.get(), timeout=5.0)
-                ev_thread = event.get('thread_id')
-                if ev_thread and ev_thread != thread_id:
-                    continue
-                await websocket.send_text(json.dumps(event))
-            except asyncio.TimeoutError:
-                # Send a lightweight ping so the browser keeps the socket alive
-                try:
-                    await websocket.send_text('{"type":"ping"}')
-                except Exception:
-                    break
+            await asyncio.sleep(0.1)
+            message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
+            if message and message['data']:
+                await websocket.send_text(message['data'])
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for thread_id: {thread_id}")
+        pass
     except Exception:
         logger.exception('Timeline websocket error')
     finally:
-        timeline.unsubscribe_timeline(q)
+        try:
+            if pubsub:
+                pubsub.unsubscribe()
+                pubsub.close()
+        except Exception:
+            pass
 
 
 @app.get('/api/v1/concierge/threads/{thread_id}/nodes/{node_id}/memories')
 async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
     """Return memory snippets related to a thread node for visualizer side panels."""
-    from task_tree_store import get_task_tree, _find_node_in_tree
+    # from task_tree_store import get_task_tree, _find_node_in_tree #
     _ensure_timeline_available()
     if top_k < 1:
         top_k = 1
@@ -1179,26 +1171,6 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
                 "metadata": memory.get("metadata", {}),
             })
     return _api_response({"thread_id": thread_id, "node_id": node_id, "memories": ranked})
-
-
-@app.post('/api/v1/concierge/stream')
-async def concierge_stream(payload: ConciergeMessagePayload):
-    """Server-Sent Events endpoint — streams tokens as they are produced by the LLM.
-
-    Each SSE event carries a JSON-encoded dict.  See
-    ``SacredTimeline.stream_user_input`` for the event shapes.
-
-    The client should open this with ``fetch`` + ``ReadableStream`` (or
-    an ``EventSource`` that supports POST — most libraries do).
-    This endpoint is now deprecated in favor of WebSocket for task updates.
-    """
-    raise HTTPException(status_code=501, detail="Streaming via this endpoint is deprecated. Use /api/v1/concierge/timeline/ws for real-time task updates.")
-
-
-@app.get('/api/v1/concierge/stream')
-async def concierge_stream_get(message: str):
-    """Compatibility GET endpoint for stream clients that cannot POST. Deprecated."""
-    raise HTTPException(status_code=501, detail="Streaming via this endpoint is deprecated. Use /api/v1/concierge/timeline/ws for real-time task updates.")
 
 
 @app.options('/api/v1/concierge/stream')
@@ -1325,6 +1297,20 @@ async def get_integrations():
     return _api_response(_intg_reg.list_integrations())
 
 
+def _serialize_capability_list(raw_items: list[dict], default_type: str) -> list[dict]:
+    """Serializes a list of capabilities into a consistent format for the API."""
+    processed = []
+    for item in raw_items:
+        processed.append({
+            "name": item.get("name"),
+            "description": item.get("description", ""),
+            "type": item.get("type", default_type),
+            "version": item.get("version"),
+            "service": item.get("service"),
+            "enabled": item.get("enabled", True),
+        })
+    return processed
+
 @app.get('/api/v1/capabilities')
 async def get_all_capabilities(request: Request):
     """
@@ -1372,19 +1358,9 @@ async def get_all_capabilities(request: Request):
         if not _plugin_reg:
             all_capabilities['plugins'] = []
         else:
-            raw_plugins = _plugin_reg.list_plugins()
-            processed_plugins = []
-            for p in raw_plugins:
-                # Ensure a consistent structure for the frontend
-                processed_plugins.append({
-                    "name": p.get("name"),
-                    "description": p.get("description", ""),
-                    "type": p.get("type", "plugin"),
-                    "version": p.get("version"),
-                    "service": p.get("service"),
-                    "enabled": p.get("enabled", True),
-                })
-            all_capabilities['plugins'] = processed_plugins
+            all_capabilities['plugins'] = _serialize_capability_list(
+                _plugin_reg.list_plugins(), "plugin"
+            )
     except Exception:
         logger.exception("Failed to get plugins for /api/v1/capabilities")
         all_capabilities['plugins'] = []
@@ -1394,19 +1370,9 @@ async def get_all_capabilities(request: Request):
         if not _intg_reg:
             all_capabilities['integrations'] = []
         else:
-            raw_integrations = _intg_reg.list_integrations()
-            processed_integrations = []
-            for i in raw_integrations:
-                # Ensure a consistent structure for the frontend
-                processed_integrations.append({
-                    "name": i.get("name"),
-                    "description": i.get("description", ""),
-                    "type": i.get("type", "integration"),
-                    "version": i.get("version"),
-                    "service": i.get("service"),
-                    "enabled": i.get("enabled", True),
-                })
-            all_capabilities['integrations'] = processed_integrations
+            all_capabilities['integrations'] = _serialize_capability_list(
+                _intg_reg.list_integrations(), "integration"
+            )
     except Exception:
         logger.exception("Failed to get integrations for /api/v1/capabilities")
         all_capabilities['integrations'] = []
@@ -1434,71 +1400,58 @@ async def get_server_registry_status():
     try:
         client = get_redis()
         if not client:
-            return _api_response({
-                "status": "degraded",
-                "service": "concierge-backend",
-                "message": "Service registry unavailable: Redis not configured. Core API is operational.",
-                "redis": False,
-            })
+            raise HTTPException(status_code=503, detail="Service registry unavailable: Redis client not configured.")
 
         service_key = "service:registry:concierge-backend"
-        service_data_raw = client.get(service_key)
+        service_data_raw = await asyncio.to_thread(client.get, service_key)
 
         if not service_data_raw:
-            return _api_response({
-                "status": "degraded",
-                "service": "concierge-backend",
-                "message": "Service not yet registered in Redis registry.",
-                "redis": True,
-            })
+            raise HTTPException(status_code=404, detail="Service not found in registry.")
 
         service_data = json.loads(service_data_raw)
         return _api_response(service_data)
     except Exception as e:
         logger.exception("Failed to read from service registry.")
-        return _api_response({
-            "status": "degraded",
-            "service": "concierge-backend",
-            "message": f"Registry read failed: {str(e)}",
-            "redis": False,
-        })
+        # Return a proper API response envelope for errors
+        resp = _api_response(None, status='error')
+        resp['errors'] = {'message': f"Failed to read from registry: {str(e)}"}
+        return JSONResponse(status_code=500, content=resp)
 
 
 # --- health endpoints ------------------------------------------------------
+def _get_readiness_status() -> tuple[str, list[str]]:
+    """Checks if core components are initialized and returns status and messages."""
+    messages = []
+    if getattr(app.state, 'startup_complete', False):
+        status = "ok"
+    else:
+        status = "not ready"
+        messages.append("Application startup is still in progress.")
+    return status, messages
+
 @app.get('/health')
 async def health():
     """Return 200 OK if the application's core components are initialized.
     This endpoint is now an alias for /health/ready.
     """
-    status = "ok"
-    messages = []
-
-    if not hasattr(app.state, 'timeline') or app.state.timeline is None:
-        status = "not ready"
-        messages.append("app.state.timeline is not initialized")
-    if not hasattr(app.state, 'memory') or app.state.memory is None:
-        status = "not ready"
-        messages.append("app.state.memory is not initialized")
-
+    status, messages = _get_readiness_status()
+    # The original /health endpoint did not return 503, just a message.
     return JSONResponse(content={"status": status, "version": VERSION, "messages": messages})
 
 @app.get('/health/ready')
 async def health_ready():
     """Return 200 OK if the application's core components are initialized."""
-    status = "ok"
-    messages = []
-
-    if not hasattr(app.state, 'timeline') or app.state.timeline is None:
-        status = "not ready"
-        messages.append("app.state.timeline is not initialized")
-    if not hasattr(app.state, 'memory') or app.state.memory is None:
-        status = "not ready"
-        messages.append("app.state.memory is not initialized")
-
+    status, messages = _get_readiness_status()
     if status == "ok":
         return JSONResponse(content={"status": "ok", "version": VERSION})
     else:
         return JSONResponse(status_code=503, content={"status": status, "version": VERSION, "messages": messages})
+
+@app.get('/api/health/ready')
+async def health_ready_aliased():
+    """Alias for /health/ready to support clients that may incorrectly prefix with /api."""
+    return await health_ready()
+
 
 @app.get('/health/system')
 async def health_system():
@@ -1554,6 +1507,25 @@ async def health_system():
     except Exception:
         info['chroma'] = 'error'
         info['qdrant'] = 'error'
+    # Celery worker health
+    try:
+        if _celery_app:
+            # Ping workers. This returns a list of replies, one for each worker that replied.
+            # If the list is not empty, at least one worker is alive.
+            # Use a short timeout to avoid blocking the health check for too long.
+            replies = _celery_app.control.ping(timeout=1.0)
+            if replies:
+                info['celery_worker'] = 'ok'
+                info['celery_active_workers'] = len(replies)
+            else:
+                info['celery_worker'] = 'unavailable'
+                info['celery_active_workers'] = 0
+        else:
+            info['celery_worker'] = 'not configured'
+    except Exception:
+        # This can happen if the broker is down.
+        logger.debug("Celery health check failed", exc_info=True)
+        info['celery_worker'] = 'error'
     return JSONResponse(content=info)
 
 
@@ -1593,26 +1565,6 @@ async def memory_health():
             status_code=503,
             content={"status": "error", "chroma_count": 0, "detail": str(exc)},
         )
-
-
-@app.get('/api/memory/health')
-async def api_memory_health():
-    return await memory_health()
-
-
-@app.get('/api/health')
-async def api_health():
-    return await health()
-
-
-@app.get('/api/health/system')
-async def api_health_system():
-    return await health_system()
-
-
-@app.get('/api/health/logs')
-async def api_health_logs(limit: int = 100):
-    return await health_logs(limit)
 
 
 @app.get('/_health')
@@ -1661,5 +1613,20 @@ if STATIC_DIR:
 
 if __name__ == "__main__":
     import uvicorn
-    
+    import sys
+
+    # Add a command-line argument to control browser opening when running app.py directly.
+    # This is separate from the `--no-browser-open` flag in `start.sh`.
+    # Usage: python app.py --open-browser [optional_url]
+    if "--open-browser" in sys.argv:
+        idx = sys.argv.index("--open-browser")
+        url = "http://localhost:5173"
+        # Check if a URL was provided after the flag
+        if len(sys.argv) > idx + 1 and sys.argv[idx+1].startswith("http"):
+            url = sys.argv.pop(idx+1)
+        
+        # Set the environment variable that the lifespan startup function checks.
+        os.environ["AUTO_OPEN_BROWSER"] = "true"
+        os.environ["FRONTEND_URL"] = url
+        sys.argv.pop(idx)
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)

@@ -195,7 +195,8 @@ async def run_test(test: Dict[str, Any], shared_memory: MemoryStore, prev_backup
             result = {"status": "error", "error": str(exc)}
     else:
         cm = TestConcurrencyManager(max_agents=1)
-        coordinator = SacredTimeline(concurrency_manager=cm, memory_store=shared_memory)
+        coordinator = SacredTimeline(memory_store=shared_memory)
+        coordinator.concurrency_manager = cm
         # inform coordinator whether this run should treat memory as recall
         coordinator._recall_run = test.get("requires_memory", False)
         # override planner if plan provided
@@ -273,6 +274,9 @@ async def main() -> None:
     except Exception:
         pass
     shared_memory = MemoryStore(collection_name="capability_memory")
+    
+    # Asynchronously initialize the vector DB client and collection
+    await shared_memory.async_init()
 
     prev_entries: List[Dict[str, Any]] = []
     summaries = []

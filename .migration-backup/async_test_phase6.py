@@ -33,6 +33,9 @@ async def main() -> None:
     cm = TestConcurrencyManager(max_agents=1)
     ms = MemoryStore(collection_name="sacred_memory_test")
 
+    # Asynchronously initialize the vector DB client and collection
+    await ms.async_init()
+
     # Preload local backup into MemoryStore to guarantee restart-safe tests
     try:
         loop = asyncio.get_running_loop()
@@ -53,7 +56,8 @@ async def main() -> None:
         print("Warning: Vector DB health check failed; falling back to local backup/in-memory")
 
     # Create the coordinator with injected manager and memory
-    coordinator = SacredTimeline(concurrency_manager=cm, memory_store=ms)
+    coordinator = SacredTimeline(memory_store=ms)
+    coordinator.concurrency_manager = cm
 
     # Optionally override planner to return a simple multi-root plan for deterministic testing
     async def fake_plan(goal_str: str):
@@ -109,6 +113,9 @@ async def main() -> None:
 
     # Simulate restart by creating a fresh MemoryStore and querying
     ms2 = MemoryStore(collection_name="sacred_memory_test")
+    
+    await ms2.async_init()
+    
     # Ensure ms2 loads the local backup (async-safe via executor)
     try:
         loop = asyncio.get_running_loop()

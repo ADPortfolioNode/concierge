@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_HkZ99m20yX9ESt97sbdEOzEr3lJu",
+  "orgId": "team_wXd5CLLeESNWDvBEghYXeCEs",
+  "projectName": "deoism_concierge",
+  "settings": {
+    "createdAt": 1774029651658,
+    "framework": "fastapi",
+    "devCommand": null,
+    "installCommand": "pip install -r requirements.txt && cd frontend && npm ci",
+    "buildCommand": "npm run build --prefix frontend",
+    "outputDirectory": "frontend/dist",
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

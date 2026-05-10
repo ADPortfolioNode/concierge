@@ -68,8 +68,8 @@ def try_start_chroma():
         for _ in range(10):
             try:
                 import socket
-
-                with socket.create_connection(("localhost", 8000), timeout=1):
+                # The docker-compose file exposes chroma on host port 8001
+                with socket.create_connection(("localhost", 8001), timeout=1):
                     return True
             except Exception:
                 time.sleep(0.5)
@@ -87,9 +87,9 @@ def main():
         print("chromadb package not installed; skipping integration test")
         return 0
 
-    # try to contact a local chroma server on host port 8000 (docker-compose mapping)
+    # try to contact a local chroma server on host port 8001 (docker-compose mapping)
     host = "localhost"
-    port = 8000
+    port = 8001
 
     # attempt to start chroma to help local runs
     try_start_chroma()

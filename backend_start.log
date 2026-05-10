@@ -1,0 +1,24 @@
+INFO:app:Concierge version 1.0.0 starting
+INFO:app:OPENAI_API_KEY set: True; GEMINI_API_KEY set: True
+INFO:     Started server process [14856]
+INFO:     Waiting for application startup.
+WARNING:memory.memory_store:onnxruntime not available and CHROMA_HOST/CHROMA_PORT point at the app itself (localhost:8000); using in-memory fallback instead
+INFO:plugins.plugin_registry:PluginRegistry: registered plugin 'summarization' (v0.2.0)
+INFO:plugins.plugin_registry:PluginRegistry: registered plugin 'image_generation' (v0.2.0)
+INFO:plugins.plugin_loader:Plugin loader: registered 2 built-in plugin(s)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'openai' (service='OpenAI', v0.2.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'gemini' (service='GoogleGemini', v0.1.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'stripe' (service='Stripe', v0.2.0)
+INFO:integrations.integration_registry:IntegrationRegistry: registered integration 'slack' (service='Slack', v0.2.0)
+INFO:integrations.integration_loader:Integration loader: registered 4 built-in integration(s)
+INFO:tasks.task_queue:TaskQueue: registered handler for 'read_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'write_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'append_file'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'generate_code'
+INFO:tasks.task_queue:TaskQueue: registered handler for 'dataset_analysis'
+INFO:tasks.task_worker:TaskWorker: default handlers registered.
+INFO:tasks.task_queue:TaskQueue worker started.
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000): only one usage of each socket address (protocol/network address/port) is normally permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.

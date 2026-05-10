@@ -20,7 +20,8 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
     const checkHealth = async () => {
       try {
-        const res = await fetch('/api/health');
+        // Poll the more specific readiness endpoint for clarity.
+        const res = await fetch('/api/health/ready');
         if (res.ok) {
           const data = await res.json();
           if (data.status === 'ok') {
