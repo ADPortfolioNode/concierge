@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 import TimelineHero from '@/components/TimelineHero';
+import SacredTimelineHero from '@/components/SacredTimelineHero';
 import PageSection from '@/components/PageSection';
 
 // ── use-case outcome definitions ─────────────────────────────────────────
@@ -153,33 +154,17 @@ const baseAssetUrl = import.meta.env.BASE_URL || '/';
 
 const HomePage: React.FC = () => (
   <div className="home-page">
-    {/* hero */}
-    <div className="home-hero">
-      <div>
-        <h1 style={{ fontSize: 38, fontWeight: 800, margin: '0 0 14px', letterSpacing: '-0.02em', lineHeight: 1.08 }}>
-          Build smarter workflows,
-          <br />
-          <span style={{ color: '#7c6af7' }}>see results visually.</span>
-        </h1>
-        <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.7)', margin: 0, maxWidth: 600, lineHeight: 1.75 }}>
-          Ask me to plan, execute, and monitor your work. I can also surface photo-driven insights,
-          review your files, and turn your goals into a clear visual timeline.
-        </p>
-        <div style={{ marginTop: 24, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <SamplePrompt text="Show me my current roadmap" variant="chip" />
-          <SamplePrompt text="Create a visual status update" variant="chip" />
-          <SamplePrompt text="Generate a media summary" variant="chip" />
-        </div>
-      </div>
-    </div>
+    {/* sacred timeline hero */}
+    <SacredTimelineHero />
 
     <div className="home-timeline-card">
       <div className="home-timeline-header">
         <div>
           <div className="home-timeline-label">Live Timeline</div>
-          <h2 className="home-timeline-title">See Concierge planning in one responsive view</h2>
+          <h2 className="home-timeline-title">Active agent thread — task graph &amp; progress</h2>
           <p className="home-timeline-copy">
-            Your current plan updates, task progress, and visual graph are surfaced in a mobile-first timeline card that spans the full width of the landing page.
+            Watch the Sacred Timeline orchestrate tasks in real time. Each node below represents a step
+            spawned by the Planner, streamed live via WebSocket as it runs.
           </p>
         </div>
       </div>

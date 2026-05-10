@@ -438,6 +438,168 @@ main {
   box-sizing: border-box;
 }
 
+/* ── Sacred Timeline Hero ────────────────────────────────────────────────── */
+.stl-hero {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
+  align-items: center;
+  margin-bottom: 40px;
+  padding: 40px 36px 44px;
+  border-radius: 24px;
+  background: radial-gradient(ellipse 80% 60% at 60% 40%, rgba(124,106,247,0.09) 0%, transparent 70%),
+              rgba(15,23,42,0.7);
+  border: 1px solid rgba(124,106,247,0.18);
+  overflow: hidden;
+  position: relative;
+}
+
+.stl-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 50% 50% at 75% 50%, rgba(56,189,248,0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.stl-hero__text {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.stl-hero__eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(124,106,247,0.8);
+  margin: 0;
+}
+
+.stl-hero__title {
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.stl-hero__title-accent {
+  color: #7c6af7;
+}
+
+.stl-hero__subtitle {
+  font-size: 14px;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.75;
+  margin: 0;
+  max-width: 400px;
+}
+
+.stl-hero__live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 100px;
+  background: rgba(34,197,94,0.08);
+  border: 1px solid rgba(34,197,94,0.22);
+  font-size: 12px;
+  font-weight: 600;
+  color: #86efac;
+  width: fit-content;
+}
+
+.stl-hero__live-badge--idle {
+  background: rgba(124,106,247,0.08);
+  border-color: rgba(124,106,247,0.22);
+  color: #c4b5fd;
+}
+
+.stl-hero__live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: stl-pulse-dot 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.stl-hero__live-dot--idle {
+  background: #7c6af7;
+  animation: stl-pulse-dot-idle 2.4s ease-in-out infinite;
+}
+
+@keyframes stl-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(0.75); }
+}
+@keyframes stl-pulse-dot-idle {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.8); }
+}
+
+.stl-hero__prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.stl-hero__diagram {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stl-hero__svg {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  overflow: visible;
+}
+
+.stl-node-group {
+  animation: stl-node-in 0.5s ease both;
+}
+
+.stl-pulse-ring {
+  animation: stl-ring-pulse 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes stl-node-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes stl-ring-pulse {
+  0%, 100% { opacity: 0.2; r: 44px; }
+  50%       { opacity: 0.45; r: 50px; }
+}
+
+/* narrow screens: stack vertically */
+@media (max-width: 860px) {
+  .stl-hero {
+    grid-template-columns: 1fr;
+    padding: 28px 22px 32px;
+    gap: 28px;
+  }
+  .stl-hero__title {
+    font-size: 38px;
+  }
+  .stl-hero__diagram {
+    display: none;
+  }
+}
+
+/* ── (legacy) home-hero ──────────────────────────────────────────────────── */
 .home-hero {
   display: grid;
   gap: 24px;
