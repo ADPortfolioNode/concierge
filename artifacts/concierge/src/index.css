@@ -7,6 +7,7 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   background: #000;
   color: #eee;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -72,7 +73,8 @@ main {
 /* responsive layout grid */
 .app-container {
   display: grid;
-  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
   grid-template-columns: 1fr;
   grid-template-rows: auto minmax(0, 1fr) minmax(320px, 45dvh);
 }
@@ -99,6 +101,18 @@ main {
   box-sizing: border-box;
 }
 
+/* All breakpoints: main content scrolls, chat does not */
+.app-main {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-chat {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Desktop: 3-col layout — sidebar | content | chat */
 @media (min-width: 960px) {
   .app-container {
@@ -112,6 +126,8 @@ main {
   .app-sidebar {
     grid-column: 1;
     grid-row: 2;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
   .app-main {
     grid-column: 2;
