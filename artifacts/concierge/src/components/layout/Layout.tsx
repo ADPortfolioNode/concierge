@@ -8,6 +8,28 @@ const NavSep: React.FC = () => (
   <span className="nav-sep" aria-hidden="true" />
 );
 
+// ── Exponential backoff with full jitter (AWS/Google pattern) ──────────────
+// delay = random(0, min(cap, base * 2^attempt))
+const BACKOFF_BASE_MS  = 500;
+const BACKOFF_CAP_MS   = 16_000;
+const BACKOFF_MAX_TRIES = 8;
+const FETCH_TIMEOUT_MS  = 5_000;
+
+function backoffDelay(attempt: number): number {
+  const ceiling = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt);
+  return Math.random() * ceiling;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 type StepStatus = 'pending' | 'loading' | 'done' | 'error';
 
 interface StartupStep {
@@ -58,79 +80,132 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isReady, setIsReady] = useState(false);
   const [progress, setProgress] = useState(0);
   const [steps, setSteps] = useState<StartupStep[]>(INITIAL_STEPS);
+  // attempt = which retry we're on (0-based); null = succeeded; BACKOFF_MAX_TRIES = exhausted
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  // increment this to re-trigger the startup effect (manual retry)
+  const [retryKey, setRetryKey] = useState(0);
 
-  const setStepStatus = (index: number, status: StepStatus) => {
-    setSteps(prev => prev.map((s, i) => i === index ? { ...s, status } : s));
-  };
+  const setStepStatus = (index: number, status: StepStatus) =>
+    setSteps(prev => prev.map((s, i) => (i === index ? { ...s, status } : s)));
 
   useEffect(() => {
-    // Animate progress bar independently so it always feels alive
-    const timer = setInterval(() => {
+    let cancelled = false;
+
+    // Reset state on each run (including manual retries)
+    setFailed(false);
+    setCountdown(null);
+    setAttempt(0);
+    setProgress(0);
+    setSteps(INITIAL_STEPS);
+
+    // Progress bar: eases toward 85% while waiting, jumps to 100% on success
+    const progressTimer = setInterval(() => {
       setProgress(p => (p < 85 ? p + (85 - p) * 0.12 : p));
     }, 400);
 
-    // Step 0: connecting to API
-    setStepStatus(0, 'loading');
+    // ── exponential backoff loop ────────────────────────────────────────────
+    const run = async () => {
+      setStepStatus(0, 'loading');
 
-    const checkHealth = async () => {
-      try {
-        const res = await fetch('/api/health');
-        if (res.ok) {
-          const data = await res.json() as { status?: string; messages?: unknown[]; version?: string };
-          if (data.status === 'ok') {
-            setStepStatus(0, 'done');
+      for (let i = 0; i < BACKOFF_MAX_TRIES; i++) {
+        if (cancelled) return;
+        setAttempt(i);
 
-            // Step 1: capabilities
-            setStepStatus(1, 'loading');
-            try {
-              await fetch('/api/v1/capabilities');
-              setStepStatus(1, 'done');
-            } catch {
-              setStepStatus(1, 'error');
+        try {
+          const res = await fetchWithTimeout('/api/health');
+          if (!cancelled && res.ok) {
+            const data = await res.json() as { status?: string };
+            if (data.status === 'ok') {
+              if (cancelled) return;
+              setStepStatus(0, 'done');
+
+              // Step 1 — capabilities
+              setStepStatus(1, 'loading');
+              try {
+                await fetchWithTimeout('/api/v1/capabilities');
+                if (!cancelled) setStepStatus(1, 'done');
+              } catch {
+                if (!cancelled) setStepStatus(1, 'error');
+              }
+
+              // Step 2 — memory / messages
+              if (cancelled) return;
+              setStepStatus(2, 'loading');
+              try {
+                await fetchWithTimeout('/api/v1/concierge/messages');
+                if (!cancelled) setStepStatus(2, 'done');
+              } catch {
+                if (!cancelled) setStepStatus(2, 'error');
+              }
+
+              // Step 3 — ready
+              if (cancelled) return;
+              setStepStatus(3, 'loading');
+              setProgress(100);
+              await new Promise(r => setTimeout(r, 350));
+              if (!cancelled) {
+                setStepStatus(3, 'done');
+                await new Promise(r => setTimeout(r, 400));
+                if (!cancelled) setIsReady(true);
+              }
+              return; // success — exit loop
             }
+          }
+        } catch {
+          // timeout or network error — fall through to backoff
+        }
 
-            // Step 2: memory / messages
-            setStepStatus(2, 'loading');
-            try {
-              await fetch('/api/v1/concierge/messages');
-              setStepStatus(2, 'done');
-            } catch {
-              setStepStatus(2, 'error');
-            }
+        // Not the last attempt: back off with full jitter + live countdown
+        if (i < BACKOFF_MAX_TRIES - 1 && !cancelled) {
+          setStepStatus(0, 'error');
+          const delay = backoffDelay(i);
+          const endAt = Date.now() + delay;
 
-            // Step 3: done
-            setStepStatus(3, 'loading');
-            setProgress(100);
-            setTimeout(() => {
-              setStepStatus(3, 'done');
-              setTimeout(() => setIsReady(true), 400);
-            }, 300);
+          // tick the countdown label every 500 ms
+          await new Promise<void>(resolve => {
+            const tick = setInterval(() => {
+              const remaining = Math.max(0, endAt - Date.now());
+              if (!cancelled) setCountdown(Math.ceil(remaining / 1000));
+              if (remaining <= 0) { clearInterval(tick); resolve(); }
+            }, 500);
+            setTimeout(() => { clearInterval(tick); resolve(); }, delay + 50);
+          });
 
-            return true;
+          if (!cancelled) {
+            setCountdown(null);
+            setStepStatus(0, 'loading');
           }
         }
-      } catch {
-        // backend not yet up — stay on step 0 loading
       }
-      return false;
+
+      // All retries exhausted
+      if (!cancelled) {
+        setStepStatus(0, 'error');
+        setFailed(true);
+      }
     };
 
-    const pollInterval = setInterval(async () => {
-      const ready = await checkHealth();
-      if (ready) clearInterval(pollInterval);
-    }, 2000);
-
-    checkHealth().then(ready => {
-      if (ready) clearInterval(pollInterval);
-    });
+    run();
 
     return () => {
-      clearInterval(timer);
-      clearInterval(pollInterval);
+      cancelled = true;
+      clearInterval(progressTimer);
     };
-  }, []);
+  }, [retryKey]);
 
   if (!isReady) {
+    const isFailed = failed;
+    const showCountdown = !isFailed && countdown !== null && countdown > 0;
+    const retryLabel = isFailed
+      ? 'Could not reach the API server'
+      : showCountdown
+        ? `Retrying in ${countdown}s… (attempt ${attempt + 1} of ${BACKOFF_MAX_TRIES})`
+        : attempt > 0
+          ? `Attempt ${attempt + 1} of ${BACKOFF_MAX_TRIES}…`
+          : null;
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
@@ -141,23 +216,39 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         {/* progress bar */}
         <div style={{ width: 300, background: 'rgba(255,255,255,0.08)', borderRadius: 8, overflow: 'hidden', height: 6, marginBottom: 28 }}>
-          <div style={{ width: `${progress}%`, background: 'linear-gradient(90deg, #6d56f5, #a78bfa)', height: '100%', transition: 'width 0.4s ease-out', borderRadius: 8 }} />
+          <div style={{ width: `${isFailed ? progress : progress}%`, background: isFailed ? 'rgba(239,68,68,0.6)' : 'linear-gradient(90deg, #6d56f5, #a78bfa)', height: '100%', transition: 'width 0.4s ease-out', borderRadius: 8 }} />
         </div>
 
         {/* step list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 220 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 260 }}>
           {steps.map((step, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: step.status === 'pending' ? 0.35 : 1, transition: 'opacity 0.3s' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: step.status === 'pending' ? 0.3 : 1, transition: 'opacity 0.3s' }}>
               <StepIcon status={step.status} />
               <span style={{ fontSize: 13, color: step.status === 'done' ? '#e2e8f0' : step.status === 'error' ? '#fca5a5' : '#94a3b8', transition: 'color 0.3s' }}>
                 {step.label}
               </span>
-              {step.status === 'error' && (
-                <span style={{ fontSize: 11, color: '#fca5a5', marginLeft: 'auto' }}>retrying</span>
-              )}
             </div>
           ))}
         </div>
+
+        {/* retry / countdown hint */}
+        {retryLabel && (
+          <p style={{ marginTop: 20, fontSize: 12, color: isFailed ? '#fca5a5' : '#64748b', textAlign: 'center', maxWidth: 260 }}>
+            {retryLabel}
+          </p>
+        )}
+
+        {/* manual retry button — shown only after all attempts are exhausted */}
+        {isFailed && (
+          <button
+            onClick={() => setRetryKey(k => k + 1)}
+            style={{ marginTop: 16, padding: '8px 20px', borderRadius: 6, border: '1px solid rgba(167,139,250,0.4)', background: 'transparent', color: '#a78bfa', fontSize: 13, cursor: 'pointer', transition: 'background 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(109,86,245,0.15)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            Retry connection
+          </button>
+        )}
       </div>
     );
   }

@@ -36,6 +36,8 @@ An AI agent assistant with a Python FastAPI backend and a Vite+React frontend, p
 - `optimizeDeps.include: ["react", "react-dom", "axios"]` and `exclude: ["zustand"]` prevent the Vite pre-bundler from creating a separate CJS React copy inside Zustand
 - `resolve.conditions: ["import", "module", "browser", "default"]` forces ESM resolution for all deps
 - Redis/Celery features (task queuing, pub/sub) gracefully degrade when Redis is not running
+- **Artifact routing**: `artifacts/concierge/artifact.toml` has ONE service (`web`, port 20721). The `artifacts/api-server/artifact.toml` uses path `/node-api` (NOT `/api`) so it never intercepts the Python API traffic. All `/api/*` requests flow: Replit proxy → Vite (20721) → Vite proxy → uvicorn (8000). If you ever see 502s on `/api`, check that no other artifact claims `/api` in its `paths`.
+- **Python Backend workflow** (`uvicorn app:app --host 0.0.0.0 --port 8000`) runs as a standalone non-artifact workflow so it survives artifact toml changes.
 
 ## Product
 
@@ -56,6 +58,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 - Redis must be running for task queue, pub/sub timeline streaming, and job history to work. Without it, those features log errors but the app stays functional.
 - The `PORT` and `BASE_PATH` env vars are required by `vite.config.ts` — it throws if either is missing.
 - Always run `sed -i 's/\r//' src/**/*.ts src/**/*.tsx` after importing files from Windows to strip CRLF line endings.
+- **502 on /api?** — check `artifacts/api-server/artifact.toml` paths: it must be `/node-api`, not `/api`. The Replit platform routes by the first artifact whose `paths` matches; if api-server claims `/api` it wins over Vite and hits the wrong port.
 
 ## Pointers
 
