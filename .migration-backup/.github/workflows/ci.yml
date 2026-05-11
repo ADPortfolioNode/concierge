@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, staging ]
   pull_request:
     branches: [ main ]
 
@@ -106,15 +106,18 @@ jobs:
           docker-compose up -d --scale frontend=0
       - name: Wait for 'app' service to be healthy
         run: |
-          echo "Waiting for 'app' service to be healthy..."
+          echo "Waiting for 'app' service to be ready on http://localhost:8000/health/ready..."
           for i in {1..60}; do
-            status=$(docker inspect --format '{{.State.Health.Status}}' quesarc_app 2>/dev/null)
-            if [ "$status" == "healthy" ]; then echo "App container is healthy."; exit 0; fi
-            echo "App container status: $status. Waiting... (${i}/60)"
+            # Use curl to check the application's readiness endpoint, which is more reliable than a container health check.
+            if curl -fs http://localhost:8000/health/ready > /dev/null; then
+              echo "App service is ready."
+              exit 0
+            fi
+            echo "App service not ready yet. Waiting... (${i}/60)"
             sleep 2
           done
-          echo "App container did not become healthy."
-          docker-compose logs
+          echo "App service did not become ready in time."
+          docker-compose logs app
           exit 1
       - name: Run container smoke checks
         run: python3 scripts/check_endpoints.py --base-url http://localhost:8000
