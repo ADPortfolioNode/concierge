@@ -67,6 +67,21 @@ const computeTaskDepths = (tasks: TimelineTask[]) => {
   return depths;
 };
 
+// ── Idle placeholder shown when no thread is active and no tasks exist ───────
+const TimelineHeroIdle: React.FC = () => (
+  <section className="timeline-hero shell-hero" style={{ minHeight: 'auto' }}>
+    <div className="timeline-hero__headline" style={{ paddingBottom: 0 }}>
+      <div>
+        <p className="timeline-hero__label">Assistant timeline</p>
+        <h2 className="timeline-hero__title">No active thread</h2>
+        <p className="timeline-hero__subtitle" style={{ maxWidth: 480 }}>
+          Concierge is ready. Start by asking it to create a plan, set a goal, or run a background task — the live thread graph will appear here.
+        </p>
+      </div>
+    </div>
+  </section>
+);
+
 const TimelineHero: React.FC = () => {
   const timelinePlan = useAppStore((s) => s.timelinePlan);
   const fetchTimeline = useAppStore((s) => s.fetchTimeline);
@@ -224,6 +239,10 @@ const TimelineHero: React.FC = () => {
     )),
     [tasks, selectedTaskMeta, onSelectTask]
   );
+
+  if (!taskThreadId && tasks.length === 0) {
+    return <TimelineHeroIdle />;
+  }
 
   return (
     <section className="timeline-hero shell-hero">

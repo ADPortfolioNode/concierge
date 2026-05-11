@@ -1060,10 +1060,12 @@ const AgenticThreadCanvas: React.FC = () => {
 
   const fitView = useCallback(() => autoFitNodes(nodes), [autoFitNodes, nodes]);
 
+  if (!taskThreadId) return null;
+
   return (
     <div className="agentic-thread-visualizer">
       <div className="agentic-thread-visualizer__status-bar">
-        <span>{taskThreadId ? `Thread ${taskThreadId}` : 'Agent thread inactive'}</span>
+        <span>{`Thread ${taskThreadId}`}</span>
         <span>{statusMessage}</span>
         <div className="agentic-thread-visualizer__controls">
           <button type="button" onClick={fitView}>Fit view</button>
