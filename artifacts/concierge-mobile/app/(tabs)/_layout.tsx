@@ -16,9 +16,21 @@ function NativeTabLayout() {
         <Icon sf={{ default: "bubble.left.and.bubble.right", selected: "bubble.left.and.bubble.right.fill" }} />
         <Label>Chat</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="goals">
+        <Icon sf={{ default: "target", selected: "target" }} />
+        <Label>Goals</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="strategy">
+        <Icon sf={{ default: "map", selected: "map.fill" }} />
+        <Label>Strategy</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="tasks">
         <Icon sf={{ default: "list.bullet.rectangle", selected: "list.bullet.rectangle.fill" }} />
         <Label>Tasks</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="workspace">
+        <Icon sf={{ default: "folder", selected: "folder.fill" }} />
+        <Label>Workspace</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -62,7 +74,7 @@ function ClassicTabLayout() {
           ) : null,
         tabBarLabelStyle: {
           fontFamily: "Inter_500Medium",
-          fontSize: 11,
+          fontSize: 10,
         },
       }}
     >
@@ -79,6 +91,30 @@ function ClassicTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="goals"
+        options={{
+          title: "Goals",
+          tabBarIcon: ({ color, size }) =>
+            isIOS ? (
+              <SymbolView name="target" tintColor={color} size={size} />
+            ) : (
+              <Ionicons name="flag-outline" size={size} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="strategy"
+        options={{
+          title: "Strategy",
+          tabBarIcon: ({ color, size }) =>
+            isIOS ? (
+              <SymbolView name="map" tintColor={color} size={size} />
+            ) : (
+              <Feather name="map" size={size} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: "Tasks",
@@ -87,6 +123,18 @@ function ClassicTabLayout() {
               <SymbolView name="list.bullet.rectangle" tintColor={color} size={size} />
             ) : (
               <Feather name="list" size={size} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="workspace"
+        options={{
+          title: "Workspace",
+          tabBarIcon: ({ color, size }) =>
+            isIOS ? (
+              <SymbolView name="folder" tintColor={color} size={size} />
+            ) : (
+              <Feather name="folder" size={size} color={color} />
             ),
         }}
       />

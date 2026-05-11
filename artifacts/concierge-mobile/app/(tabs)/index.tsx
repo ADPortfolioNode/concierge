@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,6 +18,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { useColors } from '@/hooks/useColors';
 import { ChatMessage, sendMessage } from '@/lib/api';
+import { consumePendingPrompt } from '@/lib/promptStore';
 
 interface Message {
   id: string;
@@ -131,6 +133,17 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [showTyping, setShowTyping] = useState(false);
+
+  // Pick up any prompt tapped on Goals / Strategy / Workspace tabs
+  useFocusEffect(
+    useCallback(() => {
+      const pending = consumePendingPrompt();
+      if (pending) {
+        setInput(pending);
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
+    }, [])
+  );
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
