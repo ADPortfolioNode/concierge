@@ -21,12 +21,12 @@ const ConciergeHeader: React.FC = () => {
   return (
     <div
       style={{
-        padding: '10px 14px 8px',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '10px 16px 10px',
+        borderBottom: '1px solid #DBEAFE',
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        background: 'rgba(0,0,0,0.3)',
+        gap: 10,
+        background: 'linear-gradient(135deg, #EFF6FF 0%, #F0F8FF 100%)',
         flexShrink: 0,
       }}
     >
@@ -34,26 +34,28 @@ const ConciergeHeader: React.FC = () => {
         aria-label={isOrchestrating ? 'Active' : 'Online'}
         role="img"
         style={{
-          width: 7,
-          height: 7,
+          width: 8,
+          height: 8,
           borderRadius: '50%',
-          background: isOrchestrating ? '#22c55e' : '#7c6af7',
-          boxShadow: isOrchestrating ? '0 0 8px #22c55e' : '0 0 6px #7c6af7',
+          background: isOrchestrating ? '#22C55E' : '#38BDF8',
+          boxShadow: isOrchestrating ? '0 0 8px #22C55E' : '0 0 6px #38BDF8',
           flexShrink: 0,
           animation: isOrchestrating ? 'concierge-pulse 1.4s ease-in-out infinite' : 'none',
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#c4b8ff', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
           Concierge
+          <span style={{ fontSize: 11, fontWeight: 500, color: '#64748B', marginLeft: 6 }}>AI Assistant</span>
         </div>
         <div
           aria-live="polite"
           style={{
             fontSize: 10,
-            color: isOrchestrating ? '#86efac' : 'rgba(255,255,255,0.3)',
+            color: isOrchestrating ? '#16A34A' : '#38BDF8',
             letterSpacing: '0.05em',
             textTransform: 'uppercase',
+            fontWeight: 600,
             transition: 'color 0.3s',
           }}
         >
@@ -65,9 +67,13 @@ const ConciergeHeader: React.FC = () => {
           title={`Thread: ${taskThreadId}`}
           style={{
             fontSize: 9,
-            color: 'rgba(134,239,172,0.55)',
+            color: '#38BDF8',
             fontFamily: 'monospace',
             letterSpacing: '0.04em',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 6,
+            padding: '2px 6px',
             maxWidth: 80,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -100,7 +106,7 @@ const ChatContainer: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#FFFFFF' }}>
       {/* concierge branding header */}
       <ConciergeHeader />
       {/* timeline thread header */}

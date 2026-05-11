@@ -1,14 +1,16 @@
-/* Tokens Layer */
+/* Tokens Layer — light / baby-blue theme */
 :root {
   /* colors */
-  --color-bg: #000;
-  --color-bg-primary: #0b0b0b;
-  --color-bg-secondary: #111;
-  --color-surface: #1e1e2f;
-  --color-border: #2a2a3a;
-  --color-text: #e2e8f0;
-  --color-accent: #7c6af7;
-  --color-accent-light: #c4b8ff;
+  --color-bg: #FFFFFF;
+  --color-bg-primary: #F0F8FF;
+  --color-bg-secondary: #E8F4FD;
+  --color-surface: #FFFFFF;
+  --color-border: #BFDBFE;
+  --color-text: #0F172A;
+  --color-text-muted: #475569;
+  --color-accent: #2563EB;
+  --color-accent-light: #89CFF0;
+  --color-accent-baby: #38BDF8;
 
   /* spacing scale */
   --space-1: 4px;
