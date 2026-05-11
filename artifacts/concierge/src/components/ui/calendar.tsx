@@ -129,6 +129,7 @@ function Calendar({
           return (
             <div
               data-slot="calendar"
+              // @ts-expect-error react-day-picker ref type conflicts with local @types/react
               ref={rootRef}
               className={cn(className)}
               {...props}
