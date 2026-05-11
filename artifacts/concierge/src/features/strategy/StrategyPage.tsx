@@ -2,11 +2,11 @@ import React from 'react';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 
 const FRAMEWORKS = [
-  { name: 'OKR', full: 'Objectives & Key Results', desc: 'Set ambitious objectives with measurable key results. Best for quarterly planning cycles.', color: '#7c6af7' },
+  { name: 'OKR', full: 'Objectives & Key Results', desc: 'Set ambitious objectives with measurable key results. Best for quarterly planning cycles.', color: '#2563EB' },
   { name: 'SWOT', full: 'Strengths, Weaknesses, Opportunities, Threats', desc: 'Analyse internal capabilities and external forces before committing to a direction.', color: '#0891b2' },
-  { name: 'RICE', full: 'Reach, Impact, Confidence, Effort', desc: 'Score and rank features or initiatives to prioritise the highest-leverage work.', color: '#d97706' },
+  { name: 'RICE', full: 'Reach, Impact, Confidence, Effort', desc: 'Score and rank features or initiatives to prioritise the highest-leverage work.', color: '#D97706' },
   { name: 'Jobs-to-be-Done', full: 'JTBD Framework', desc: 'Define what "job" users hire your product to do — uncovers real motivations.', color: '#059669' },
-  { name: 'North Star Metric', full: 'Single guiding KPI', desc: 'Identify the one metric that best captures delivered value to focus all teams.', color: '#be185d' },
+  { name: 'North Star Metric', full: 'Single guiding KPI', desc: 'Identify the one metric that best captures delivered value to focus all teams.', color: '#BE185D' },
 ];
 
 const PROMPT_GROUPS = [
@@ -66,21 +66,21 @@ const PROMPT_GROUPS = [
 
 const StrategyPage: React.FC = () => (
   <div className="page-content" style={{ maxWidth: 950, margin: '0 auto' }}>
-    <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>🗺️ Strategy</h1>
-    <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 28px', lineHeight: 1.7 }}>
+    <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em', color: '#0F172A' }}>🗺️ Strategy</h1>
+    <p style={{ fontSize: 14, color: '#475569', margin: '0 0 28px', lineHeight: 1.7 }}>
       Use Concierge as your strategic thinking partner. Apply frameworks, build roadmaps, analyse
       decisions, and define the metrics that matter. Click any prompt to begin.
     </p>
 
     {/* framework cards */}
     <div style={{ marginBottom: 32 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.35)', margin: '0 0 12px', paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>Supported frameworks</h2>
+      <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: '0 0 12px', paddingBottom: 8, borderBottom: '1px solid #DBEAFE' }}>Supported frameworks</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
         {FRAMEWORKS.map(({ name, full, desc, color }) => (
-          <div key={name} style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${color}33`, borderRadius: 9, padding: '14px 16px' }}>
+          <div key={name} style={{ background: '#FFFFFF', border: `1px solid ${color}28`, borderRadius: 10, padding: '14px 16px', boxShadow: '0 1px 4px rgba(37,99,235,0.06)' }}>
             <div style={{ fontSize: 14, fontWeight: 800, color, marginBottom: 2 }}>{name}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>{full}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>{desc}</div>
+            <div style={{ fontSize: 11, color: '#64748B', marginBottom: 6 }}>{full}</div>
+            <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{desc}</div>
           </div>
         ))}
       </div>
@@ -89,7 +89,7 @@ const StrategyPage: React.FC = () => (
     {/* prompt groups */}
     {PROMPT_GROUPS.map(({ label, prompts }) => (
       <div key={label} style={{ marginBottom: 28 }}>
-        <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.35)', margin: '0 0 12px', paddingBottom: 8, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>{label}</h2>
+        <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94A3B8', margin: '0 0 12px', paddingBottom: 8, borderBottom: '1px solid #DBEAFE' }}>{label}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
           {prompts.map((p) => <SamplePrompt key={p} text={p} />)}
         </div>

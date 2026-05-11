@@ -20,13 +20,14 @@ function CapabilityCard({ item }: { item: CapabilityItem }) {
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.025)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: '#FFFFFF',
+        border: '1px solid #DBEAFE',
         borderRadius: 8,
         padding: '1rem',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
+        boxShadow: '0 1px 4px rgba(37,99,235,0.06)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -47,24 +48,25 @@ function CapabilityCard({ item }: { item: CapabilityItem }) {
         {item.enabled === false && (
           <span
             style={{
-              background: '#374151',
-              color: '#9ca3af',
+              background: '#F0F8FF',
+              color: '#64748B',
               fontSize: 11,
               padding: '2px 8px',
               borderRadius: 99,
+              border: '1px solid #DBEAFE',
             }}
           >
             disabled
           </span>
         )}
       </div>
-      <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={item.name}>{item.name}</div>
+      <div style={{ fontWeight: 600, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0F172A' }} title={item.name}>{item.name}</div>
       {item.service && (
-        <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Service: {item.service}</div>
+        <div style={{ fontSize: 12, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Service: {item.service}</div>
       )}
-      <div style={{ fontSize: 13, color: '#cbd5e1', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{item.description}</div>
+      <div style={{ fontSize: 13, color: '#475569', overflowWrap: 'break-word', wordBreak: 'break-word' }}>{item.description}</div>
       {item.version && (
-        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>v{item.version}</div>
+        <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>v{item.version}</div>
       )}
     </div>
   );
@@ -83,17 +85,17 @@ function Section({
 }) {
   return (
     <section style={{ marginBottom: '2rem' }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1rem', color: '#e2e8f0' }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: '1rem', color: '#0F172A' }}>
         {title}
-        <span style={{ fontWeight: 400, fontSize: 13, color: '#9ca3af', marginLeft: 8 }}>
+        <span style={{ fontWeight: 400, fontSize: 13, color: '#64748B', marginLeft: 8 }}>
           ({loading ? '…' : items.length})
         </span>
       </h2>
       {error && (
-        <p style={{ color: '#f87171', fontSize: 13 }}>Failed to load: {error}</p>
+        <p style={{ color: '#DC2626', fontSize: 13 }}>Failed to load: {error}</p>
       )}
       {!loading && !error && items.length === 0 && (
-        <p style={{ color: '#6b7280', fontSize: 13 }}>No items registered.</p>
+        <p style={{ color: '#64748B', fontSize: 13 }}>No items registered.</p>
       )}
       <div
         style={{
@@ -170,7 +172,7 @@ export default function CapabilitiesPage() {
   return (
     <div className="page-content" style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: '-0.01em', color: '#e2e8f0' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, margin: 0, letterSpacing: '-0.01em', color: '#0F172A' }}>
           Capabilities
         </h1>
         <button
@@ -178,24 +180,26 @@ export default function CapabilitiesPage() {
           disabled={isAnyLoading}
           title="Force a refresh, bypassing the cache"
           style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: '#fff',
+            background: '#EFF6FF',
+            border: '1px solid #BFDBFE',
+            color: '#2563EB',
             borderRadius: 6,
             padding: '6px 12px',
             cursor: isAnyLoading ? 'not-allowed' : 'pointer',
             opacity: isAnyLoading ? 0.6 : 1,
+            fontWeight: 600,
+            fontSize: 13,
           }}
         >
           {isAnyLoading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
-      <p style={{ color: '#9ca3af', fontSize: 14, marginBottom: '2rem', marginTop: 0 }}>
+      <p style={{ color: '#64748B', fontSize: 14, marginBottom: '2rem', marginTop: 0 }}>
         Registered plugins, tools, and external integrations available to the orchestration engine.
       </p>
 
       {lastUpdated && !isAnyLoading && (
-        <div style={{ textAlign: 'right', color: '#6b7280', fontSize: 12, marginTop: '-1.5rem', marginBottom: '1.5rem' }}>
+        <div style={{ textAlign: 'right', color: '#94A3B8', fontSize: 12, marginTop: '-1.5rem', marginBottom: '1.5rem' }}>
           Last updated: {lastUpdated.toLocaleTimeString()}
         </div>
       )}
@@ -204,10 +208,11 @@ export default function CapabilitiesPage() {
         <div style={{
           marginBottom: '2rem',
           textAlign: 'center',
-          color: '#cbd5e1',
+          color: '#475569',
           fontSize: 16,
           padding: '1rem',
-          background: 'rgba(255,255,255,0.05)',
+          background: '#F0F8FF',
+          border: '1px solid #DBEAFE',
           borderRadius: 8,
         }}>
           Loading capabilities...

@@ -1,5 +1,6 @@
 import React from 'react';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
+import ProcessingBanner from '@/components/ProcessingBanner';
 
 const PROMPT_GROUPS = [
   {
@@ -48,16 +49,13 @@ const PROMPT_GROUPS = [
   },
 ];
 
-import ProcessingBanner from '@/components/ProcessingBanner';
-
 const GoalsPage: React.FC = () => (
   <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
     <ProcessingBanner />
-    {/* header */}
-    <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em' }}>
+    <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em', color: '#0F172A' }}>
       🎯 Goals
     </h1>
-    <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', margin: '0 0 32px', lineHeight: 1.7 }}>
+    <p style={{ fontSize: 14, color: '#475569', margin: '0 0 32px', lineHeight: 1.7 }}>
       Goals are high-level outcomes. Describe what you want to achieve and Concierge will decompose
       it into a prioritised task tree, run specialist agents, and synthesise a final report.
       Click any prompt below to start a goal in the chat.
@@ -66,9 +64,9 @@ const GoalsPage: React.FC = () => (
     {/* how it works banner */}
     <div
       style={{
-        background: 'rgba(124,106,247,0.08)',
-        border: '1px solid rgba(124,106,247,0.2)',
-        borderRadius: 10,
+        background: '#EFF6FF',
+        border: '1px solid #BFDBFE',
+        borderRadius: 12,
         padding: '16px 20px',
         marginBottom: 32,
         display: 'grid',
@@ -83,9 +81,9 @@ const GoalsPage: React.FC = () => (
         { step: '4', title: 'Synthesizer reports', desc: 'Key points, risks, and recommendations returned.' },
       ].map(({ step, title, desc }) => (
         <div key={step}>
-          <div style={{ fontSize: 11, color: '#7c6af7', fontWeight: 700, marginBottom: 2 }}>STEP {step}</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>{title}</div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>{desc}</div>
+          <div style={{ fontSize: 11, color: '#2563EB', fontWeight: 700, marginBottom: 2 }}>STEP {step}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A', marginBottom: 2 }}>{title}</div>
+          <div style={{ fontSize: 12, color: '#64748B' }}>{desc}</div>
         </div>
       ))}
     </div>
@@ -99,10 +97,10 @@ const GoalsPage: React.FC = () => (
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
-            color: 'rgba(255,255,255,0.35)',
+            color: '#94A3B8',
             margin: '0 0 12px',
             paddingBottom: 8,
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            borderBottom: '1px solid #DBEAFE',
           }}
         >
           {label}

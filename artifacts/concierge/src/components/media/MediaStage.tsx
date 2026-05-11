@@ -73,10 +73,10 @@ const LayerToggle: React.FC<LayerToggleProps> = ({ label, active, onClick, title
     onClick={onClick}
     title={title}
     style={{
-      background: active ? 'rgba(124,106,247,0.22)' : 'rgba(255,255,255,0.04)',
-      border: `1px solid ${active ? 'rgba(124,106,247,0.45)' : 'rgba(255,255,255,0.08)'}`,
+      background: active ? 'rgba(37,99,235,0.22)' : 'rgba(255,255,255,0.04)',
+      border: `1px solid ${active ? 'rgba(37,99,235,0.45)' : 'rgba(255,255,255,0.08)'}`,
       borderRadius: 4,
-      color: active ? '#c4b8ff' : 'rgba(255,255,255,0.28)',
+      color: active ? '#93C5FD' : 'rgba(255,255,255,0.28)',
       cursor: 'pointer',
       fontSize: 11,
       fontWeight: 600,

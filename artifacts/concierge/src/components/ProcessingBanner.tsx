@@ -46,7 +46,6 @@ const ProcessingBanner: React.FC = () => {
   const running = runningJobs.length;
   const total = jobs.length;
   const percent = total ? Math.round(((total - running) / total) * 100) : 0;
-  // elapsed time of first started job
   let elapsedText = '';
   const firstStarted = jobs.find((j) => j.started_at);
   if (firstStarted && firstStarted.started_at) {
@@ -56,53 +55,53 @@ const ProcessingBanner: React.FC = () => {
     const s = sec % 60;
     elapsedText = `${m}m${s}s elapsed`;
   }
-  // first job label to show as title
   const firstLabel = jobs[0]?.label;
 
   return (
     <div
       style={{
-        background: 'rgba(124,106,247,0.08)',
+        background: '#EFF6FF',
+        border: '1px solid #BFDBFE',
         padding: '8px 16px',
-        borderRadius: 6,
+        borderRadius: 8,
         marginBottom: 16,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {firstLabel && <span style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>{firstLabel}</span>}
-          <span style={{ fontSize: 13, color: '#e2e8f0' }}>
+          {firstLabel && <span style={{ fontSize: 13, color: '#0F172A', fontWeight: 600 }}>{firstLabel}</span>}
+          <span style={{ fontSize: 13, color: '#0F172A' }}>
             {running} processing task{running !== 1 ? 's' : ''}
             {elapsedText && ` · ${elapsedText}`}
           </span>
         </div>
         <button
           onClick={() => setShowDetails((s) => !s)}
-          style={{ fontSize: 12, background: 'none', border: 'none', color: '#7c6af7', cursor: 'pointer' }}
+          style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563EB', cursor: 'pointer', fontWeight: 600 }}
         >
           {showDetails ? 'hide' : 'show'} details
         </button>
       </div>
       <div
         style={{
-          background: '#fff',
+          background: '#DBEAFE',
           height: 4,
           borderRadius: 2,
           overflow: 'hidden',
-          marginTop: 4,
+          marginTop: 6,
         }}
       >
         <div
           style={{
             width: `${percent}%`,
             height: '100%',
-            background: '#7c6af7',
+            background: '#2563EB',
             transition: 'width 0.3s',
           }}
         />
       </div>
       {showDetails && (
-        <div style={{ marginTop: 8, fontSize: 11, color: '#e2e8f0' }}>
+        <div style={{ marginTop: 8, fontSize: 11, color: '#475569' }}>
           {jobs.map((j) => {
             const s = j.status || j.statusObj?.status || j.statusObj?.state || 'unknown';
             return (
