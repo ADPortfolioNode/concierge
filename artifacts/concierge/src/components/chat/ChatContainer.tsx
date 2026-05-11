@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageInput from './MessageInput';
-import TimelineHeader from '../TimelineHeader';
+import PageMetaBar from '../PageMetaBar';
 import AssistantRiver from '@/components/river/AssistantRiver';
 import { useAppStore } from '@/state/appStore';
 import { fetchConversation } from '@/api/conciergeService';
@@ -109,8 +109,8 @@ const ChatContainer: React.FC = () => {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#FFFFFF' }}>
       {/* concierge branding header */}
       <ConciergeHeader />
-      {/* timeline thread header */}
-      <TimelineHeader />
+      {/* page-specific live meta */}
+      <PageMetaBar />
       {taskTree ? (
         <AssistantRiver
           tree={taskTree}

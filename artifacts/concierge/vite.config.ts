@@ -29,14 +29,14 @@ export default defineConfig({
       : []),
   ],
   optimizeDeps: {
-    include: ["react", "react-dom", "axios", "zustand"],
+    include: ["react", "react-dom", "axios", "zustand", "react-router-dom"],
   },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
     },
-    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "react-router-dom"],
     conditions: ["import", "module", "browser", "default"],
   },
   root: path.resolve(import.meta.dirname),
