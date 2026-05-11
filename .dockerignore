@@ -1,0 +1,55 @@
+# ── Version control ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+
+# ── Node / pnpm ───────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+# Frontend dist is built inside Docker — don't copy local build artefacts
+artifacts/concierge/dist/
+artifacts/*/dist/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pythonlibs/
+.venv/
+venv/
+
+# ── Replit-specific ───────────────────────────────────────────────────────────
+.replit
+replit.nix
+.replitignore
+.cache/
+.local/
+.config/
+.agents/
+
+# ── Large/sensitive runtime files ─────────────────────────────────────────────
+memory_backup.jsonl
+*.jsonl
+.migration-backup/
+media/
+
+# ── Editor / OS artefacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.sublime-workspace
+
+# ── Test artefacts ────────────────────────────────────────────────────────────
+coverage/
+.pytest_cache/
+playwright-report/
+test-results/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log
+
+# ── TypeScript build info ─────────────────────────────────────────────────────
+*.tsbuildinfo

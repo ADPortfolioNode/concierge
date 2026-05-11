@@ -1,0 +1,86 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Concierge AI — Docker Compose
+#
+# Services
+#   api     → FastAPI backend + built React SPA (port 8000)
+#   redis   → Redis broker/cache (optional — app degrades gracefully without it)
+#   worker  → Celery background worker (optional — tasks run inline without it)
+#
+# Quick start (API only, no Redis):
+#   docker compose up api
+#
+# Full stack (API + Redis + Celery worker):
+#   docker compose up
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-app-env: &app-env
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  REDIS_URL: redis://redis:6379/0
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/0
+  PORT: "8000"
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+services:
+
+  # ── API + SPA ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: concierge-ai:latest
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *app-env
+    volumes:
+      # Persist uploaded media across restarts
+      - media_data:/app/media
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Celery worker ───────────────────────────────────────────────────────────
+  worker:
+    image: concierge-ai:latest
+    command: >
+      celery -A tasks.main_tasks worker
+        --loglevel=${LOG_LEVEL:-info}
+        --concurrency=4
+        --queues=default,timeline
+    environment:
+      <<: *app-env
+    volumes:
+      - media_data:/app/media
+    depends_on:
+      - redis
+      - api
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  media_data:

@@ -9,6 +9,31 @@ An AI agent assistant with a Python FastAPI backend and a Vite+React frontend, p
 - Start application workflow: `PORT=20721 BASE_PATH=/ pnpm --filter @workspace/concierge run dev`
 - Python backend workflow: `uvicorn app:app --host 0.0.0.0 --port 8000` (from workspace root)
 
+## Docker
+
+Three files at workspace root: `Dockerfile`, `docker-compose.yml`, `.dockerignore`.
+
+**Quick start (API only — no Redis, tasks run inline):**
+```bash
+docker build -t concierge-ai .
+docker run -p 8000:8000 \
+  -e OPENAI_API_KEY=sk-... \
+  -e GEMINI_API_KEY=... \
+  concierge-ai
+```
+App (API + SPA) is at http://localhost:8000.
+
+**Full stack (API + Redis broker + Celery worker):**
+```bash
+OPENAI_API_KEY=sk-... GEMINI_API_KEY=... docker compose up
+```
+
+**Build stages:**
+1. `frontend-builder` — Node 24 + pnpm builds the React/Vite SPA (`BASE_PATH=/`)
+2. `runtime` — Python 3.11-slim installs `requirements.full.txt`, copies all Python source and the built frontend into `frontend/dist/` (where `app.py`'s `_find_static_dir()` expects it)
+
+FastAPI serves everything on port 8000 — no separate Vite dev server in Docker.
+
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
