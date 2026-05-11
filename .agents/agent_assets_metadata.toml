@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "qKgOaBcYqD7MIIvWOUewU"
+uri = "file://artifacts/concierge-mobile/assets/images/icon.png"
+type = "image"
+title = "concierge ai app icon"
