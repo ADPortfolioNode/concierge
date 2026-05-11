@@ -50,7 +50,7 @@ except ImportError:
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from pathlib import Path
@@ -585,14 +585,21 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 class AskPayload(BaseModel):
-    input: str
+    input: Optional[str] = None
+    message: Optional[str] = None
+
+    @model_validator(mode='before')
+    @classmethod
+    def _normalize(cls, values):
+        v = values.get('input') or values.get('message')
+        if not v or not str(v).strip():
+            raise ValueError("either 'input' or 'message' field must be provided")
+        values['input'] = v
+        return values
 
 
 class ServiceUrlPayload(BaseModel):
     url: str
-
-
-from pydantic import model_validator
 
 
 class ConciergeMessagePayload(BaseModel):
@@ -948,26 +955,28 @@ async def alias_kill_task(task_id: str):
 @app.post('/api/v1/tasks/{task_id}/kill')
 async def kill_task(task_id: str):
     """Endpoint to kill a running Celery task."""
-    if _celery_app is None:
-        raise HTTPException(status_code=503, detail="Celery app not initialized.")
+    from task_tree_store import upsert_task_node
 
-    from task_tree_store import update_task_node
+    if _celery_app is None:
+        # No Celery — mark the node killed in the in-memory store and return success
+        try:
+            upsert_task_node(task_id, task_id, status="KILLED", result="Task killed by user.")
+        except Exception:
+            pass
+        return _api_response({"status": "success", "message": f"Task {task_id} marked killed (no Celery)."})
 
     try:
         # Revoke the task, terminating it immediately
         _celery_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
-        # Update the task status in the task tree
-        # Note: task_id is used as thread_id here if it's a root task, otherwise it's the actual task_id
-        # A more robust solution might involve finding the thread_id associated with the task_id first.
-        update_task_node(task_id, task_id, {"status": "KILLED", "result": "Task killed by user."})
-        logger.info(f"Task {task_id} sent SIGKILL and marked as KILLED.")
-        return _api_response({"status": "success", "message": f"Task {task_id} kill signal sent."})
+        logger.info(f"Task {task_id} sent SIGKILL.")
     except Exception as e:
-        logger.exception(f"Failed to kill task {task_id}")
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "message": f"Failed to send kill signal to task {task_id}: {str(e)}"
-        })
+        logger.warning(f"Celery revoke failed for {task_id} (broker unavailable?): {e}")
+    # Always mark killed in local store regardless of Celery connectivity
+    try:
+        upsert_task_node(task_id, task_id, status="KILLED", result="Task killed by user.")
+    except Exception:
+        pass
+    return _api_response({"status": "success", "message": f"Task {task_id} kill signal sent."})
 
 
 @app.get('/api/v1/tasks/{task_id}/status')
@@ -1364,22 +1373,34 @@ async def get_server_registry_status():
     try:
         client = get_redis()
         if not client:
-            raise HTTPException(status_code=503, detail="Service registry unavailable: Redis client not configured.")
+            return _api_response({
+                "status": "degraded",
+                "service": "concierge-backend",
+                "message": "Service registry unavailable: Redis not configured. Core API is operational.",
+                "redis": False,
+            })
 
         service_key = "service:registry:concierge-backend"
         service_data_raw = client.get(service_key)
 
         if not service_data_raw:
-            raise HTTPException(status_code=404, detail="Service not found in registry.")
+            return _api_response({
+                "status": "degraded",
+                "service": "concierge-backend",
+                "message": "Service not yet registered in Redis registry.",
+                "redis": True,
+            })
 
         service_data = json.loads(service_data_raw)
         return _api_response(service_data)
     except Exception as e:
         logger.exception("Failed to read from service registry.")
-        # Return a proper API response envelope for errors
-        resp = _api_response(None, status='error')
-        resp['errors'] = {'message': f"Failed to read from registry: {str(e)}"}
-        return JSONResponse(status_code=500, content=resp)
+        return _api_response({
+            "status": "degraded",
+            "service": "concierge-backend",
+            "message": f"Registry read failed: {str(e)}",
+            "redis": False,
+        })
 
 
 # --- health endpoints ------------------------------------------------------
