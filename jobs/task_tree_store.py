@@ -12,7 +12,14 @@ REDIS_URL = os.getenv('REDIS_URL') or os.getenv('CELERY_RESULT_BACKEND') or DEFA
 
 _redis_client: Optional[redis.Redis] = None
 _redis_available: Optional[bool] = None  # None = untested, True/False = cached result
-_mem_store: Dict[str, Any] = {}          # in-memory fallback when Redis is not available
+
+# Share the root-level task_tree_store's _mem_store so that app.py's
+# /api/v1/tasks/{task_id}/status endpoint can see threads created here.
+try:
+    import task_tree_store as _root_tts
+    _mem_store: Dict[str, Any] = _root_tts._mem_store
+except Exception:
+    _mem_store = {}  # fallback to own dict if import fails
 
 
 def _build_redis_client(url: str) -> redis.Redis:
