@@ -999,39 +999,34 @@ async def concierge_timeline_graph():
 async def concierge_timeline_stream(request: Request, thread_id: Optional[str] = None):
     """Server-Sent Events endpoint streaming timeline updates in real-time.
 
-    Each event is a structured delta object and may include visual graph hints
-    for the frontend visualizer: node_add, node_update, edge_add, task_update,
-    and plan metadata.
-    This endpoint now streams task tree updates from Redis Pub/Sub.
+    Subscribes to the in-process asyncio queue published by SacredTimeline so
+    events flow even when Redis is unavailable.  Each event is a structured
+    delta object: node_add, node_update, edge_add, task_update, or plan.
     """
     thread_id = request.query_params.get("thread_id") or thread_id
-    from task_tree_store import get_task_update_pubsub
-    
+    _ensure_timeline_available()
+    timeline = app.state.timeline
+    q = timeline.subscribe_timeline()
+
     async def event_generator():
-        pubsub = get_task_update_pubsub(thread_id)
         try:
             while True:
-                await asyncio.sleep(0.5)
-                if pubsub is None:
-                    # Redis unavailable — send a keepalive comment so the
-                    # connection stays open without crashing.
-                    yield ": keepalive\n\n"
-                    continue
+                if await request.is_disconnected():
+                    break
                 try:
-                    message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
-                    if message and message.get('data'):
-                        yield f"data: {message['data']}\n\n"
-                except Exception:
+                    event = await asyncio.wait_for(q.get(), timeout=5.0)
+                    # Filter by thread_id when the client requested a specific one
+                    ev_thread = event.get('thread_id')
+                    if thread_id and ev_thread and ev_thread != thread_id:
+                        continue
+                    yield f"data: {json.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
         finally:
-            try:
-                if pubsub:
-                    pubsub.unsubscribe()
-                    pubsub.close()
-            except Exception:
-                pass
+            timeline.unsubscribe_timeline(q)
 
     return StreamingResponse(event_generator(), media_type='text/event-stream')
+
 
 @app.websocket('/api/v1/concierge/timeline/ws')
 async def concierge_timeline_websocket(websocket: WebSocket):
@@ -1041,27 +1036,29 @@ async def concierge_timeline_websocket(websocket: WebSocket):
         await websocket.close(code=1008, reason="thread_id is required")
         return
 
-    from task_tree_store import get_task_update_pubsub
-    
-    pubsub = get_task_update_pubsub(thread_id)
+    _ensure_timeline_available()
+    timeline = app.state.timeline
+    q = timeline.subscribe_timeline()
     try:
         while True:
-            await asyncio.sleep(0.1)
-            message = pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
-            if message and message['data']:
-                await websocket.send_text(message['data'])
+            try:
+                event = await asyncio.wait_for(q.get(), timeout=5.0)
+                ev_thread = event.get('thread_id')
+                if ev_thread and ev_thread != thread_id:
+                    continue
+                await websocket.send_text(json.dumps(event))
+            except asyncio.TimeoutError:
+                # Send a lightweight ping so the browser keeps the socket alive
+                try:
+                    await websocket.send_text('{"type":"ping"}')
+                except Exception:
+                    break
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for thread_id: {thread_id}")
-        pass
     except Exception:
         logger.exception('Timeline websocket error')
     finally:
-        try:
-            if pubsub:
-                pubsub.unsubscribe()
-                pubsub.close()
-        except Exception:
-            pass
+        timeline.unsubscribe_timeline(q)
 
 
 @app.get('/api/v1/concierge/threads/{thread_id}/nodes/{node_id}/memories')

@@ -447,14 +447,31 @@ class SacredTimeline:
         except Exception as celery_exc:
             logger.warning("Celery unavailable (%s); running tasks inline via thread pool.", celery_exc)
             for task in sorted_tasks:
+                task_id = task.get("task_id") or ""
+                task_name = task.get("title") or task_id
+                parent_id = (task.get("depends_on") or [None])[0] or thread_id
+                # Publish node_add + task_update events so the WebSocket canvas
+                # animates even without Celery or Redis.
+                self._task_tree_update(
+                    thread_id, task_id, "running", 10, "#fbbf24",
+                    {"task_name": task_name}, parent_id,
+                )
                 try:
                     _t, _tid, _ctx = task, thread_id, context
                     await loop.run_in_executor(
                         None,
                         lambda t=_t, tid=_tid, ctx=_ctx: execute_step_task(task=t, thread_id=tid, context=ctx),
                     )
+                    self._task_tree_update(
+                        thread_id, task_id, "done", 100, "#22c55e",
+                        {"task_name": task_name, "result_summary": "Completed"}, parent_id,
+                    )
                 except Exception as task_exc:
-                    logger.exception("Inline task %s failed: %s", task.get("task_id"), task_exc)
+                    logger.exception("Inline task %s failed: %s", task_id, task_exc)
+                    self._task_tree_update(
+                        thread_id, task_id, "error", 0, "#ef4444",
+                        {"task_name": task_name, "result_summary": str(task_exc)}, parent_id,
+                    )
 
         return {
             "status": "processing",

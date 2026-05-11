@@ -83,6 +83,24 @@ def _route_task_to_agent(task: Dict[str, Any], memory: MemoryStore, llm: LLMTool
     )
 
 
+def _run_agent(agent: Any, task_with_context: Dict[str, Any]) -> Dict[str, Any]:
+    """Invoke the agent using whichever async method it exposes.
+
+    Agents may define execute(), run_task(), or run() — we try all three so
+    the task runner never crashes with AttributeError when a new agent type is
+    added without updating this dispatcher.
+    """
+    if hasattr(agent, "execute"):
+        coro = agent.execute(task_with_context)
+    elif hasattr(agent, "run_task"):
+        coro = agent.run_task(task_with_context)
+    elif hasattr(agent, "run"):
+        coro = agent.run()
+    else:
+        return {"summary": "Agent has no executable method (execute/run_task/run)"}
+    return asyncio.run(coro)
+
+
 @celery_app.task(base=StepAssistant, bind=True)
 def execute_step_task(self, task: dict, thread_id: str, context: dict):
     """A Celery task to execute a single step from a plan."""
@@ -104,8 +122,27 @@ def execute_step_task(self, task: dict, thread_id: str, context: dict):
     agent = _route_task_to_agent(task, memory, llm)
     task_with_context = {**task, "context": context}
 
-    result = asyncio.run(agent.execute(task_with_context) if hasattr(agent, "execute") else agent.run())
-    summary = result.get("summary") or result.get("output") or str(result)
+    try:
+        result = _run_agent(agent, task_with_context)
+    except Exception as agent_exc:
+        logger.exception("Agent execution failed for task %s: %s", task_id, agent_exc)
+        upsert_task_node(
+            thread_id=thread_id,
+            task_id=task_id,
+            status="error",
+            progress=0,
+            color="#ef4444",
+            metadata={"result_summary": str(agent_exc), "end_time": time.time(), "celery_task_id": celery_task_id},
+        )
+        return {"task_id": task_id, "result": {}, "summary": str(agent_exc)}
 
-    upsert_task_node(thread_id=thread_id, task_id=task_id, status="done", progress=100, color="#22c55e", metadata={"result_summary": summary, "end_time": time.time(), "celery_task_id": celery_task_id})
+    summary = result.get("summary") or result.get("output") or str(result)
+    upsert_task_node(
+        thread_id=thread_id,
+        task_id=task_id,
+        status="done",
+        progress=100,
+        color="#22c55e",
+        metadata={"result_summary": summary, "end_time": time.time(), "celery_task_id": celery_task_id},
+    )
     return {"task_id": task_id, "result": result, "summary": summary}

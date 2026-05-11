@@ -92,7 +92,7 @@ def initialize_thread(thread_id: str, metadata: Dict[str, Any]):
         _mem_store[key] = serialized
 
 
-def upsert_task_node(thread_id: str, task_id: str, parent_id: Optional[str], **kwargs):
+def upsert_task_node(thread_id: str, task_id: str, parent_id: Optional[str] = None, **kwargs):
     """Add or update a node in a task tree (Redis or in-memory fallback)."""
     key = get_task_tree_key(thread_id)
     r = get_redis()
@@ -107,7 +107,15 @@ def upsert_task_node(thread_id: str, task_id: str, parent_id: Optional[str], **k
         if existing_node:
             existing_node.update(kwargs)
         else:
-            new_node = {"task_id": task_id, "children": [], **kwargs}
+            # Hoist task_name from metadata so the canvas always has a label
+            _meta = kwargs.get("metadata") or {}
+            new_node = {
+                "task_id": task_id,
+                "task_name": _meta.get("task_name") or task_id,
+                "state": "PROGRESS",
+                "children": [],
+                **kwargs,
+            }
             parent_node.setdefault("children", []).append(new_node)
         _mem_store[key] = json.dumps(tree)
         return
