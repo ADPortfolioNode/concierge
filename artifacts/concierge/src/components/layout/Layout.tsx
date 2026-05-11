@@ -158,7 +158,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               if (cancelled) return;
               setStepStatus(2, 'loading');
               try {
-                await fetchWithTimeout('/api/v1/concierge/messages');
+                await fetchWithTimeout('/api/v1/concierge/conversation');
                 if (!cancelled) setStepStatus(2, 'done');
               } catch {
                 if (!cancelled) setStepStatus(2, 'error');
