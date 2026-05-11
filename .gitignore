@@ -24,7 +24,14 @@ yarn-error.log*
 pnpm-debug.log*
 .pnp.*
 
+<<<<<<< HEAD
 # Build and distribution artifacts
+=======
+# Build artifacts
+dist/
+build/
+build_packages/
+>>>>>>> c509ad7 (git ignore!)
 concierge-dist.zip
 
 # Logs
@@ -53,5 +60,11 @@ htmlcov/
 .coverage
 .pytest_cache/
 
+<<<<<<< HEAD
 # Temp test scripts
 temp_bash_test*.sh
+=======
+# Vercel local development artifacts
+.vercel/
+.vercel_tmp_env/
+>>>>>>> c509ad7 (git ignore!)
