@@ -76,6 +76,8 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   tool_call: '#38bdf8',
 };
 
+const ANIMATED_STATUSES = new Set(['running', 'thinking', 'started']);
+
 const getStatusColor = (status: string): string => {
   const normalized = (status || '').toLowerCase();
   return STATUS_COLOR_MAP[normalized] || '#8b5cf6';
@@ -95,45 +97,132 @@ const toVisualType = (node: TaskTreeNode): VisualNodeType => {
   return node.task_id === node.parent_id ? 'thread_root' : 'reasoning';
 };
 
+// ─── Hierarchical layout (Reingold-Tilford style, two-pass) ──────────────────
+//
+// x = X_ORIGIN + depth * X_STEP  (horizontal axis → depth/column)
+// y = centred over children      (vertical axis → sibling distribution)
+//
+// MIN_SIBLING_GAP is the minimum center-to-centre vertical distance between
+// siblings.  Nodes are 56 px tall (NODE_HALF_H * 2), so 140 px gives an 84 px
+// edge-to-edge clearance — no overlap is possible.
+
+const MIN_SIBLING_GAP = 140;
+const X_STEP = 320;
+const X_ORIGIN = 200;
+const Y_ORIGIN = 120;
+
+interface LayoutNode {
+  taskNode: TaskTreeNode;
+  subtreeHeight: number;
+  x: number;
+  y: number;
+}
+
+// Heights are memoised in a Map keyed by task_id so each subtree is walked
+// exactly once — O(n) total rather than O(n²) with repeated recursion.
+function buildSubtreeHeightMap(node: TaskTreeNode, memo: Map<string, number>): number {
+  const cached = memo.get(node.task_id);
+  if (cached !== undefined) return cached;
+  const children = node.children || [];
+  const height =
+    children.length === 0
+      ? MIN_SIBLING_GAP
+      : Math.max(
+          MIN_SIBLING_GAP,
+          children.reduce((sum, child) => sum + buildSubtreeHeightMap(child, memo), 0),
+        );
+  memo.set(node.task_id, height);
+  return height;
+}
+
+function assignPositions(
+  node: TaskTreeNode,
+  depth: number,
+  centerY: number,
+  result: LayoutNode[],
+  heightMap: Map<string, number>,
+): void {
+  const x = X_ORIGIN + depth * X_STEP;
+  result.push({
+    taskNode: node,
+    subtreeHeight: heightMap.get(node.task_id) ?? MIN_SIBLING_GAP,
+    x,
+    y: centerY,
+  });
+
+  const children = node.children || [];
+  if (children.length === 0) return;
+
+  const childHeights = children.map((c) => heightMap.get(c.task_id) ?? MIN_SIBLING_GAP);
+  const totalHeight = childHeights.reduce((a, b) => a + b, 0);
+  let cursor = centerY - totalHeight / 2;
+  children.forEach((child, i) => {
+    const halfH = childHeights[i] / 2;
+    assignPositions(child, depth + 1, cursor + halfH, result, heightMap);
+    cursor += childHeights[i];
+  });
+}
+
 const buildGraphFromTree = (tree: TaskTreeNode): { nodes: VisualNode[]; edges: VisualEdge[] } => {
-  const nodes: VisualNode[] = [];
+  const heightMap = new Map<string, number>();
+  buildSubtreeHeightMap(tree, heightMap);
+  const layoutNodes: LayoutNode[] = [];
+  assignPositions(tree, 0, Y_ORIGIN, layoutNodes, heightMap);
+
+  const nodes: VisualNode[] = layoutNodes.map(({ taskNode, x, y }) => ({
+    id: taskNode.task_id,
+    type: toVisualType(taskNode),
+    label: taskNode.task_name || taskNode.task_id,
+    status: taskNode.status || 'running',
+    x,
+    y,
+    metadata: {
+      progress: taskNode.progress,
+      state: taskNode.state,
+      ...taskNode.metadata,
+    },
+  }));
+
   const edges: VisualEdge[] = [];
-  let rowIndex = 0;
-
-  const walk = (node: TaskTreeNode, depth = 0, parentId?: string) => {
-    const x = 180 + depth * 320;
-    const y = 120 + rowIndex * 120;
-    const nodeId = node.task_id;
-    const status = node.status || 'running';
-
-    nodes.push({
-      id: nodeId,
-      type: toVisualType(node),
-      label: node.task_name || node.task_id,
-      status,
-      x,
-      y,
-      metadata: {
-        progress: node.progress,
-        state: node.state,
-        ...node.metadata,
-      },
+  const walkEdges = (node: TaskTreeNode) => {
+    (node.children || []).forEach((child) => {
+      edges.push({ fromId: node.task_id, toId: child.task_id, type: 'dependency' });
+      walkEdges(child);
     });
-
-    if (parentId) {
-      edges.push({ fromId: parentId, toId: nodeId, type: 'dependency' });
-    }
-
-    rowIndex += 1;
-    (node.children || []).forEach((child) => walk(child, depth + 1, nodeId));
   };
+  walkEdges(tree);
 
-  walk(tree, 0, undefined);
   return { nodes, edges };
 };
 
-const computeBezierPoint = (t: number, p0: number, p1: number, p2: number, p3: number) =>
-  ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
+// ─── Bezier path length cache ─────────────────────────────────────────────────
+
+function computeBezierPoint(t: number, p0: number, p1: number, p2: number, p3: number) {
+  return ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t ** 2 * p2 + t ** 3 * p3;
+}
+
+function approximateBezierLength(
+  x0: number, y0: number,
+  cp1x: number, cp1y: number,
+  cp2x: number, cp2y: number,
+  x1: number, y1: number,
+  steps = 100,
+): number {
+  let length = 0;
+  let prevX = x0;
+  let prevY = y0;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const cx = computeBezierPoint(t, x0, cp1x, cp2x, x1);
+    const cy = computeBezierPoint(t, y0, cp1y, cp2y, y1);
+    length += Math.hypot(cx - prevX, cy - prevY);
+    prevX = cx;
+    prevY = cy;
+  }
+  return length;
+}
+
+// ─── Streaming helpers ────────────────────────────────────────────────────────
 
 const getWebSocketUrl = () => {
   const timelineUrl = makeApiUrl('/api/v1/concierge/timeline/ws');
@@ -149,20 +238,129 @@ const getWebSocketUrl = () => {
 
 const buildTimelineStreamUrl = (threadId?: string) => {
   const url = new URL(makeApiUrl('/api/v1/concierge/timeline/stream'), window.location.origin);
-  if (threadId) {
-    url.searchParams.set('thread_id', threadId);
-  }
+  if (threadId) url.searchParams.set('thread_id', threadId);
   return url.toString();
 };
 
 const buildTimelineWebSocketUrl = (threadId?: string) => {
   const base = getWebSocketUrl();
   const url = new URL(base, window.location.origin);
-  if (threadId) {
-    url.searchParams.set('thread_id', threadId);
-  }
+  if (threadId) url.searchParams.set('thread_id', threadId);
   return url.toString();
 };
+
+// ─── NodeDetailPanel (memoised side panel) ────────────────────────────────────
+
+interface NodeDetailPanelProps {
+  selectedNode: VisualNode | null;
+  nodeMemories: NodeMemory[];
+  memoryStatus: 'idle' | 'loading' | 'ready' | 'error';
+  taskThreadId: string | null;
+  onKillTask: (node: VisualNode) => void;
+  onOpenThreadStatus: () => void;
+  onDeselect: () => void;
+}
+
+const NodeDetailPanel = React.memo(function NodeDetailPanel({
+  selectedNode,
+  nodeMemories,
+  memoryStatus,
+  taskThreadId,
+  onKillTask,
+  onOpenThreadStatus,
+  onDeselect,
+}: NodeDetailPanelProps) {
+  if (!selectedNode) {
+    return (
+      <div className="agentic-thread-panel-empty">
+        Select any node to inspect execution metadata, retrieved documents, and tool context.
+      </div>
+    );
+  }
+
+  const documents: RetrievalDocument[] =
+    (selectedNode.metadata?.retrieved_documents as RetrievalDocument[] | undefined) ||
+    (selectedNode.metadata?.documents as RetrievalDocument[] | undefined) ||
+    (selectedNode.metadata?.matches as RetrievalDocument[] | undefined) ||
+    [];
+
+  return (
+    <div className="agentic-thread-sidepanel__content">
+      <h3>{selectedNode.label}</h3>
+      <div className="agentic-thread-node-meta">
+        <span>Status: {selectedNode.status}</span>
+        <span>Type: {selectedNode.type}</span>
+        <span>Progress: {String(selectedNode.metadata?.progress ?? 'N/A')}</span>
+        {typeof selectedNode.metadata?.confidence === 'number' ? (
+          <span>Confidence: {(selectedNode.metadata.confidence * 100).toFixed(0)}%</span>
+        ) : null}
+      </div>
+      {selectedNode.metadata?.summary ? (
+        <section>
+          <h4>Summary</h4>
+          <p>{String(selectedNode.metadata.summary)}</p>
+        </section>
+      ) : null}
+      <section>
+        <h4>Chroma memories</h4>
+        {memoryStatus === 'loading' ? <p>Retrieving related memory context...</p> : null}
+        {memoryStatus === 'error' ? <p>Could not load related memories right now.</p> : null}
+        {memoryStatus === 'ready' && nodeMemories.length === 0 ? <p>No related memories found yet.</p> : null}
+        {memoryStatus === 'ready' && nodeMemories.length > 0 ? (
+          <div className="agentic-thread-doc-list">
+            {nodeMemories.map((memory) => (
+              <article key={memory.id} className="agentic-thread-doc-card">
+                <strong>{memory.metadata?.task_name ? String(memory.metadata.task_name) : memory.id}</strong>
+                <p>{memory.summary}</p>
+                {typeof memory.score === 'number' ? <small>Relevance {(memory.score * 100).toFixed(0)}%</small> : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </section>
+      {documents.length > 0 ? (
+        <section>
+          <h4>Retrievals</h4>
+          <div className="agentic-thread-doc-list">
+            {documents.slice(0, 6).map((doc, idx) => (
+              <article key={`${doc.id || idx}`} className="agentic-thread-doc-card">
+                {doc.title ? <strong>{doc.title}</strong> : null}
+                {doc.source ? <div className="agentic-thread-doc-source">{doc.source}</div> : null}
+                {doc.excerpt ? <p>{doc.excerpt}</p> : null}
+                {typeof doc.score === 'number' ? <small>Score {(doc.score * 100).toFixed(0)}%</small> : null}
+                {doc.url ? <a href={doc.url} target="_blank" rel="noreferrer">Open source</a> : null}
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {selectedNode.metadata?.agent_type || selectedNode.metadata?.tool_name ? (
+        <section>
+          <h4>Tool / agent context</h4>
+          <p>{String(selectedNode.metadata?.agent_type || selectedNode.metadata?.tool_name || '')}</p>
+          <pre>{JSON.stringify(selectedNode.metadata, null, 2)}</pre>
+        </section>
+      ) : null}
+      <div className="agentic-thread-sidepanel__actions">
+        <button className="agentic-thread-action" onClick={() => onKillTask(selectedNode)}>
+          Kill Task
+        </button>
+        <button className="agentic-thread-action" onClick={onOpenThreadStatus}>
+          Open thread status
+        </button>
+        <button className="agentic-thread-action agentic-thread-action--secondary" onClick={onDeselect}>
+          Deselect node
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+const SPATIAL_CELL_SIZE = 200;
+const NODE_HALF_W = 96;
+const NODE_HALF_H = 28;
 
 const AgenticThreadCanvas: React.FC = () => {
   const taskThreadId = useAppStore((s) => s.taskThreadId);
@@ -185,6 +383,19 @@ const AgenticThreadCanvas: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
 
+  // ── Dirty flag for idle-aware render loop ──
+  const needsRedraw = useRef(true);
+
+  // ── Bezier path length cache ──
+  const edgeLengthCache = useRef<Map<string, number>>(new Map());
+
+  // ── RAF-based update batching for streaming events ──
+  const pendingUpdates = useRef<TimelineEventPayload[]>([]);
+  const flushRafId = useRef<number | null>(null);
+
+  // ── Pointer-move throttle ──
+  const hoverRafPending = useRef<number | null>(null);
+
   const selectedNode = useMemo(
     () => nodes.find((node) => node.id === selectedNodeId) || null,
     [nodes, selectedNodeId]
@@ -205,6 +416,28 @@ const AgenticThreadCanvas: React.FC = () => {
     return connected;
   }, [edges, selectedNodeId]);
 
+  // ── Spatial grid for O(1) hit testing ──
+  const spatialGrid = useMemo(() => {
+    const grid = new Map<string, string[]>();
+    for (const node of nodes) {
+      const x0 = Math.floor((node.x - NODE_HALF_W) / SPATIAL_CELL_SIZE);
+      const x1 = Math.floor((node.x + NODE_HALF_W) / SPATIAL_CELL_SIZE);
+      const y0 = Math.floor((node.y - NODE_HALF_H) / SPATIAL_CELL_SIZE);
+      const y1 = Math.floor((node.y + NODE_HALF_H) / SPATIAL_CELL_SIZE);
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let cy = y0; cy <= y1; cy++) {
+          const key = `${cx},${cy}`;
+          if (!grid.has(key)) grid.set(key, []);
+          grid.get(key)!.push(node.id);
+        }
+      }
+    }
+    return grid;
+  }, [nodes]);
+
+  // Mark dirty whenever visual state changes
+  useEffect(() => { needsRedraw.current = true; }, [nodes, edges, viewState, hoveredNodeId, selectedNodeId, selectedAdjacency]);
+
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -218,9 +451,8 @@ const AgenticThreadCanvas: React.FC = () => {
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
+    if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    needsRedraw.current = true;
   }, []);
 
   const drawScene = useCallback(() => {
@@ -262,32 +494,42 @@ const AgenticThreadCanvas: React.FC = () => {
       const cp2x = to.x - Math.max(160, Math.abs(to.x - from.x) * 0.32);
       const cp2y = to.y;
 
-      // Base edge (gray)
       const edgeFocused =
         !selectedNodeId || edge.fromId === selectedNodeId || edge.toId === selectedNodeId;
+
+      // Base edge
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
       ctx.lineWidth = 1.6;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
       ctx.stroke();
 
-      // Progress bar on edge
+      // Progress bar via lineDash (O(1) per frame after cache warm-up)
       const fromProgress = (Number(from.metadata?.progress ?? 0)) / 100;
       if (fromProgress > 0) {
+        const cacheKey = `${from.x},${from.y},${cp1x},${cp1y},${cp2x},${cp2y},${to.x},${to.y}`;
+        let totalLen = edgeLengthCache.current.get(cacheKey);
+        if (totalLen === undefined) {
+          totalLen = approximateBezierLength(from.x, from.y, cp1x, cp1y, cp2x, cp2y, to.x, to.y);
+          edgeLengthCache.current.set(cacheKey, totalLen);
+        }
+        const filledLen = totalLen * fromProgress;
+        const remainder = totalLen - filledLen;
+
         ctx.strokeStyle = edgeFocused ? 'rgba(96, 165, 250, 0.6)' : 'rgba(96, 165, 250, 0.4)';
         ctx.lineWidth = 2.6;
+        ctx.setLineDash([filledLen, remainder > 0 ? remainder : totalLen]);
+        ctx.lineDashOffset = 0;
         ctx.beginPath();
         ctx.moveTo(from.x, from.y);
-        const step = 0.05;
-        for (let t = 0; t < fromProgress; t += step) {
-          const px = computeBezierPoint(Math.min(t + step, fromProgress), from.x, cp1x, cp2x, to.x);
-          const py = computeBezierPoint(Math.min(t + step, fromProgress), from.y, cp1y, cp2y, to.y);
-          ctx.lineTo(px, py);
-        }
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, to.x, to.y);
         ctx.stroke();
+        ctx.setLineDash([]);
       }
 
+      // Particle dot along edge
       const particlePosition = ((particleFrame.current + index * 12) % 180) / 180;
       const px = computeBezierPoint(particlePosition, from.x, cp1x, cp2x, to.x);
       const py = computeBezierPoint(particlePosition, from.y, cp1y, cp2y, to.y);
@@ -298,9 +540,7 @@ const AgenticThreadCanvas: React.FC = () => {
     });
 
     nodes.forEach((node) => {
-      if (node.x < visibleX0 || node.x > visibleX1 || node.y < visibleY0 || node.y > visibleY1) {
-        return;
-      }
+      if (node.x < visibleX0 || node.x > visibleX1 || node.y < visibleY0 || node.y > visibleY1) return;
       const isSelected = node.id === selectedNodeId;
       const isHovered = node.id === hoveredNodeId;
       const isConnected = selectedAdjacency.has(node.id);
@@ -308,9 +548,17 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.save();
       ctx.beginPath();
       ctx.roundRect(node.x - 96, node.y - 28, 192, 56, 20);
-      ctx.fillStyle = isSelected ? 'rgba(31, 41, 55, 0.98)' : isConnected ? 'rgba(15, 23, 42, 0.96)' : 'rgba(15, 23, 42, 0.86)';
+      ctx.fillStyle = isSelected
+        ? 'rgba(31, 41, 55, 0.98)'
+        : isConnected
+        ? 'rgba(15, 23, 42, 0.96)'
+        : 'rgba(15, 23, 42, 0.86)';
       ctx.fill();
-      ctx.strokeStyle = isSelected ? 'rgba(56, 189, 248, 0.92)' : isConnected ? 'rgba(56, 189, 248, 0.42)' : 'rgba(148, 163, 184, 0.18)';
+      ctx.strokeStyle = isSelected
+        ? 'rgba(56, 189, 248, 0.92)'
+        : isConnected
+        ? 'rgba(56, 189, 248, 0.42)'
+        : 'rgba(148, 163, 184, 0.18)';
       ctx.lineWidth = isHovered || isSelected ? 3 : 1.5;
       ctx.stroke();
 
@@ -323,7 +571,7 @@ const AgenticThreadCanvas: React.FC = () => {
       ctx.stroke();
 
       const normalizedStatus = node.status.toLowerCase();
-      if (normalizedStatus === 'thinking' || normalizedStatus === 'running' || normalizedStatus === 'started') {
+      if (ANIMATED_STATUSES.has(normalizedStatus)) {
         ctx.beginPath();
         ctx.arc(node.x - 66, node.y, 22 + pulse * 4, 0, Math.PI * 2);
         ctx.strokeStyle = `rgba(251, 191, 36, ${0.24 + pulse * 0.3})`;
@@ -359,18 +607,82 @@ const AgenticThreadCanvas: React.FC = () => {
     drawSceneRef.current = drawScene;
   }, [drawScene]);
 
+  // ── Idle-aware render loop ─────────────────────────────────────────────────
   useEffect(() => {
     const loop = () => {
-      particleFrame.current += 1;
-      drawSceneRef.current();
+      const hasAnimating = nodes.some((n) => ANIMATED_STATUSES.has(n.status.toLowerCase()));
+
+      if (hasAnimating) {
+        particleFrame.current += 1;
+        needsRedraw.current = true;
+      }
+
+      if (needsRedraw.current) {
+        drawSceneRef.current();
+        needsRedraw.current = false;
+      }
+
       rafId.current = window.requestAnimationFrame(loop);
     };
     rafId.current = window.requestAnimationFrame(loop);
     return () => {
-      if (rafId.current) {
-        window.cancelAnimationFrame(rafId.current);
-      }
+      if (rafId.current) window.cancelAnimationFrame(rafId.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes, edges, viewState]);
+
+  // ── RAF-flush for batched streaming updates ───────────────────────────────
+  const flushPendingUpdates = useCallback(() => {
+    flushRafId.current = null;
+    const batch = pendingUpdates.current.splice(0);
+    if (batch.length === 0) return;
+
+    // Deduplicate by task_id: keep the latest event per task
+    const deduped = new Map<string, TimelineEventPayload>();
+    for (const ev of batch) {
+      if (ev.task_id) deduped.set(ev.task_id, ev);
+    }
+
+    setNodes((prev) => {
+      let next = prev;
+      for (const payload of deduped.values()) {
+        const existingIndex = next.findIndex((n) => n.id === payload.task_id);
+        const label = payload.task_name || payload.task_id;
+        const status = payload.status || 'running';
+        if (existingIndex >= 0) {
+          if (next === prev) next = [...prev];
+          next[existingIndex] = {
+            ...next[existingIndex],
+            status,
+            label: label ?? next[existingIndex].label,
+            metadata: {
+              ...next[existingIndex].metadata,
+              progress: payload.progress,
+              summary: payload.summary,
+            },
+          };
+        } else {
+          if (next === prev) next = [...prev];
+          next = [
+            ...next,
+            {
+              id: payload.task_id ?? '',
+              label: label ?? '',
+              type: 'reasoning' as const,
+              status,
+              x: 180 + (next.length % 6) * 260,
+              y: 120 + Math.floor(next.length / 6) * 100,
+              metadata: {
+                progress: payload.progress,
+                summary: payload.summary,
+              },
+            },
+          ];
+        }
+      }
+      return next;
+    });
+    needsRedraw.current = true;
   }, []);
 
   const connectTimelineStream = useCallback(
@@ -383,9 +695,7 @@ const AgenticThreadCanvas: React.FC = () => {
         try {
           const payload = JSON.parse(rawData) as TimelineEventPayload;
           const payloadThreadId = payload.thread_id || payload.threadId;
-          if (payloadThreadId && payloadThreadId !== threadId) {
-            return;
-          }
+          if (payloadThreadId && payloadThreadId !== threadId) return;
           onEvent(payload);
         } catch {
           // ignore malformed payloads
@@ -394,13 +704,9 @@ const AgenticThreadCanvas: React.FC = () => {
 
       const createSse = () => {
         eventSource = new EventSource(buildTimelineStreamUrl(threadId));
-        eventSource.onmessage = (ev) => {
-          dispatchPayload(ev.data);
-        };
+        eventSource.onmessage = (ev) => dispatchPayload(ev.data);
         eventSource.onerror = () => {
-          if (eventSource?.readyState === EventSource.CLOSED) {
-            eventSource.close();
-          }
+          if (eventSource?.readyState === EventSource.CLOSED) eventSource.close();
         };
       };
 
@@ -409,14 +715,8 @@ const AgenticThreadCanvas: React.FC = () => {
           socket = new WebSocket(buildTimelineWebSocketUrl(threadId));
           socket.onopen = () => setStatusMessage('Connected to live agent thread.');
           socket.onmessage = (event) => dispatchPayload(event.data);
-          socket.onclose = () => {
-            if (!closed) {
-              createSse();
-            }
-          };
-          socket.onerror = () => {
-            socket?.close();
-          };
+          socket.onclose = () => { if (!closed) createSse(); };
+          socket.onerror = () => socket?.close();
         } catch {
           createSse();
         }
@@ -437,6 +737,32 @@ const AgenticThreadCanvas: React.FC = () => {
     []
   );
 
+  // ── Auto-fit view to all nodes ─────────────────────────────────────────────
+  const autoFitNodes = useCallback((nodeList: VisualNode[]) => {
+    if (nodeList.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const W = canvas.clientWidth;
+    const H = canvas.clientHeight;
+    if (!W || !H) return;
+
+    const padding = 60;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodeList) {
+      if (n.x - NODE_HALF_W < minX) minX = n.x - NODE_HALF_W;
+      if (n.y - NODE_HALF_H < minY) minY = n.y - NODE_HALF_H;
+      if (n.x + NODE_HALF_W > maxX) maxX = n.x + NODE_HALF_W;
+      if (n.y + NODE_HALF_H > maxY) maxY = n.y + NODE_HALF_H;
+    }
+    const contentW = maxX - minX + padding * 2;
+    const contentH = maxY - minY + padding * 2;
+    const scale = Math.min(1.2, Math.max(0.4, Math.min(W / contentW, H / contentH)));
+    const x = (W - (maxX + minX) * scale) / 2;
+    const y = (H - (maxY + minY) * scale) / 2;
+    setViewState({ x, y, scale });
+    needsRedraw.current = true;
+  }, []);
+
   useEffect(() => {
     if (!taskThreadId) {
       setStatusMessage('No active agent thread yet. Start a Concierge goal or ask for a plan.');
@@ -451,6 +777,8 @@ const AgenticThreadCanvas: React.FC = () => {
         setNodes(graph.nodes);
         setEdges(graph.edges);
         setStatusMessage('Streaming agent thread updates…');
+        // Auto-fit after a microtask so canvas dimensions are settled
+        setTimeout(() => autoFitNodes(graph.nodes), 0);
       })
       .catch(() => {
         if (!isMounted) return;
@@ -458,45 +786,17 @@ const AgenticThreadCanvas: React.FC = () => {
       });
 
     const disconnect = connectTimelineStream(taskThreadId, (payload) => {
-      if (payload.type === 'plan') {
+      if (payload.type === 'plan') return;
+
+      if (payload.type === 'task_update' && payload.task_id) {
+        // Push to batch buffer and schedule a RAF flush
+        pendingUpdates.current.push(payload);
+        if (flushRafId.current === null) {
+          flushRafId.current = window.requestAnimationFrame(flushPendingUpdates);
+        }
         return;
       }
-      if (payload.type === 'task_update' && payload.task_id) {
-        setNodes((prev) => {
-          const existingIndex = prev.findIndex((node) => node.id === payload.task_id);
-          const label = payload.task_name || payload.task_id;
-          const status = payload.status || 'running';
-          if (existingIndex >= 0) {
-            const next = [...prev];
-            next[existingIndex] = {
-              ...next[existingIndex],
-              status,
-              label: label ?? next[existingIndex].label,
-              metadata: {
-                ...next[existingIndex].metadata,
-                progress: payload.progress,
-                summary: payload.summary,
-              },
-            };
-            return next;
-          }
-          return [
-            ...prev,
-            {
-              id: payload.task_id ?? '',
-              label: label ?? '',
-              type: 'reasoning' as const,
-              status,
-              x: 180 + (prev.length % 6) * 260,
-              y: 120 + Math.floor(prev.length / 6) * 100,
-              metadata: {
-                progress: payload.progress,
-                summary: payload.summary,
-              },
-            },
-          ];
-        });
-      }
+
       if (payload.type === 'node_add' && payload.payload) {
         setNodes((prev) => {
           const rawNode = payload.payload as StreamDeltaNodePayload;
@@ -508,32 +808,45 @@ const AgenticThreadCanvas: React.FC = () => {
             status: rawNode.status || 'running',
             x: typeof rawNode.x === 'number' ? rawNode.x : 180 + (prev.length % 6) * 260,
             y: typeof rawNode.y === 'number' ? rawNode.y : 120 + Math.floor(prev.length / 6) * 100,
-            metadata: {
-              progress: 0,
-              ...(rawNode.metadata || {}),
-            },
+            metadata: { progress: 0, ...(rawNode.metadata || {}) },
           };
           return [...prev, nextNode];
         });
+        needsRedraw.current = true;
       }
+
       if (payload.type === 'node_update' && payload.payload) {
         const nodeUpdate = payload.payload as Partial<VisualNode> & { id: string };
-        setNodes((prev) => prev.map((node) => (node.id === nodeUpdate.id ? { ...node, ...nodeUpdate, metadata: { ...node.metadata, ...(nodeUpdate.metadata || {}) } } : node)));
+        setNodes((prev) =>
+          prev.map((node) =>
+            node.id === nodeUpdate.id
+              ? { ...node, ...nodeUpdate, metadata: { ...node.metadata, ...(nodeUpdate.metadata || {}) } }
+              : node
+          )
+        );
+        needsRedraw.current = true;
       }
+
       if (payload.type === 'edge_add' && payload.payload) {
         const edgeUpdate = payload.payload as VisualEdge;
         setEdges((prev) => {
-          if (prev.some((edge) => edge.fromId === edgeUpdate.fromId && edge.toId === edgeUpdate.toId)) return prev;
+          if (prev.some((e) => e.fromId === edgeUpdate.fromId && e.toId === edgeUpdate.toId)) return prev;
           return [...prev, edgeUpdate];
         });
+        needsRedraw.current = true;
       }
     });
 
     return () => {
       isMounted = false;
       disconnect();
+      if (flushRafId.current !== null) {
+        window.cancelAnimationFrame(flushRafId.current);
+        flushRafId.current = null;
+      }
+      pendingUpdates.current = [];
     };
-  }, [connectTimelineStream, taskThreadId]);
+  }, [connectTimelineStream, flushPendingUpdates, taskThreadId, autoFitNodes]);
 
   useEffect(() => {
     if (!taskThreadId || !selectedNodeId) {
@@ -551,9 +864,7 @@ const AgenticThreadCanvas: React.FC = () => {
           ),
           { signal: controller.signal }
         );
-        if (!response.ok) {
-          throw new Error(`Failed to fetch memories (${response.status})`);
-        }
+        if (!response.ok) throw new Error(`Failed to fetch memories (${response.status})`);
         const json = (await response.json()) as { data?: { memories?: NodeMemory[] } };
         const memories = Array.isArray(json?.data?.memories) ? json.data.memories : [];
         setNodeMemories(memories);
@@ -569,17 +880,16 @@ const AgenticThreadCanvas: React.FC = () => {
     return () => controller.abort();
   }, [selectedNodeId, taskThreadId]);
 
+  // Large graph worker re-layout (>200 nodes)
   useEffect(() => {
     if (nodes.length <= 200) return;
     const workerScript = `
       self.onmessage = function(event) {
-        const nodes = event.data || [];
-        const positioned = nodes.map(function(node, index) {
-          const col = index % 16;
-          const row = Math.floor(index / 16);
-          const x = 180 + col * 190;
-          const y = 120 + row * 100;
-          return { id: node.id, x: x, y: y };
+        var nodes = event.data || [];
+        var positioned = nodes.map(function(node, index) {
+          var col = index % 16;
+          var row = Math.floor(index / 16);
+          return { id: node.id, x: 180 + col * 190, y: 120 + row * 100 };
         });
         self.postMessage(positioned);
       };
@@ -595,6 +905,7 @@ const AgenticThreadCanvas: React.FC = () => {
           return next ? { ...node, x: next.x, y: next.y } : node;
         })
       );
+      needsRedraw.current = true;
     };
     worker.postMessage(nodes.map((n) => ({ id: n.id })));
     return () => {
@@ -623,23 +934,35 @@ const AgenticThreadCanvas: React.FC = () => {
     [viewState]
   );
 
+  // ── Spatial-grid hit testing ───────────────────────────────────────────────
   const findNodeAtPoint = useCallback(
     (point: { x: number; y: number } | null) => {
       if (!point) return null;
-      return nodes.find((node) => {
-        const dx = point.x - node.x;
-        const dy = point.y - node.y;
-        return Math.abs(dx) <= 96 && Math.abs(dy) <= 28;
-      })?.id || null;
+      const cx = Math.floor(point.x / SPATIAL_CELL_SIZE);
+      const cy = Math.floor(point.y / SPATIAL_CELL_SIZE);
+      const candidates = new Set<string>();
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const key = `${cx + dx},${cy + dy}`;
+          const ids = spatialGrid.get(key);
+          if (ids) ids.forEach((id) => candidates.add(id));
+        }
+      }
+      for (const id of candidates) {
+        const node = nodeMap.get(id);
+        if (!node) continue;
+        if (Math.abs(point.x - node.x) <= NODE_HALF_W && Math.abs(point.y - node.y) <= NODE_HALF_H) {
+          return id;
+        }
+      }
+      return null;
     },
-    [nodes]
+    [nodeMap, spatialGrid]
   );
 
+  // ── Throttled pointer-move (at most 1 hover update per RAF tick) ───────────
   const handleCanvasPointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      const point = transformPoint(event.clientX, event.clientY);
-      const hoverId = findNodeAtPoint(point);
-      setHoveredNodeId((prev) => (prev !== hoverId ? hoverId : prev));
       if (isPanning && lastPointer.current) {
         const dx = event.clientX - lastPointer.current.x;
         const dy = event.clientY - lastPointer.current.y;
@@ -648,6 +971,16 @@ const AgenticThreadCanvas: React.FC = () => {
           lastPointer.current = { x: event.clientX, y: event.clientY };
         }
       }
+
+      if (hoverRafPending.current !== null) return;
+      const clientX = event.clientX;
+      const clientY = event.clientY;
+      hoverRafPending.current = window.requestAnimationFrame(() => {
+        hoverRafPending.current = null;
+        const point = transformPoint(clientX, clientY);
+        const hoverId = findNodeAtPoint(point);
+        setHoveredNodeId((prev) => (prev !== hoverId ? hoverId : prev));
+      });
     },
     [findNodeAtPoint, isPanning, transformPoint]
   );
@@ -661,7 +994,10 @@ const AgenticThreadCanvas: React.FC = () => {
   const handleCanvasPointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (isPanning && clickStartPointer.current) {
-        const moved = Math.hypot(event.clientX - clickStartPointer.current.x, event.clientY - clickStartPointer.current.y);
+        const moved = Math.hypot(
+          event.clientX - clickStartPointer.current.x,
+          event.clientY - clickStartPointer.current.y,
+        );
         if (moved < 8) {
           const point = transformPoint(event.clientX, event.clientY);
           const clicked = findNodeAtPoint(point);
@@ -694,120 +1030,35 @@ const AgenticThreadCanvas: React.FC = () => {
     });
   }, []);
 
-  const renderNodeDetails = () => {
-    if (!selectedNode) {
-      return (
-        <div className="agentic-thread-panel-empty">
-          Select any node to inspect execution metadata, retrieved documents, and tool context.
-        </div>
-      );
+  // ── Side panel callbacks (stable refs, won't cause NodeDetailPanel re-renders) ──
+  const handleKillTask = useCallback(async (node: VisualNode) => {
+    const celeryTaskId = node.metadata?.celery_task_id;
+    if (!celeryTaskId) {
+      alert('Cannot kill task: Celery task ID not found in metadata.');
+      return;
     }
+    try {
+      await fetch(makeApiUrl(`/api/v1/tasks/${encodeURIComponent(String(celeryTaskId))}/kill`), { method: 'POST' });
+      setStatusMessage(`Sent kill signal to task ${node.label}.`);
+    } catch (err) {
+      console.error('Failed to kill task', err);
+      alert('Failed to send kill signal.');
+    }
+  }, []);
 
-    const documents: RetrievalDocument[] =
-      (selectedNode.metadata?.retrieved_documents as RetrievalDocument[] | undefined) || (selectedNode.metadata?.documents as RetrievalDocument[] | undefined) || (selectedNode.metadata?.matches as RetrievalDocument[] | undefined) || [];
+  const handleOpenThreadStatus = useCallback(() => {
+    if (!taskThreadId || !selectedNodeId) return;
+    window.open(makeApiUrl(`/tasks/${encodeURIComponent(taskThreadId)}/status`), '_blank');
+  }, [taskThreadId, selectedNodeId]);
 
-    return (
-      <div className="agentic-thread-sidepanel__content">
-        <h3>{selectedNode.label}</h3>
-        <div className="agentic-thread-node-meta">
-          <span>Status: {selectedNode.status}</span>
-          <span>Type: {selectedNode.type}</span>
-          <span>Progress: {String(selectedNode.metadata?.progress ?? 'N/A')}</span>
-          {typeof selectedNode.metadata?.confidence === 'number' ? (
-            <span>Confidence: {(selectedNode.metadata.confidence * 100).toFixed(0)}%</span>
-          ) : null}
-        </div>
-        {selectedNode.metadata?.summary ? (
-          <section>
-            <h4>Summary</h4>
-            <p>{String(selectedNode.metadata.summary)}</p>
-          </section>
-        ) : null}
-        <section>
-          <h4>Chroma memories</h4>
-          {memoryStatus === 'loading' ? <p>Retrieving related memory context...</p> : null}
-          {memoryStatus === 'error' ? <p>Could not load related memories right now.</p> : null}
-          {memoryStatus === 'ready' && nodeMemories.length === 0 ? <p>No related memories found yet.</p> : null}
-          {memoryStatus === 'ready' && nodeMemories.length > 0 ? (
-            <div className="agentic-thread-doc-list">
-              {nodeMemories.map((memory) => (
-                <article key={memory.id} className="agentic-thread-doc-card">
-                  <strong>{memory.metadata?.task_name ? String(memory.metadata.task_name) : memory.id}</strong>
-                  <p>{memory.summary}</p>
-                  {typeof memory.score === 'number' ? <small>Relevance {(memory.score * 100).toFixed(0)}%</small> : null}
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </section>
-        {documents.length > 0 ? (
-          <section>
-            <h4>Retrievals</h4>
-            <div className="agentic-thread-doc-list">
-              {documents.slice(0, 6).map((doc, idx) => (
-                <article key={`${doc.id || idx}`} className="agentic-thread-doc-card">
-                  {doc.title ? <strong>{doc.title}</strong> : null}
-                  {doc.source ? <div className="agentic-thread-doc-source">{doc.source}</div> : null}
-                  {doc.excerpt ? <p>{doc.excerpt}</p> : null}
-                  {typeof doc.score === 'number' ? <small>Score {(doc.score * 100).toFixed(0)}%</small> : null}
-                  {doc.url ? (
-                    <a href={doc.url} target="_blank" rel="noreferrer">Open source</a>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          </section>
-        ) : null}
-        {selectedNode.metadata?.agent_type || selectedNode.metadata?.tool_name ? (
-          <section>
-            <h4>Tool / agent context</h4>
-            <p>{String(selectedNode.metadata?.agent_type || selectedNode.metadata?.tool_name || '')}</p>
-            <pre>{JSON.stringify(selectedNode.metadata, null, 2)}</pre>
-          </section>
-        ) : null}
-        <div className="agentic-thread-sidepanel__actions">
-          <button
-            className="agentic-thread-action"
-            onClick={async () => {
-              const celeryTaskId = selectedNode?.metadata?.celery_task_id;
-              if (!celeryTaskId) {
-                alert('Cannot kill task: Celery task ID not found in metadata.');
-                return;
-              }
-              try {
-                await fetch(makeApiUrl(`/api/v1/tasks/${encodeURIComponent(String(celeryTaskId))}/kill`), { method: 'POST' });
-                setStatusMessage(`Sent kill signal to task ${selectedNode.label}.`);
-              } catch (err) {
-                console.error('Failed to kill task', err);
-                alert('Failed to send kill signal.');
-              }
-            }}
-          >
-            Kill Task
-          </button>
-          <button
-            className="agentic-thread-action"
-            onClick={() => {
-              if (!taskThreadId || !selectedNode) return;
-              window.open(makeApiUrl(`/tasks/${encodeURIComponent(taskThreadId)}/status`), '_blank');
-            }}
-          >
-            Open thread status
-          </button>
-          <button
-            className="agentic-thread-action agentic-thread-action--secondary"
-            onClick={() => setSelectedNodeId(null)}
-          >
-            Deselect node
-          </button>
-        </div>
-      </div>
-    );
-  };
+  const handleDeselect = useCallback(() => setSelectedNodeId(null), []);
 
   const resetView = useCallback(() => {
     setViewState({ x: 0, y: 0, scale: 1 });
+    needsRedraw.current = true;
   }, []);
+
+  const fitView = useCallback(() => autoFitNodes(nodes), [autoFitNodes, nodes]);
 
   return (
     <div className="agentic-thread-visualizer">
@@ -815,9 +1066,10 @@ const AgenticThreadCanvas: React.FC = () => {
         <span>{taskThreadId ? `Thread ${taskThreadId}` : 'Agent thread inactive'}</span>
         <span>{statusMessage}</span>
         <div className="agentic-thread-visualizer__controls">
+          <button type="button" onClick={fitView}>Fit view</button>
           <button type="button" onClick={resetView}>Reset view</button>
-          <button type="button" onClick={() => setViewState((current) => ({ ...current, scale: Math.min(2.6, current.scale * 1.15) }))}>Zoom in</button>
-          <button type="button" onClick={() => setViewState((current) => ({ ...current, scale: Math.max(0.35, current.scale * 0.88) }))}>Zoom out</button>
+          <button type="button" onClick={() => setViewState((c) => ({ ...c, scale: Math.min(2.6, c.scale * 1.15) }))}>Zoom in</button>
+          <button type="button" onClick={() => setViewState((c) => ({ ...c, scale: Math.max(0.35, c.scale * 0.88) }))}>Zoom out</button>
         </div>
       </div>
       {isMobileFallback ? (
@@ -856,30 +1108,40 @@ const AgenticThreadCanvas: React.FC = () => {
           >
             <div className="agentic-thread-canvas-inner">
               <canvas ref={canvasRef} className="agentic-thread-canvas" aria-label="Concierge thread graph" />
-              {nodes.filter((node) => node.id === hoveredNodeId || node.id === selectedNodeId).map((node) => {
-                const { left, top } = screenPosition(node.x, node.y);
-                return (
-                  <button
-                    key={`overlay-${node.id}`}
-                    type="button"
-                    className={`agentic-thread-node-chip ${selectedNodeId === node.id ? 'agentic-thread-node-chip--selected' : ''}`}
-                    style={{ left, top }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedNodeId(node.id);
-                    }}
-                    onMouseEnter={() => setHoveredNodeId(node.id)}
-                    onMouseLeave={() => setHoveredNodeId(null)}
-                  >
-                    <span>{node.label}</span>
-                    <small>{node.type.replace('_', ' ')} · {node.status}</small>
-                  </button>
-                );
-              })}
+              {nodes
+                .filter((node) => node.id === hoveredNodeId || node.id === selectedNodeId)
+                .map((node) => {
+                  const { left, top } = screenPosition(node.x, node.y);
+                  return (
+                    <button
+                      key={`overlay-${node.id}`}
+                      type="button"
+                      className={`agentic-thread-node-chip ${selectedNodeId === node.id ? 'agentic-thread-node-chip--selected' : ''}`}
+                      style={{ left, top }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedNodeId(node.id);
+                      }}
+                      onMouseEnter={() => setHoveredNodeId(node.id)}
+                      onMouseLeave={() => setHoveredNodeId(null)}
+                    >
+                      <span>{node.label}</span>
+                      <small>{node.type.replace('_', ' ')} · {node.status}</small>
+                    </button>
+                  );
+                })}
             </div>
           </div>
           <aside className="agentic-thread-sidepanel">
-            {renderNodeDetails()}
+            <NodeDetailPanel
+              selectedNode={selectedNode}
+              nodeMemories={nodeMemories}
+              memoryStatus={memoryStatus}
+              taskThreadId={taskThreadId}
+              onKillTask={handleKillTask}
+              onOpenThreadStatus={handleOpenThreadStatus}
+              onDeselect={handleDeselect}
+            />
           </aside>
         </div>
       )}
