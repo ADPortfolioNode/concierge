@@ -13,7 +13,6 @@ interface MediaPreviewProps {
   onRemove?: () => void;
 }
 
-// Map broad MIME category → human label + emoji
 function mimeLabel(mime: string): { label: string; icon: string } {
   if (mime.startsWith('image/')) return { label: 'Image', icon: '🖼️' };
   if (mime.startsWith('audio/')) return { label: 'Audio', icon: '🎵' };
@@ -44,12 +43,12 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: '#F0F8FF',
+        border: '1px solid #BFDBFE',
         borderRadius: 6,
         padding: '6px 10px',
         fontSize: 12,
-        color: 'rgba(255,255,255,0.8)',
+        color: '#0F172A',
         maxWidth: 360,
         position: 'relative',
         resize: 'both',
@@ -59,16 +58,17 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
       {/* Header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 16 }}>{icon}</span>
-        <span style={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#0F172A' }}>
           {context.filename}
         </span>
         <span
           style={{
-            background: 'rgba(124,106,247,0.25)',
-            color: '#b8adf7',
+            background: '#DBEAFE',
+            color: '#2563EB',
             borderRadius: 3,
             padding: '1px 5px',
             fontSize: 10,
+            fontWeight: 600,
           }}
         >
           {label}
@@ -80,7 +80,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: 'rgba(255,255,255,0.4)',
+              color: '#94A3B8',
               fontSize: 14,
               lineHeight: 1,
               padding: '0 2px',
@@ -93,9 +93,9 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
       </div>
 
       {/* Meta row */}
-      <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, display: 'flex', gap: 10 }}>
+      <div style={{ color: '#94A3B8', fontSize: 11, display: 'flex', gap: 10 }}>
         <span>{fmtBytes(context.size ?? 0)}</span>
-        <span style={{ fontFamily: 'monospace', opacity: 0.6 }}>{context.upload_id?.slice(0, 8)}</span>
+        <span style={{ fontFamily: 'monospace', opacity: 0.7 }}>{context.upload_id?.slice(0, 8)}</span>
       </div>
 
       {/* Expandable text preview */}
@@ -107,7 +107,7 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              color: 'rgba(124,106,247,0.9)',
+              color: '#2563EB',
               fontSize: 11,
               padding: 0,
               textAlign: 'left',
@@ -118,11 +118,12 @@ const MediaPreview: React.FC<MediaPreviewProps> = ({ context, onRemove }) => {
           {expanded && (
             <pre
               style={{
-                background: 'rgba(0,0,0,0.3)',
+                background: '#EFF6FF',
+                border: '1px solid #DBEAFE',
                 borderRadius: 4,
                 padding: '6px 8px',
                 fontSize: 11,
-                color: 'rgba(255,255,255,0.7)',
+                color: '#334155',
                 maxHeight: 160,
                 overflow: 'auto',
                 whiteSpace: 'pre-wrap',

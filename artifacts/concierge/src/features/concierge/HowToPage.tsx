@@ -1,41 +1,39 @@
 import React, { useState } from 'react';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 
-// ── reusable components ──────────────────────────────────────────────────────
 const H1: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em', color: '#e2e8f0' }}>{children}</h1>
+  <h1 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: '-0.01em', color: '#0F172A' }}>{children}</h1>
 );
 const H2: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h2 style={{ fontSize: 17, fontWeight: 700, margin: '32px 0 12px', color: '#c4b8ff', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</h2>
+  <h2 style={{ fontSize: 17, fontWeight: 700, margin: '32px 0 12px', color: '#2563EB', display: 'flex', alignItems: 'center', gap: 8 }}>{children}</h2>
 );
 const H3: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <h3 style={{ fontSize: 14, fontWeight: 700, margin: '20px 0 8px', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{children}</h3>
+  <h3 style={{ fontSize: 14, fontWeight: 700, margin: '20px 0 8px', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{children}</h3>
 );
 const P: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)', lineHeight: 1.7, margin: '0 0 12px' }}>{children}</p>
+  <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.7, margin: '0 0 12px' }}>{children}</p>
 );
 const Step: React.FC<{ n: number; title: string; children: React.ReactNode }> = ({ n, title, children }) => (
   <div style={{ display: 'flex', gap: 14, marginBottom: 16 }}>
-    <div style={{ minWidth: 28, height: 28, borderRadius: '50%', background: '#7c6af7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0, marginTop: 2 }}>{n}</div>
-    <div><div style={{ fontWeight: 600, color: '#e2e8f0', fontSize: 14, marginBottom: 4 }}>{title}</div>{children}</div>
+    <div style={{ minWidth: 28, height: 28, borderRadius: '50%', background: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#fff', flexShrink: 0, marginTop: 2 }}>{n}</div>
+    <div><div style={{ fontWeight: 600, color: '#0F172A', fontSize: 14, marginBottom: 4 }}>{title}</div>{children}</div>
   </div>
 );
 const Callout: React.FC<{ icon?: string; children: React.ReactNode }> = ({ icon = '💡', children }) => (
-  <div style={{ background: 'rgba(124,106,247,0.1)', border: '1px solid rgba(124,106,247,0.25)', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#c4b8ff', lineHeight: 1.6, margin: '12px 0' }}>
+  <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 16px', fontSize: 13, color: '#1E40AF', lineHeight: 1.6, margin: '12px 0' }}>
     {icon} {children}
   </div>
 );
 
-// ── collapsible section ──────────────────────────────────────────────────────
 const Section: React.FC<{ title: string; defaultOpen?: boolean; children: React.ReactNode }> = ({
   title, defaultOpen = true, children,
 }) => {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section style={{ marginBottom: 8, border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, overflow: 'hidden' }}>
+    <section style={{ marginBottom: 8, border: '1px solid #DBEAFE', borderRadius: 10, overflow: 'hidden' }}>
       <button
         onClick={() => setOpen((x) => !x)}
-        style={{ all: 'unset', width: '100%', padding: '14px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.025)', fontSize: 15, fontWeight: 700, color: '#e2e8f0' }}
+        style={{ all: 'unset', width: '100%', padding: '14px 20px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F0F8FF', fontSize: 15, fontWeight: 700, color: '#0F172A' }}
       >
         {title}
         <span style={{ fontSize: 12, opacity: 0.5 }}>{open ? '▲' : '▼'}</span>
@@ -45,13 +43,11 @@ const Section: React.FC<{ title: string; defaultOpen?: boolean; children: React.
   );
 };
 
-// ── page ─────────────────────────────────────────────────────────────────────
 const HowToPage: React.FC = () => (
   <div className="page-content" style={{ maxWidth: 820, margin: '0 auto' }}>
     <H1>📖 How to Use Concierge</H1>
     <P>This guide walks you through the core workflows: chatting, setting Goals, running Tasks, and organising your Workspace.</P>
 
-    {/* ── CHAT ── */}
     <Section title="💬 Chat — Getting answers instantly">
       <P>The chat panel (always visible on the right on desktop, below content on mobile/tablet) is your primary interface. Type freely — Concierge decides whether to answer directly or kick off an autonomous agent run.</P>
       <H3>How it works</H3>
@@ -79,7 +75,6 @@ const HowToPage: React.FC = () => (
       </div>
     </Section>
 
-    {/* ── GOALS ── */}
     <Section title="🎯 Goals — Planning outcomes">
       <P>Goals represent high-level outcomes you want to achieve. Concierge decomposes a goal into a task tree, estimates priorities, and tracks completion.</P>
       <H2>Lifecycle of a goal</H2>
@@ -107,7 +102,6 @@ const HowToPage: React.FC = () => (
       </div>
     </Section>
 
-    {/* ── TASKS ── */}
     <Section title="✅ Tasks — Running background operations">
       <P>Tasks are discrete, queued operations: read a file, generate code, analyse a dataset. They run asynchronously so the UI stays responsive.</P>
       <H2>Task types</H2>
@@ -119,18 +113,18 @@ const HowToPage: React.FC = () => (
           { type: 'generate_code',    desc: 'Generate code via LLM for a given context and language.' },
           { type: 'dataset_analysis', desc: 'Run statistical analysis on a CSV: row count, column types, top values.' },
         ].map(({ type, desc }) => (
-          <div key={type} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 7, padding: '10px 12px' }}>
-            <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#7c6af7', fontWeight: 700, marginBottom: 4 }}>{type}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{desc}</div>
+          <div key={type} style={{ background: '#F0F8FF', border: '1px solid #DBEAFE', borderRadius: 7, padding: '10px 12px' }}>
+            <div style={{ fontFamily: 'monospace', fontSize: 12, color: '#2563EB', fontWeight: 700, marginBottom: 4 }}>{type}</div>
+            <div style={{ fontSize: 12, color: '#475569' }}>{desc}</div>
           </div>
         ))}
       </div>
       <H3>Polling pattern</H3>
       <Step n={1} title="POST /api/v1/concierge/message — enqueue">
-        <P>Send your goal. The API immediately returns a <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>thread_id</code>.</P>
+        <P>Send your goal. The API immediately returns a <code style={{ background: '#EFF6FF', padding: '1px 5px', borderRadius: 4, fontSize: 12, color: '#1E40AF' }}>thread_id</code>.</P>
       </Step>
       <Step n={2} title="Connect to the timeline stream">
-        <P>The UI connects to a WebSocket at <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>/api/v1/concierge/timeline/ws?thread_id=...</code> to receive real-time status updates for the entire task tree as steps execute.</P>
+        <P>The UI connects to a WebSocket at <code style={{ background: '#EFF6FF', padding: '1px 5px', borderRadius: 4, fontSize: 12, color: '#1E40AF' }}>/api/v1/concierge/timeline/ws?thread_id=...</code> to receive real-time status updates for the entire task tree as steps execute.</P>
       </Step>
       <H3>Sample task prompts</H3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -143,12 +137,11 @@ const HowToPage: React.FC = () => (
       </div>
     </Section>
 
-    {/* ── WORKSPACE ── */}
     <Section title="📁 Workspace — Files & Projects" defaultOpen={false}>
-      <P>Upload files and organise them into Projects. Attach uploaded files to a project and reference their <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>upload_id</code> in task payloads.</P>
+      <P>Upload files and organise them into Projects. Attach uploaded files to a project and reference their <code style={{ background: '#EFF6FF', padding: '1px 5px', borderRadius: 4, fontSize: 12, color: '#1E40AF' }}>upload_id</code> in task payloads.</P>
       <Step n={1} title="Upload a file"><P>Click 📎 in the chat, or use the Workspace page uploader. Allowed types: .txt .csv .json .pdf .docx .png .jpg .mp3 .mp4.</P></Step>
       <Step n={2} title="Create or select a project"><P>Group related uploads under a named Project. The project_id is auto-saved and used when creating tasks.</P></Step>
-      <Step n={3} title="Reference in a task"><P>Use the upload_id in a task payload: <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: 4, fontSize: 12 }}>{'{"type":"read_file","payload":{"upload_id":"..."}}'}</code></P></Step>
+      <Step n={3} title="Reference in a task"><P>Use the upload_id in a task payload: <code style={{ background: '#EFF6FF', padding: '1px 5px', borderRadius: 4, fontSize: 12, color: '#1E40AF' }}>{'{"type":"read_file","payload":{"upload_id":"..."}}'}</code></P></Step>
       <H3>Sample workspace prompts</H3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[
@@ -159,7 +152,6 @@ const HowToPage: React.FC = () => (
       </div>
     </Section>
 
-    {/* ── TIPS ── */}
     <Section title="⚡ Tips & Best Practices" defaultOpen={false}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <Callout icon="📝">Be specific with goals — include a timeframe, a measurable outcome, and the scope (e.g. "API layer only, not frontend").</Callout>

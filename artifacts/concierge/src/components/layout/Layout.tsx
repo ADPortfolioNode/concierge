@@ -87,14 +87,14 @@ const StepIcon: React.FC<{ status: StepStatus }> = ({ status }) => {
   if (status === 'loading') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}>
-        <circle cx="8" cy="8" r="6" stroke="rgba(255,255,255,0.2)" strokeWidth="2" />
-        <path d="M8 2a6 6 0 0 1 6 6" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="8" cy="8" r="6" stroke="#BFDBFE" strokeWidth="2" />
+        <path d="M8 2a6 6 0 0 1 6 6" stroke="#2563EB" strokeWidth="2" strokeLinecap="round" />
       </svg>
     );
   }
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <circle cx="8" cy="8" r="6" stroke="rgba(255,255,255,0.15)" strokeWidth="2" />
+      <circle cx="8" cy="8" r="6" stroke="#DBEAFE" strokeWidth="2" />
     </svg>
   );
 };

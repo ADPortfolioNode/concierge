@@ -17,7 +17,6 @@ const MessageInput: React.FC = () => {
   const setDraft = useAppStore((s) => s.setDraft);
   const clearMemory = useAppStore((s) => s.clearMemory);
 
-  // expose store helpers so tests can manipulate conversation state.
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as any).__APP_HOOK__ = useAppStore;
@@ -28,8 +27,6 @@ const MessageInput: React.FC = () => {
     }
   }, []);
 
-  // When a sample prompt is clicked from any page, it sets draftMessage in the
-  // store.  We mirror it into local state and focus the textarea.
   useEffect(() => {
     if (draftMessage) {
       setValue(draftMessage);
@@ -54,7 +51,6 @@ const MessageInput: React.FC = () => {
         e.preventDefault();
         if (!loading) {
           const text = value.trim();
-          // Build message — optionally prepend a file-context reference.
           let outgoing = text;
           if (attachment) {
             const ref = `[file:${attachment.upload_id}/${attachment.filename}]`;
@@ -79,7 +75,7 @@ const MessageInput: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', padding: 12 }}>
+    <div style={{ borderTop: '1px solid #DBEAFE', padding: 12 }}>
       {/* Attachment preview */}
       {attachment && (
         <div style={{ marginBottom: 8 }}>
@@ -87,7 +83,7 @@ const MessageInput: React.FC = () => {
         </div>
       )}
 
-      {/* Inline file-uploader (shown when 📎 is clicked) */}
+      {/* Inline file-uploader */}
       {showUploader && !attachment && (
         <div style={{ marginBottom: 8 }}>
           <FileUpload
@@ -95,7 +91,7 @@ const MessageInput: React.FC = () => {
             onError={(msg) => { setUploadError(msg); setShowUploader(false); }}
           />
           {uploadError && (
-            <div style={{ color: '#e06c75', fontSize: 12, marginTop: 4 }}>{uploadError}</div>
+            <div style={{ color: '#DC2626', fontSize: 12, marginTop: 4 }}>{uploadError}</div>
           )}
         </div>
       )}
@@ -109,9 +105,9 @@ const MessageInput: React.FC = () => {
           title="Attach a file"
           style={{
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: `1px solid ${showUploader ? '#2563EB' : '#BFDBFE'}`,
             borderRadius: 6,
-            color: showUploader ? '#7c6af7' : 'rgba(255,255,255,0.5)',
+            color: showUploader ? '#2563EB' : '#94A3B8',
             cursor: loading || attachment ? 'not-allowed' : 'pointer',
             fontSize: 18,
             padding: '4px 8px',
@@ -133,12 +129,13 @@ const MessageInput: React.FC = () => {
           style={{
             flex: 1,
             resize: 'none',
-            background: 'transparent',
-            color: 'var(--color-text, #e6e6e6)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            background: '#FFFFFF',
+            color: '#0F172A',
+            border: '1px solid #BFDBFE',
             padding: 10,
             borderRadius: 6,
             fontSize: 14,
+            outline: 'none',
           }}
         />
 
@@ -161,7 +158,7 @@ const MessageInput: React.FC = () => {
           disabled={loading || (!value.trim() && !attachment)}
           title="Send message"
           style={{
-            background: loading || !value.trim() ? 'rgba(124,106,247,0.2)' : '#7c6af7',
+            background: loading || !value.trim() ? '#BFDBFE' : '#2563EB',
             border: 'none',
             borderRadius: 6,
             color: '#fff',
@@ -179,22 +176,20 @@ const MessageInput: React.FC = () => {
 
       <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
         {loading && (
-          <div style={{ fontSize: 12, opacity: 0.8, marginRight: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#7c6af7', animation: 'pulse 1s ease-in-out infinite' }} />
+          <div style={{ fontSize: 12, color: '#475569', marginRight: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#2563EB', animation: 'pulse 1s ease-in-out infinite' }} />
             Streaming…
           </div>
         )}
-        {/* Clear memory — wipes browser-stored conversation history (IndexedDB/localStorage).
-            Hybrid memory pattern: browser side complements the server-side ChromaDB store. */}
         <button
           onClick={() => clearMemory()}
           disabled={loading}
           title="Clear conversation memory (browser storage)"
           style={{
             background: 'none',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid #DBEAFE',
             borderRadius: 5,
-            color: 'rgba(255,255,255,0.3)',
+            color: '#94A3B8',
             cursor: loading ? 'not-allowed' : 'pointer',
             fontSize: 11,
             padding: '3px 8px',
@@ -203,13 +198,13 @@ const MessageInput: React.FC = () => {
           }}
           onMouseEnter={(e) => {
             const el = e.currentTarget as HTMLButtonElement;
-            el.style.color = '#e06c75';
-            el.style.borderColor = 'rgba(224,108,117,0.4)';
+            el.style.color = '#DC2626';
+            el.style.borderColor = 'rgba(220,38,38,0.4)';
           }}
           onMouseLeave={(e) => {
             const el = e.currentTarget as HTMLButtonElement;
-            el.style.color = 'rgba(255,255,255,0.3)';
-            el.style.borderColor = 'rgba(255,255,255,0.08)';
+            el.style.color = '#94A3B8';
+            el.style.borderColor = '#DBEAFE';
           }}
         >
           🗑 Clear memory

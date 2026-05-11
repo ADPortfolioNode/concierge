@@ -6,8 +6,6 @@ import MediaRenderer from '@/components/media/MediaRenderer';
 
 interface Props {
   msg: ConversationMessage;
-  // incrementing value that tells the bubble to close its meta panel when it
-  // changes (e.g. a new message arrived)
   collapseCounter?: number;
 }
 
@@ -15,7 +13,6 @@ interface Props {
 // Streaming cursor
 // ---------------------------------------------------------------------------
 
-// Blinking cursor shown while the assistant bubble is still streaming
 const StreamingCursor: React.FC = () => (
   <span
     aria-hidden
@@ -31,7 +28,6 @@ const StreamingCursor: React.FC = () => (
   />
 );
 
-// Inject the keyframe once (idempotent)
 if (typeof document !== 'undefined' && !document.getElementById('_stream-blink')) {
   const s = document.createElement('style');
   s.id = '_stream-blink';
@@ -43,9 +39,6 @@ if (typeof document !== 'undefined' && !document.getElementById('_stream-blink')
 // Inline image rendering helpers
 // ---------------------------------------------------------------------------
 
-/** Regex that matches http(s) URLs ending with an image extension OR known
- *  image-hosting domains (picsum.photos, i.imgur.com, etc.) */
-// Match absolute http(s) image URLs, known image hosts, or local `/media/images/...` and `media/images/...` paths
 const IMAGE_URL_RE =
   /(?:https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/?media\/images\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?)/gi;
 
@@ -72,7 +65,6 @@ function splitContentIntoSegments(content: string): Segment[] {
   return segments.length > 0 ? segments : [{ kind: 'text', value: content }];
 }
 
-/** A single inline image with a subtle loading/error state */
 const InlineImage: React.FC<{ src: string }> = ({ src }) => {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   return (
@@ -90,7 +82,7 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
             display: 'block',
             opacity: status === 'loading' ? 0.4 : 1,
             transition: 'opacity 0.25s',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid #DBEAFE',
             resize: 'both',
             overflow: 'auto',
           }}
@@ -102,15 +94,15 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
             alignItems: 'center',
             gap: 8,
             padding: '8px 12px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: '#F0F8FF',
+            border: '1px solid #DBEAFE',
             borderRadius: 6,
             fontSize: 12,
-            color: 'rgba(255,255,255,0.5)',
+            color: '#64748B',
           }}
         >
           🖼️ <span>Image could not be loaded</span>
-          <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: '#6366F1', marginLeft: 4 }}>
+          <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', marginLeft: 4 }}>
             Open ↗
           </a>
         </div>
@@ -119,7 +111,6 @@ const InlineImage: React.FC<{ src: string }> = ({ src }) => {
   );
 };
 
-/** Render message content, turning embedded image URLs into <img> elements */
 const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
   const navigate = useNavigate();
   const pushImage = useAppStore((s) => s.pushImage);
@@ -157,7 +148,7 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
                       maxWidth: '100%',
                       maxHeight: 240,
                       borderRadius: 10,
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      border: '1px solid #BFDBFE',
                     }}
                   />
                 </a>
@@ -166,17 +157,19 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
                     type="button"
                     onClick={handleOpenMedia}
                     style={{
-                      background: 'rgba(124,106,247,0.18)',
-                      border: '1px solid rgba(124,106,247,0.35)',
-                      color: '#dfe6ff',
+                      background: '#EFF6FF',
+                      border: '1px solid #93C5FD',
+                      color: '#2563EB',
                       borderRadius: 6,
                       padding: '8px 10px',
                       cursor: 'pointer',
+                      fontWeight: 600,
+                      fontSize: 13,
                     }}
                   >
                     Open in media player
                   </button>
-                  <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ color: '#9ca3af', fontSize: 13 }}>
+                  <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ color: '#64748B', fontSize: 13 }}>
                     View original
                   </a>
                 </div>
@@ -193,19 +186,18 @@ const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ cont
         );
       })}
       {isStreaming && <StreamingCursor />}
-      {/** show provider badge for LLM if available */}
-      {/** meta is not directly available here so parent will render new badge */}
     </div>
   );
 };
 
+// ---------------------------------------------------------------------------
+// MetaPanel
+// ---------------------------------------------------------------------------
+
 const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?: number }> = ({ meta, collapseCounter }) => {
   const [open, setOpen] = useState(false);
-  // whenever parent indicates a new message batch, collapse the panel
   useEffect(() => {
-    if (open) {
-      setOpen(false);
-    }
+    if (open) setOpen(false);
   }, [collapseCounter]);
   if (!meta) return null;
 
@@ -223,19 +215,18 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
   if (!hasScores && !hasDetails && !meta.llm) return null;
 
   const scoreParts: string[] = [];
-  // optionally show provider badge in collapsed header
   if (typeof meta.confidence === 'number') scoreParts.push(`${Math.round(meta.confidence * 100)}% confidence`);
   if (typeof meta.critic_score === 'number') scoreParts.push(`critic ${meta.critic_score}`);
   const label = scoreParts.length > 0 ? scoreParts.join(' · ') : 'details';
 
   return (
-    <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 5 }}>
+    <div style={{ marginTop: 8, borderTop: '1px solid #DBEAFE', paddingTop: 5 }}>
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open ? 'true' : 'false'}
         style={{
           background: 'none', border: 'none', cursor: 'pointer',
-          color: 'rgba(255,255,255,0.35)', fontSize: 11, padding: '2px 0',
+          color: '#94A3B8', fontSize: 11, padding: '2px 0',
           display: 'flex', alignItems: 'center', gap: 5,
         }}
       >
@@ -245,12 +236,12 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
       {open && (
         <div style={{
           marginTop: 6, padding: '8px 10px',
-          background: 'rgba(0,0,0,0.22)', borderRadius: 6,
-          fontSize: 11, color: 'rgba(255,255,255,0.55)', lineHeight: 1.7,
+          background: '#F0F8FF', borderRadius: 6, border: '1px solid #DBEAFE',
+          fontSize: 11, color: '#475569', lineHeight: 1.7,
         }}>
           {keyPoints.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginBottom: 2 }}>Key points</div>
+              <div style={{ color: '#334155', fontWeight: 600, marginBottom: 2 }}>Key points</div>
               {keyPoints.map((pt: string, i: number) => (
                 <div key={i} style={{ paddingLeft: 10 }}>{pt}</div>
               ))}
@@ -258,7 +249,7 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
           )}
           {recommendations.length > 0 && (
             <div style={{ marginBottom: 6 }}>
-              <div style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginBottom: 2 }}>Recommendations</div>
+              <div style={{ color: '#334155', fontWeight: 600, marginBottom: 2 }}>Recommendations</div>
               {recommendations.map((r: string, i: number) => (
                 <div key={i} style={{ paddingLeft: 10 }}>{r}</div>
               ))}
@@ -266,19 +257,19 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
           )}
           {refined && (
             <div style={{ marginBottom: 6 }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Summary: </span>{refined}
+              <span style={{ color: '#334155', fontWeight: 600 }}>Summary: </span>{refined}
             </div>
           )}
           {risks.length > 0 && (
             <div>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>Risks: </span>
+              <span style={{ color: '#334155', fontWeight: 600 }}>Risks: </span>
               {risks.join(', ')}
             </div>
           )}
           {provider && (
             <div style={{ marginTop: 8 }}>
-              <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>LLM Provider:</span> {provider}
-              {errorMsg && <div style={{ paddingLeft: 10, color: 'rgba(255,255,255,0.6)' }}>{errorMsg}</div>}
+              <span style={{ color: '#334155', fontWeight: 600 }}>LLM Provider:</span> {provider}
+              {errorMsg && <div style={{ paddingLeft: 10, color: '#64748B' }}>{errorMsg}</div>}
             </div>
           )}
         </div>
@@ -286,6 +277,10 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
     </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+// MessageBubble
+// ---------------------------------------------------------------------------
 
 const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
   const navigate = useNavigate();
@@ -306,26 +301,24 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
     background: isSystem
       ? 'transparent'
       : isUser
-      ? 'rgba(124,106,247,0.18)'
-      : 'rgba(255,255,255,0.04)',
-    color: 'var(--color-text, #e6e6e6)',
+      ? '#DBEAFE'
+      : '#FFFFFF',
+    color: '#0F172A',
     border: isSystem
       ? 'none'
       : isUser
-      ? '1px solid rgba(124,106,247,0.35)'
-      : '1px solid rgba(255,255,255,0.06)',
+      ? '1px solid #93C5FD'
+      : '1px solid #DBEAFE',
     padding: isSystem ? 0 : '12px 14px',
     borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
     fontSize: 14,
     lineHeight: '1.4',
+    boxShadow: isSystem ? 'none' : '0 1px 4px rgba(37,99,235,0.06)',
   };
 
   return (
     <div style={containerStyle}>
       <div style={bubbleStyle} aria-label={`message-${msg.id}`}>
-        {/* If the message meta contains structured cards, render as
-            a magazine-style compact card grid (titles only). Clicking a
-            card opens a full-width overlay with the full content. */}
         {(() => {
           const raw = (msg.meta && (msg.meta.raw as any)) || null;
           const structured = raw?.structured || raw;
@@ -335,14 +328,12 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
           }
           return <RichContent content={msg.content || (isStreaming ? '' : '…')} isStreaming={isStreaming} />;
         })()}
-        {/* indicate which LLM provider generated this reply */}
         {msg.meta?.llm?.provider && (
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 4 }}>
+          <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 4 }}>
             Provider: {msg.meta.llm.provider}
             {msg.meta.llm.error && ` (${msg.meta.llm.error})`}
           </div>
         )}
-        {/* Render attached media (image/video/audio) */}
         {msg.media && msg.media.type !== 'none' && msg.media.url && (
           <div style={{ marginTop: 8 }}>
             <MediaRenderer media={{ type: msg.media.type, url: msg.media.url, overlay_text: null, mime_type: null }} />
@@ -353,21 +344,23 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
               }}
               style={{
                 marginTop: 8,
-                background: 'rgba(124,106,247,0.18)',
-                border: '1px solid rgba(124,106,247,0.35)',
-                color: '#dfe6ff',
+                background: '#EFF6FF',
+                border: '1px solid #93C5FD',
+                color: '#2563EB',
                 borderRadius: 6,
                 padding: '8px 10px',
                 cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: 13,
               }}
             >
               Open media page
             </button>
           </div>
         )}
-        {!isSystem && !isStreaming && <MetaPanel meta={msg.meta} />}
+        {!isSystem && !isStreaming && <MetaPanel meta={msg.meta} collapseCounter={collapseCounter} />}
         {msg.timestamp && !isStreaming && (
-          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>{new Date(msg.timestamp).toLocaleString()}</div>
+          <div style={{ fontSize: 11, opacity: 0.5, marginTop: 6, color: '#64748B' }}>{new Date(msg.timestamp).toLocaleString()}</div>
         )}
       </div>
     </div>
@@ -377,7 +370,7 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
 export default MessageBubble;
 
 // ---------------------------------------------------------------------------
-// Magazine layout: compact titled cards that expand to a full-width overlay
+// Magazine layout
 // ---------------------------------------------------------------------------
 const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ cards, msg }) => {
   const pushImage = useAppStore((s) => s.pushImage);
@@ -394,10 +387,10 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
               textAlign: 'left',
               padding: '10px 12px',
               borderRadius: 8,
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.04)',
+              background: '#F0F8FF',
+              border: '1px solid #DBEAFE',
               cursor: 'pointer',
-              color: 'var(--color-text, #e6e6e6)',
+              color: '#0F172A',
               fontSize: 13,
               minHeight: 48,
               display: 'flex',
@@ -409,7 +402,7 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
             <div style={{ flex: 1, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {c.title || c.name || `Option ${i + 1}`}
             </div>
-            <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11 }}>{(c.use_cases || []).length ? (c.use_cases || []).length : ''}</div>
+            <div style={{ color: '#94A3B8', fontSize: 11 }}>{(c.use_cases || []).length ? (c.use_cases || []).length : ''}</div>
           </button>
         ))}
       </div>
@@ -419,18 +412,18 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
         <div
           style={{
             marginTop: 12,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: '#F0F8FF',
+            border: '1px solid #BFDBFE',
             borderRadius: 10,
             padding: 14,
-            color: 'rgba(255,255,255,0.92)',
+            color: '#0F172A',
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>{expanded.title || expanded.name}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A' }}>{expanded.title || expanded.name}</div>
               {expanded.estimated_use_cases && (
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
                   Estimated use cases: {(expanded.estimated_use_cases || []).join(', ')}
                 </div>
               )}
@@ -439,18 +432,18 @@ const MagazineLayout: React.FC<{ cards: any[]; msg: ConversationMessage }> = ({ 
               {expanded.media_url && (
                 <button
                   onClick={() => pushImage && pushImage(expanded.media_url)}
-                  style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(124,106,247,0.18)', border: '1px solid rgba(124,106,247,0.35)', color: '#dfe6ff', cursor: 'pointer' }}
+                  style={{ padding: '6px 8px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #93C5FD', color: '#2563EB', cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
                 >
                   Open media
                 </button>
               )}
-              <button onClick={() => setExpanded(null)} style={{ padding: '6px 8px', borderRadius: 6, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.8)', cursor: 'pointer' }}>
+              <button onClick={() => setExpanded(null)} style={{ padding: '6px 8px', borderRadius: 6, background: '#F8FAFF', border: '1px solid #DBEAFE', color: '#475569', cursor: 'pointer' }}>
                 Close
               </button>
             </div>
           </div>
 
-          <div style={{ color: 'rgba(255,255,255,0.86)', lineHeight: 1.6 }}>
+          <div style={{ color: '#334155', lineHeight: 1.6 }}>
             {expanded.summary && <div style={{ marginBottom: 12 }}>{expanded.summary}</div>}
             {expanded.content && <div style={{ whiteSpace: 'pre-wrap' }}>{expanded.content}</div>}
           </div>

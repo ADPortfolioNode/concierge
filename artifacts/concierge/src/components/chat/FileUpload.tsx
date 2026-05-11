@@ -38,10 +38,6 @@ const FileUpload: React.FC<FileUploadProps> = ({ projectId, onUpload, onError })
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // ------------------------------------------------------------------ //
-  // Helpers                                                               //
-  // ------------------------------------------------------------------ //
-
   const uploadFile = useCallback(
     async (file: File) => {
       setUploading(true);
@@ -72,15 +68,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ projectId, onUpload, onError })
   const handleFiles = useCallback(
     (files: FileList | null) => {
       if (!files || files.length === 0) return;
-      // Only process the first file per drop/pick.
       uploadFile(files[0]);
     },
     [uploadFile]
   );
-
-  // ------------------------------------------------------------------ //
-  // Drag-and-drop handlers                                                //
-  // ------------------------------------------------------------------ //
 
   const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -93,10 +84,6 @@ const FileUpload: React.FC<FileUploadProps> = ({ projectId, onUpload, onError })
     handleFiles(e.dataTransfer.files);
   };
 
-  // ------------------------------------------------------------------ //
-  // Render                                                                //
-  // ------------------------------------------------------------------ //
-
   return (
     <div
       onDragOver={onDragOver}
@@ -104,16 +91,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ projectId, onUpload, onError })
       onDrop={onDrop}
       onClick={() => !uploading && inputRef.current?.click()}
       style={{
-        border: `1px dashed ${dragging ? '#7c6af7' : 'rgba(255,255,255,0.15)'}`,
+        border: `1px dashed ${dragging ? '#2563EB' : '#93C5FD'}`,
         borderRadius: 6,
         padding: '8px 12px',
         cursor: uploading ? 'wait' : 'pointer',
-        background: dragging ? 'rgba(124,106,247,0.08)' : 'transparent',
+        background: dragging ? '#EFF6FF' : '#F8FAFF',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
         fontSize: 13,
-        color: 'rgba(255,255,255,0.55)',
+        color: '#475569',
         transition: 'border-color 0.15s, background 0.15s',
       }}
     >
