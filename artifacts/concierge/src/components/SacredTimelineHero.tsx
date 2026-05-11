@@ -2,15 +2,18 @@ import React, { useMemo } from 'react';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 import { useAppStore } from '@/state/appStore';
 
+const TEAM_PHOTO =
+  'https://thumbs.dreamstime.com/b/young-smiling-business-people-working-office-group-coworkers-sitting-together-table-laptops-modern-teamwork-124959227.jpg';
+
 // ── node + edge definitions for the architecture diagram ─────────────────
 const NODES = [
-  { id: 'input',    x: 240, y: 28,  r: 18, label: 'User Goal',      sub: 'Natural language input',  color: '#94a3b8', glow: false },
-  { id: 'root',     x: 240, y: 118, r: 30, label: 'Sacred Timeline', sub: 'Root Orchestrator',       color: '#7c6af7', glow: true  },
-  { id: 'planner',  x: 240, y: 208, r: 22, label: 'Planner',         sub: 'Goal → task tree',        color: '#38bdf8', glow: false },
-  { id: 'research', x: 72,  y: 298, r: 20, label: 'Research',        sub: 'RAG · Web search',        color: '#22c55e', glow: false },
-  { id: 'coding',   x: 240, y: 298, r: 20, label: 'Coding',          sub: 'Generate · Execute',      color: '#f97316', glow: false },
-  { id: 'critic',   x: 400, y: 298, r: 20, label: 'Critic',          sub: 'Evaluate · Refine',       color: '#ec4899', glow: false },
-  { id: 'synth',    x: 240, y: 388, r: 22, label: 'Synthesizer',     sub: 'Merge · Output',          color: '#8b5cf6', glow: false },
+  { id: 'input',    x: 240, y: 28,  r: 18, label: 'User Goal',      sub: 'Natural language input',  color: '#64748B', glow: false },
+  { id: 'root',     x: 240, y: 118, r: 30, label: 'Sacred Timeline', sub: 'Root Orchestrator',       color: '#2563EB', glow: true  },
+  { id: 'planner',  x: 240, y: 208, r: 22, label: 'Planner',         sub: 'Goal → task tree',        color: '#38BDF8', glow: false },
+  { id: 'research', x: 72,  y: 298, r: 20, label: 'Research',        sub: 'RAG · Web search',        color: '#22C55E', glow: false },
+  { id: 'coding',   x: 240, y: 298, r: 20, label: 'Coding',          sub: 'Generate · Execute',      color: '#F97316', glow: false },
+  { id: 'critic',   x: 400, y: 298, r: 20, label: 'Critic',          sub: 'Evaluate · Refine',       color: '#EC4899', glow: false },
+  { id: 'synth',    x: 240, y: 388, r: 22, label: 'Synthesizer',     sub: 'Merge · Output',          color: '#8B5CF6', glow: false },
 ] as const;
 
 type NodeId = typeof NODES[number]['id'];
@@ -30,7 +33,6 @@ const EDGES: EdgeDef[] = [
   { from: 'critic',   to: 'synth',    delay: 2.0  },
 ];
 
-// Compute a cubic bezier control-point path between two nodes
 function edgePath(from: typeof NODES[number], to: typeof NODES[number]): string {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -59,8 +61,8 @@ const SacredTimelineHero: React.FC = () => {
       <div className="stl-hero__text">
         <p className="stl-hero__eyebrow">Agentic Orchestration Engine</p>
         <h1 className="stl-hero__title">
-          Sacred<br />
-          <span className="stl-hero__title-accent">Timeline</span>
+          Your AI<br />
+          <span className="stl-hero__title-accent">Concierge</span>
         </h1>
         <p className="stl-hero__subtitle">
           One orchestrator. A planner, a memory store, and specialized agents — research,
@@ -86,154 +88,73 @@ const SacredTimelineHero: React.FC = () => {
         </div>
       </div>
 
-      {/* ── right: animated architecture diagram ── */}
-      <div className="stl-hero__diagram" aria-hidden="true">
-        <svg
-          viewBox="0 0 480 430"
-          className="stl-hero__svg"
-          xmlns="http://www.w3.org/2000/svg"
-          role="img"
-          aria-label="Sacred Timeline orchestrator architecture"
-        >
-          <defs>
-            {/* glow filter for the orchestrator node */}
-            <filter id="stl-glow" x="-60%" y="-60%" width="220%" height="220%">
-              <feGaussianBlur stdDeviation="8" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <filter id="stl-glow-sm" x="-40%" y="-40%" width="180%" height="180%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
+      {/* ── right: real photo + animated diagram ── */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {/* real people photo */}
+        <div className="stl-hero__photo-panel">
+          <img
+            src={TEAM_PHOTO}
+            alt="Team collaborating with AI concierge"
+            loading="lazy"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+          <div className="stl-hero__photo-overlay">
+            <span className="stl-hero__photo-caption">Teams achieving more with AI assistance</span>
+          </div>
+        </div>
 
-            {/* gradient for edge lines */}
-            {EDGES.map((edge) => {
+        {/* floating agent diagram badge */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            bottom: -16,
+            right: -16,
+            background: '#FFFFFF',
+            border: '1px solid #BFDBFE',
+            borderRadius: 16,
+            padding: '12px 16px',
+            boxShadow: '0 8px 28px rgba(37,99,235,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}
+        >
+          <svg width="52" height="52" viewBox="0 0 480 430" style={{ width: 52, height: 52 }}>
+            <defs>
+              <filter id="stl-glow-badge" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="6" result="blur" />
+                <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+              </filter>
+            </defs>
+            {EDGES.slice(0, 5).map((edge) => {
               const from = NODE_MAP[edge.from];
-              const to   = NODE_MAP[edge.to];
+              const to = NODE_MAP[edge.to];
               return (
-                <linearGradient
-                  key={`grad-${edge.from}-${edge.to}`}
-                  id={`stl-edge-grad-${edge.from}-${edge.to}`}
+                <line
+                  key={`${edge.from}-${edge.to}`}
                   x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                  gradientUnits="userSpaceOnUse"
-                >
-                  <stop offset="0%"   stopColor={from.color} stopOpacity="0.6" />
-                  <stop offset="100%" stopColor={to.color}   stopOpacity="0.6" />
-                </linearGradient>
+                  stroke={to.color} strokeWidth="3" opacity="0.3"
+                />
               );
             })}
-          </defs>
-
-          {/* ── edges ── */}
-          {EDGES.map((edge) => {
-            const from = NODE_MAP[edge.from];
-            const to   = NODE_MAP[edge.to];
-            const d    = edgePath(from, to);
-            const gradId = `stl-edge-grad-${edge.from}-${edge.to}`;
-            const pathId = `stl-path-${edge.from}-${edge.to}`;
-            return (
-              <g key={pathId}>
-                {/* static track */}
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={`url(#${gradId})`}
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  opacity="0.35"
-                />
-                {/* animated particle */}
-                <circle r="3.5" fill={to.color} opacity="0.9" filter="url(#stl-glow-sm)">
-                  <animateMotion
-                    dur="2.4s"
-                    begin={`${edge.delay}s`}
-                    repeatCount="indefinite"
-                    calcMode="spline"
-                    keySplines="0.4 0 0.6 1"
-                    keyTimes="0;1"
-                  >
-                    <mpath xlinkHref={`#${pathId}`} />
-                  </animateMotion>
-                </circle>
-                {/* invisible path for animateMotion to reference */}
-                <path id={pathId} d={d} fill="none" stroke="none" />
-              </g>
-            );
-          })}
-
-          {/* ── nodes ── */}
-          {NODES.map((node) => {
-            const isOrchestrator = node.id === 'root';
-            const isInput        = node.id === 'input';
-            return (
-              <g key={node.id} className="stl-node-group">
-                {/* outer pulse ring for orchestrator */}
-                {isOrchestrator && (
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={node.r + 14}
-                    fill="none"
-                    stroke={node.color}
-                    strokeWidth="1.5"
-                    opacity="0.2"
-                    className="stl-pulse-ring"
-                  />
-                )}
-                {/* node body */}
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={node.r}
-                  fill={isInput ? 'rgba(15,23,42,0.7)' : 'rgba(15,23,42,0.92)'}
-                  stroke={node.color}
-                  strokeWidth={isOrchestrator ? 2.5 : 1.5}
-                  filter={isOrchestrator ? 'url(#stl-glow)' : undefined}
-                />
-                {/* icon dot (inner fill) */}
-                {!isInput && (
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={isOrchestrator ? 12 : 8}
-                    fill={node.color}
-                    opacity={isOrchestrator ? 0.75 : 0.55}
-                  />
-                )}
-                {/* label */}
-                <text
-                  x={node.x}
-                  y={node.y + node.r + 14}
-                  textAnchor="middle"
-                  fill={node.color}
-                  fontSize={isOrchestrator ? 13 : 11}
-                  fontWeight={isOrchestrator ? 700 : 600}
-                  fontFamily="Inter, system-ui, sans-serif"
-                  opacity="0.95"
-                >
-                  {node.label}
-                </text>
-                {/* sub-label */}
-                <text
-                  x={node.x}
-                  y={node.y + node.r + 26}
-                  textAnchor="middle"
-                  fill="rgba(148,163,184,0.55)"
-                  fontSize="9"
-                  fontFamily="Inter, system-ui, sans-serif"
-                >
-                  {node.sub}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+            {NODES.map((node) => (
+              <circle
+                key={node.id}
+                cx={node.x} cy={node.y} r={node.r * 0.9}
+                fill={node.id === 'root' ? node.color : '#FFFFFF'}
+                stroke={node.color}
+                strokeWidth={node.id === 'root' ? 0 : 2}
+                filter={node.glow ? 'url(#stl-glow-badge)' : undefined}
+                opacity={node.id === 'root' ? 0.9 : 0.8}
+              />
+            ))}
+          </svg>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#0F172A', lineHeight: 1.2 }}>7 agents</div>
+            <div style={{ fontSize: 10, color: '#38BDF8', fontWeight: 600 }}>live orchestration</div>
+          </div>
+        </div>
       </div>
     </section>
   );

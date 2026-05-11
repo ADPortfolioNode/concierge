@@ -231,16 +231,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           : null;
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'linear-gradient(135deg, #F0F8FF 0%, #EFF6FF 100%)', color: '#0F172A', fontFamily: 'system-ui, sans-serif' }}>
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
           <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" style={{ height: 48 }} fetchPriority="high" />
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em' }}>Concierge</h1>
+          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', color: '#0F172A' }}>Concierge</h1>
         </div>
 
         {/* progress bar */}
-        <div style={{ width: 300, background: 'rgba(255,255,255,0.08)', borderRadius: 8, overflow: 'hidden', height: 6, marginBottom: 28 }}>
-          <div style={{ width: `${isFailed ? progress : progress}%`, background: isFailed ? 'rgba(239,68,68,0.6)' : 'linear-gradient(90deg, #6d56f5, #a78bfa)', height: '100%', transition: 'width 0.4s ease-out', borderRadius: 8 }} />
+        <div style={{ width: 300, background: '#DBEAFE', borderRadius: 8, overflow: 'hidden', height: 6, marginBottom: 28 }}>
+          <div style={{ width: `${isFailed ? progress : progress}%`, background: isFailed ? '#EF4444' : 'linear-gradient(90deg, #2563EB, #38BDF8)', height: '100%', transition: 'width 0.4s ease-out', borderRadius: 8 }} />
         </div>
 
         {/* step list */}
@@ -248,7 +248,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           {steps.map((step, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: step.status === 'pending' ? 0.3 : 1, transition: 'opacity 0.3s' }}>
               <StepIcon status={step.status} />
-              <span style={{ fontSize: 13, color: step.status === 'done' ? '#e2e8f0' : step.status === 'error' ? '#fca5a5' : '#94a3b8', transition: 'color 0.3s' }}>
+              <span style={{ fontSize: 13, color: step.status === 'done' ? '#0F172A' : step.status === 'error' ? '#B91C1C' : '#64748B', transition: 'color 0.3s' }}>
                 {step.label}
               </span>
             </div>
@@ -257,7 +257,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         {/* retry / countdown hint */}
         {retryLabel && (
-          <p style={{ marginTop: 20, fontSize: 12, color: isFailed ? '#fca5a5' : '#64748b', textAlign: 'center', maxWidth: 260 }}>
+          <p style={{ marginTop: 20, fontSize: 12, color: isFailed ? '#B91C1C' : '#64748B', textAlign: 'center', maxWidth: 260 }}>
             {retryLabel}
           </p>
         )}
@@ -266,9 +266,9 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         {isFailed && (
           <button
             onClick={() => setRetryKey(k => k + 1)}
-            style={{ marginTop: 16, padding: '8px 20px', borderRadius: 6, border: '1px solid rgba(167,139,250,0.4)', background: 'transparent', color: '#a78bfa', fontSize: 13, cursor: 'pointer', transition: 'background 0.2s' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(109,86,245,0.15)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            style={{ marginTop: 16, padding: '8px 20px', borderRadius: 6, border: '1px solid #BFDBFE', background: '#FFFFFF', color: '#2563EB', fontSize: 13, cursor: 'pointer', transition: 'background 0.2s', fontWeight: 600 }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#FFFFFF')}
           >
             Retry connection
           </button>
@@ -287,7 +287,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <NavLink to="/" end onClick={closeNav} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, textDecoration: 'none' }}>
               <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" className="brand-logo" style={{ height: 26 }} fetchPriority="high" />
-              <span style={{ color: '#f8fafc', fontWeight: 800, fontSize: 17, letterSpacing: '-0.02em' }}>Concierge</span>
+              <span style={{ color: '#0F172A', fontWeight: 800, fontSize: 17, letterSpacing: '-0.02em' }}>Concierge</span>
             </NavLink>
           </div>
 
