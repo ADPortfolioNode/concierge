@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import SamplePrompt from '@/components/primitives/SamplePrompt';
 import TimelineHero from '@/components/TimelineHero';
 import SacredTimelineHero from '@/components/SacredTimelineHero';
 import PageSection from '@/components/PageSection';
+import { useAppStore } from '@/state/appStore';
 
 // ── use-case outcome definitions ─────────────────────────────────────────
 const USE_CASES = [
@@ -150,13 +151,21 @@ const OutcomeCard: React.FC<(typeof USE_CASES)[0]> = ({
 );
 
 // ── main page ─────────────────────────────────────────────────────────────
-const baseAssetUrl = import.meta.env.BASE_URL || '/';
+const HomePage: React.FC = () => {
+  const taskThreadId = useAppStore((s) => s.taskThreadId);
+  const timelinePlan = useAppStore((s) => s.timelinePlan);
+  const hasTasks = useMemo(() => {
+    const tasks = timelinePlan?.tasks ?? timelinePlan?.plan?.tasks;
+    return Array.isArray(tasks) && tasks.length > 0;
+  }, [timelinePlan]);
+  const showTimeline = !!taskThreadId || hasTasks;
 
-const HomePage: React.FC = () => (
+  return (
   <div className="home-page">
     {/* sacred timeline hero */}
     <SacredTimelineHero />
 
+    {showTimeline && (
     <div className="home-timeline-card">
       <div className="home-timeline-header">
         <div>
@@ -170,6 +179,7 @@ const HomePage: React.FC = () => (
       </div>
       <TimelineHero />
     </div>
+    )}
 
     <PageSection title="Quick actions">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -240,6 +250,7 @@ const HomePage: React.FC = () => (
       </div>
     </PageSection>
   </div>
-);
+  );
+};
 
 export default HomePage;

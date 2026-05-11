@@ -705,10 +705,71 @@ async def chat_alias(payload: ConciergeMessagePayload, request: Request):
     return await _handle_chat_message(payload, request)
 
 
+_STATUS_QUERY_RE = re.compile(
+    r'\b(what(?:\'s| is| are) (?:you |it |the )?(?:doing|running|happening|status|progress|working on)'
+    r'|status|what tasks?|are you running|current(?:ly)? (?:running|doing|working)'
+    r'|show (?:me )?(?:the )?(?:running |active )?tasks?'
+    r'|how (?:is|are) (?:it|things|the tasks?) (?:going|doing|progressing)'
+    r'|any (?:active|running) tasks?'
+    r'|(?:task|thread) (?:status|progress|update))\b',
+    re.IGNORECASE,
+)
+
+
+def _build_status_reply() -> str:
+    """Return a human-readable summary of all currently known task trees."""
+    try:
+        from task_tree_store import get_redis
+        r = get_redis()
+        keys = r.keys('task_tree:*') if r else []
+        summaries: list[str] = []
+        for key in (keys or []):
+            thread_id = key.decode() if isinstance(key, bytes) else key
+            thread_id = thread_id.split(':', 1)[1] if ':' in thread_id else thread_id
+            from task_tree_store import get_task_tree
+            tree = get_task_tree(thread_id)
+            if not tree:
+                continue
+            status = tree.get('status', 'unknown')
+            name = tree.get('task_name') or thread_id[:8]
+            progress = tree.get('progress', 0)
+            children = tree.get('children') or []
+            running = [c for c in children if isinstance(c, dict) and c.get('status') == 'running']
+            done = [c for c in children if isinstance(c, dict) and c.get('status') in ('done', 'completed')]
+            summaries.append(
+                f"• **{name}** — {status} ({progress}% done, "
+                f"{len(running)} running, {len(done)}/{len(children)} subtasks complete)"
+            )
+        if not summaries:
+            return (
+                "I don't have any active background tasks at the moment. "
+                "I'm ready to help — ask me to create a plan, set a goal, or run a task."
+            )
+        lines = ["Here's what I'm currently working on:\n"] + summaries
+        return '\n'.join(lines)
+    except Exception as exc:
+        logger.warning("Status reply failed: %s", exc)
+        return "I couldn't retrieve task status right now. Please try again in a moment."
+
+
 async def _handle_chat_message(payload: ConciergeMessagePayload, request: Request):
     # the Pydantic validator above guarantees we have a nonempty `message`
     msg = payload.message
     _ensure_timeline_available()
+
+    # ── Dual-mode: status queries get an inline live answer, no new thread ──
+    if _STATUS_QUERY_RE.search(msg):
+        status_content = _build_status_reply()
+        now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+        data = {
+            'id': str(int(time.time() * 1000)),
+            'role': 'assistant',
+            'content': status_content,
+            'meta': {'llm': {'provider': 'status-query', 'error': None}},
+            'timestamp': now,
+        }
+        return _api_response(data)
+
     thread_id = str(uuid.uuid4())
     result = await app.state.timeline.handle_user_input(msg, thread_id=thread_id)
 

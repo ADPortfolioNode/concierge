@@ -19,6 +19,11 @@ html, body, #root {
   50%       { opacity: 0.4; transform: scale(0.7); }
 }
 
+@keyframes concierge-pulse {
+  0%, 100% { box-shadow: 0 0 4px #22c55e; opacity: 1; }
+  50%       { box-shadow: 0 0 12px #22c55e; opacity: 0.65; }
+}
+
 .app-error-boundary {
   padding: 24px;
   color: #f8fafc;
