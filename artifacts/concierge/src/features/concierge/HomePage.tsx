@@ -12,66 +12,51 @@ const BUSINESSWOMAN_PHOTO =
 const TEAM_PHOTO2 =
   'https://thumbs.dreamstime.com/b/young-smiling-business-people-working-laptops-group-coworkers-sitting-together-table-modern-office-teamwork-124959385.jpg';
 
-// ── use-case outcome definitions ─────────────────────────────────────────
+// ── featured workflow definitions ─────────────────────────────────────────
 const USE_CASES = [
   {
-    icon: '🎯',
-    title: 'Achieve Your Goals',
-    tagline: 'Turn ambitions into results',
+    icon: '📷',
+    title: 'Photo Review Workflow',
+    tagline: 'Summarize, tag, and clean up photos',
     description:
-      'Set high-level outcomes, let Concierge break them into prioritised tasks, and track progress automatically.',
-    color: '#2563EB',
-    link: '/goals',
-    cta: 'Open Goals →',
+      'Use image-based tasks to review uploaded photos, generate captions and tags, flag low-quality shots, and produce a clean, organized output set.',
+    color: '#7C3AED',
+    link: '/tasks',
+    cta: 'Open Tasks →',
     prompts: [
-      'Create a 4-week goal to migrate our REST API to GraphQL.',
-      'I want to reduce page load time by 40% — plan it out.',
-      'Set weekly goals for improving test coverage from 60% to 90%.',
+      'Summarize and tag the photos I uploaded from the team event.',
+      'Review these product photos and flag any that look low quality.',
+      'Rename my uploaded photo batch by subject matter and write captions.',
     ],
   },
   {
-    icon: '⚡',
-    title: 'Automate Your Work',
-    tagline: 'Execute tasks without lifting a finger',
+    icon: '📄',
+    title: 'Report Generation',
+    tagline: 'From raw uploads to polished deliverables',
     description:
-      'Run background tasks asynchronously: analyse files, generate code, process datasets, and get results delivered.',
+      'Extract insights from documents, spreadsheets, and uploads. Concierge creates polished summaries, executive briefs, and final deliverables ready to share.',
+    color: '#0891B2',
+    link: '/tasks',
+    cta: 'Open Tasks →',
+    prompts: [
+      'Extract key insights from the PDF I uploaded and write a polished summary.',
+      'Turn my uploaded data into an executive report with recommendations.',
+      'Generate a final deliverable from the project notes I shared.',
+    ],
+  },
+  {
+    icon: '📈',
+    title: 'Data-Driven Decisions',
+    tagline: 'Turn numbers into action',
+    description:
+      'Feed Concierge your spreadsheets and logs. It analyses patterns, surfaces anomalies, and returns prioritised, actionable business recommendations.',
     color: '#059669',
     link: '/tasks',
     cta: 'Open Tasks →',
     prompts: [
-      'Analyse the CSV I uploaded and summarise the key trends.',
-      'Generate a Python script to parse JSON logs and extract error counts.',
-      'Read my uploaded spec and list all missing edge cases.',
-    ],
-  },
-  {
-    icon: '🗺️',
-    title: 'Plan Your Strategy',
-    tagline: 'Think clearly, decide confidently',
-    description:
-      'Apply OKRs, SWOT analysis, RICE scoring, and roadmapping frameworks. Let Concierge be your strategic thinking partner.',
-    color: '#0891B2',
-    link: '/strategy',
-    cta: 'Open Strategy →',
-    prompts: [
-      'Write 3 OKRs for our product team for Q3 2026.',
-      'Run a SWOT analysis for a developer-tools startup.',
-      'Build a 6-month product roadmap for a data-analytics platform.',
-    ],
-  },
-  {
-    icon: '📁',
-    title: 'Manage Your Workspace',
-    tagline: 'All your files and context in one place',
-    description:
-      'Upload documents, images, CSVs, and PDFs. Attach them to projects and reference them in any conversation.',
-    color: '#D97706',
-    link: '/workspace',
-    cta: 'Open Workspace →',
-    prompts: [
-      "I've uploaded a PDF spec — summarise the authentication requirements.",
-      'Attach the financial model CSV to the Q2 Planning project.',
-      'What does the attached document say about project milestones?',
+      'Analyse my spreadsheet and give me actionable business recommendations.',
+      'Look at the logs I uploaded and find patterns worth acting on.',
+      'What should we prioritise based on the data in this CSV?',
     ],
   },
 ];
@@ -296,7 +281,7 @@ const HomePage: React.FC = () => {
         </div>
       </PageSection>
 
-      <PageSection title="Choose your outcome">
+      <PageSection title="Featured workflows">
         <div
           style={{
             display: 'grid',
