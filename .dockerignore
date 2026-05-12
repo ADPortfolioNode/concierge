@@ -3,6 +3,11 @@
 .gitignore
 .gitattributes
 
+# ── Docker meta-files (not needed inside the image) ──────────────────────────
+docker-bake.hcl
+docker-compose*.yml
+.env.example
+
 # ── Node / pnpm ───────────────────────────────────────────────────────────────
 node_modules/
 **/node_modules/
