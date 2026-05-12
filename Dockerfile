@@ -119,6 +119,10 @@ COPY workstation/   workstation/
 COPY --from=frontend-builder /workspace/artifacts/concierge/dist/public/ \
      frontend/dist/
 
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+COPY start.sh ./
+RUN chmod +x start.sh
+
 # Create writable runtime dirs and a non-root user for security
 RUN mkdir -p media data \
     && addgroup --system appuser \
@@ -130,13 +134,5 @@ USER appuser
 EXPOSE 8000
 
 # Gunicorn + UvicornWorker: production-grade multi-process ASGI.
-# Override WORKERS (default 2) and LOG_LEVEL at runtime as needed.
-CMD ["sh", "-c", \
-     "gunicorn app:app \
-       --worker-class uvicorn.workers.UvicornWorker \
-       --workers ${WORKERS:-2} \
-       --bind 0.0.0.0:${PORT:-8000} \
-       --timeout 120 \
-       --graceful-timeout 30 \
-       --access-logfile - \
-       --log-level ${LOG_LEVEL:-info}"]
+# Override WORKERS (default 2), PORT, and LOG_LEVEL at runtime as needed.
+CMD ["./start.sh"]
