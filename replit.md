@@ -41,24 +41,27 @@ docker build -t concierge-ai .
 docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... concierge-ai
 ```
 
-**Multi-platform build (amd64 + arm64) via `docker-bake.hcl`:**
+**Docker Desktop workflow (no extra setup required — buildx is built in):**
 ```bash
-# One-time builder setup
-docker buildx create --name mp-builder --driver docker-container --use
-docker buildx inspect --bootstrap
-
-# Build both platforms and push to a registry
-REGISTRY=ghcr.io/yourorg TAG=v1.2.3 docker buildx bake --push
-
-# Build amd64 only and load into local daemon (for quick testing)
-docker buildx bake local
+cp .env.example .env      # fill in OPENAI_API_KEY etc.
+make build                # builds for your machine's native arch (auto-detected)
+make up                   # start API + SPA at http://localhost:8000
+make up-full              # start API + Redis + Celery worker
+make logs                 # tail live container logs
+make shell                # open a shell inside the running api container
 ```
 
-**Build stages:**
-1. `frontend-builder` — runs on `$BUILDPLATFORM` (native host arch) so the Node/Vite build is never emulated; output JS/CSS is arch-neutral.
-2. `runtime` — targets `$TARGETPLATFORM`; Python 3.11-slim-bookworm, `requirements.prod.txt` (no test deps, adds gunicorn), non-root `appuser`. pip and pnpm caches are keyed per platform so amd64/arm64 CI runners stay isolated.
+**Push a multi-arch image (amd64 + arm64) to a registry:**
+```bash
+make push REGISTRY=docker.io/yourname TAG=v1.0
+```
+No `docker buildx create` needed — Docker Desktop's built-in builder handles both architectures.
 
-`onnxruntime` and `chromadb` both ship pre-built wheels for `linux/amd64` and `linux/arm64` on PyPI — no special handling needed.
+**Build stages:**
+1. `frontend-builder` — runs on `$BUILDPLATFORM` (your machine's native arch) so the Node/Vite build is never emulated via QEMU; JS/CSS output is arch-neutral.
+2. `runtime` — targets `$TARGETPLATFORM`; Python 3.11-slim-bookworm, `requirements.prod.txt` (no test deps, adds gunicorn), non-root `appuser`. pip and pnpm caches are keyed per platform.
+
+`onnxruntime` and `chromadb` both ship pre-built wheels for `linux/amd64` and `linux/arm64` — no special handling needed.
 
 **Serving:** gunicorn + UvicornWorker — production-grade multi-process ASGI. Override with `WORKERS` env var (default 2).
 
