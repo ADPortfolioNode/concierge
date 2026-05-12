@@ -501,7 +501,10 @@ class LLMTool:
             self.max_tokens = 1024
 
         # primary API key plus optional extras for rate‑limit fallback
-        self._api_key = os.getenv("OPENAI_API_KEY")
+        self._api_key = (
+            os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+        )
         # allow a comma-separated list of additional keys via OPENAI_API_KEYS
         # e.g. OPENAI_API_KEYS="key2,key3"  (keys are tried in order after the
         # primary key).  This makes it easy to fail over to a second account
@@ -514,7 +517,11 @@ class LLMTool:
         for k in extras:
             if k not in self._api_keys:
                 self._api_keys.append(k)
-        self._base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+        self._base_url = (
+            os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL")
+            or os.getenv("OPENAI_API_BASE")
+            or "https://api.openai.com/v1"
+        )
 
         # Gemini (Google) integration
         self._gemini_key = os.getenv("GEMINI_API_KEY")
