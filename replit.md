@@ -41,9 +41,24 @@ docker build -t concierge-ai .
 docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... concierge-ai
 ```
 
+**Multi-platform build (amd64 + arm64) via `docker-bake.hcl`:**
+```bash
+# One-time builder setup
+docker buildx create --name mp-builder --driver docker-container --use
+docker buildx inspect --bootstrap
+
+# Build both platforms and push to a registry
+REGISTRY=ghcr.io/yourorg TAG=v1.2.3 docker buildx bake --push
+
+# Build amd64 only and load into local daemon (for quick testing)
+docker buildx bake local
+```
+
 **Build stages:**
-1. `frontend-builder` — Node 24 + pnpm@9.15.4 builds the React/Vite SPA (`BASE_PATH=/`). BuildKit pnpm store cache keeps reinstalls fast.
-2. `runtime` — Python 3.11-slim-bookworm installs `requirements.prod.txt` (no test deps, adds gunicorn). BuildKit pip cache avoids re-downloading on source-only changes. Runs as non-root `appuser`.
+1. `frontend-builder` — runs on `$BUILDPLATFORM` (native host arch) so the Node/Vite build is never emulated; output JS/CSS is arch-neutral.
+2. `runtime` — targets `$TARGETPLATFORM`; Python 3.11-slim-bookworm, `requirements.prod.txt` (no test deps, adds gunicorn), non-root `appuser`. pip and pnpm caches are keyed per platform so amd64/arm64 CI runners stay isolated.
+
+`onnxruntime` and `chromadb` both ship pre-built wheels for `linux/amd64` and `linux/arm64` on PyPI — no special handling needed.
 
 **Serving:** gunicorn + UvicornWorker — production-grade multi-process ASGI. Override with `WORKERS` env var (default 2).
 

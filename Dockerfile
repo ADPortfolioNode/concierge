@@ -1,8 +1,28 @@
 # syntax=docker/dockerfile:1
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 1 — Build the React/Vite frontend
+# Multi-platform build: linux/amd64  linux/arm64
+#
+#   docker buildx bake                          # both platforms, local load
+#   docker buildx bake --push                   # push to registry
+#   docker buildx build --platform linux/arm64 . # single platform, quick test
+#
+# BUILDPLATFORM  = the machine running the build  (e.g. linux/amd64 on x86 CI)
+# TARGETPLATFORM = the platform the image will run on
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS frontend-builder
+
+# Declare build-time platform args (injected automatically by buildx)
+ARG BUILDPLATFORM
+ARG TARGETPLATFORM
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1 — Build the React/Vite frontend
+#
+# Pin to BUILDPLATFORM so Node runs natively on the build host.
+# Vite output is pure JS/CSS — no arch-specific bytes — so the artefact is
+# identical regardless of which arch compiled it.  Running under QEMU for a
+# cross-arch Node build would be 5–10× slower with no benefit.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
 WORKDIR /workspace
 
@@ -19,8 +39,10 @@ COPY lib/ lib/
 # Frontend source
 COPY artifacts/concierge/ artifacts/concierge/
 
-# Install with BuildKit pnpm store cache — fast rebuilds when deps unchanged
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+# pnpm store cache is keyed to BUILDPLATFORM so amd64 and arm64 CI runners
+# never share a cache that could contain arch-specific native bindings.
+ARG BUILDPLATFORM
+RUN --mount=type=cache,id=pnpm-store-${BUILDPLATFORM},target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 # Production build (BASE_PATH=/ → SPA served at root by FastAPI)
@@ -30,6 +52,9 @@ RUN BASE_PATH=/ NODE_ENV=production \
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 — Python runtime image
+#
+# No explicit --platform here; buildx sets TARGETPLATFORM automatically and
+# pulls the correct python:3.11-slim-bookworm manifest (amd64 or arm64).
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim-bookworm AS runtime
 
@@ -41,7 +66,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Permanent runtime system libs (Pillow, onnxruntime, chromadb shared objects)
+# Permanent runtime system libs (Pillow, onnxruntime, chromadb shared objects).
+# All packages are available in Debian Bookworm for both amd64 and arm64.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgomp1 \
         libglib2.0-0 \
@@ -51,11 +77,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python deps.
-# build-essential is needed to compile some wheels (chromadb, onnxruntime C ext)
-# but is removed in the same layer so it doesn't bloat the final image.
-# BuildKit pip cache avoids re-downloading on source-only changes.
+# build-essential compiles any wheels without pre-built binaries (rare on 3.11)
+# and is removed in the same layer so it doesn't land in the final image.
+#
+# pip cache is keyed to TARGETPLATFORM — amd64 and arm64 runners stay isolated
+# because wheel files are architecture-specific.
+#
+# onnxruntime ships amd64 + arm64 wheels on PyPI since v1.16 — no special
+# handling needed.  chromadb and all other deps likewise supply both arches.
+ARG TARGETPLATFORM
 COPY requirements.prod.txt ./
-RUN --mount=type=cache,id=pip,target=/root/.cache/pip \
+RUN --mount=type=cache,id=pip-${TARGETPLATFORM},target=/root/.cache/pip \
     apt-get update && apt-get install -y --no-install-recommends build-essential \
     && pip install -r requirements.prod.txt \
     && apt-get purge -y --auto-remove build-essential \
