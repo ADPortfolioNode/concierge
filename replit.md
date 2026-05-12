@@ -21,28 +21,51 @@ pnpm --filter @workspace/concierge-mobile run dev
 
 ## Docker
 
-Three files at workspace root: `Dockerfile`, `docker-compose.yml`, `.dockerignore`.
+Files at workspace root: `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `requirements.prod.txt`, `.env.example`.
 
-**Quick start (API only — no Redis, tasks run inline):**
+**Quick start (API + SPA only — no Redis, tasks run inline):**
+```bash
+cp .env.example .env   # fill in OPENAI_API_KEY etc.
+docker compose up
+```
+App is at http://localhost:8000.
+
+**Full stack (API + Redis + Celery worker):**
+```bash
+docker compose --profile full up
+```
+
+**One-liner without .env:**
 ```bash
 docker build -t concierge-ai .
-docker run -p 8000:8000 \
-  -e OPENAI_API_KEY=sk-... \
-  -e GEMINI_API_KEY=... \
-  concierge-ai
+docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... concierge-ai
 ```
-App (API + SPA) is at http://localhost:8000.
 
-**Full stack (API + Redis broker + Celery worker):**
+**Docker Desktop workflow (no extra setup required — buildx is built in):**
 ```bash
-OPENAI_API_KEY=sk-... GEMINI_API_KEY=... docker compose up
+cp .env.example .env      # fill in OPENAI_API_KEY etc.
+make build                # builds for your machine's native arch (auto-detected)
+make up                   # start API + SPA at http://localhost:8000
+make up-full              # start API + Redis + Celery worker
+make logs                 # tail live container logs
+make shell                # open a shell inside the running api container
 ```
+
+**Push a multi-arch image (amd64 + arm64) to a registry:**
+```bash
+make push REGISTRY=docker.io/yourname TAG=v1.0
+```
+No `docker buildx create` needed — Docker Desktop's built-in builder handles both architectures.
 
 **Build stages:**
-1. `frontend-builder` — Node 24 + pnpm builds the React/Vite SPA (`BASE_PATH=/`)
-2. `runtime` — Python 3.11-slim installs `requirements.full.txt`, copies all Python source and the built frontend into `frontend/dist/` (where `app.py`'s `_find_static_dir()` expects it)
+1. `frontend-builder` — runs on `$BUILDPLATFORM` (your machine's native arch) so the Node/Vite build is never emulated via QEMU; JS/CSS output is arch-neutral.
+2. `runtime` — targets `$TARGETPLATFORM`; Python 3.11-slim-bookworm, `requirements.prod.txt` (no test deps, adds gunicorn), non-root `appuser`. pip and pnpm caches are keyed per platform.
 
-FastAPI serves everything on port 8000 — no separate Vite dev server in Docker.
+`onnxruntime` and `chromadb` both ship pre-built wheels for `linux/amd64` and `linux/arm64` — no special handling needed.
+
+**Serving:** gunicorn + UvicornWorker — production-grade multi-process ASGI. Override with `WORKERS` env var (default 2).
+
+FastAPI serves the SPA at `/` and the API at `/api/*` — no separate Vite server in Docker.
 
 ## Stack
 
