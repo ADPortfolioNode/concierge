@@ -1,13 +1,22 @@
 # ── Version control ───────────────────────────────────────────────────────────
 .git/
 .gitignore
+.gitattributes
 
 # ── Node / pnpm ───────────────────────────────────────────────────────────────
 node_modules/
 **/node_modules/
-# Frontend dist is built inside Docker — don't copy local build artefacts
-artifacts/concierge/dist/
+# Built artefacts are produced inside Docker — never copy local builds in
 artifacts/*/dist/
+artifacts/*/build/
+*.tsbuildinfo
+
+# ── Other artifact packages not needed by Docker ─────────────────────────────
+# Only artifacts/concierge (the web frontend) is built in the image.
+# Mobile app, API server, and mockup sandbox are excluded.
+artifacts/concierge-mobile/
+artifacts/api-server/
+artifacts/mockup-sandbox/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
@@ -17,6 +26,7 @@ __pycache__/
 .pythonlibs/
 .venv/
 venv/
+.pytest_cache/
 
 # ── Replit-specific ───────────────────────────────────────────────────────────
 .replit
@@ -27,11 +37,19 @@ replit.nix
 .config/
 .agents/
 
+# ── Secrets / environment files ───────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
 # ── Large/sensitive runtime files ─────────────────────────────────────────────
 memory_backup.jsonl
 *.jsonl
 .migration-backup/
 media/
+data/
+screenshots/
+attached_assets/
 
 # ── Editor / OS artefacts ─────────────────────────────────────────────────────
 .DS_Store
@@ -42,14 +60,11 @@ Thumbs.db
 
 # ── Test artefacts ────────────────────────────────────────────────────────────
 coverage/
-.pytest_cache/
 playwright-report/
 test-results/
+htmlcov/
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-error.log
-
-# ── TypeScript build info ─────────────────────────────────────────────────────
-*.tsbuildinfo
