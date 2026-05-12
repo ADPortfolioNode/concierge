@@ -1,0 +1,24 @@
+<svg viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Insights workflow illustration">
+  <rect width="320" height="240" rx="24" fill="#111827"/>
+  <defs>
+    <linearGradient id="bars" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#bars)">
+    <rect x="72" y="130" width="36" height="70" rx="12"/>
+    <rect x="136" y="95" width="36" height="105" rx="12"/>
+    <rect x="200" y="70" width="36" height="130" rx="12"/>
+  </g>
+  <path d="M68 170 Q108 120 136 100 T252 70" fill="none" stroke="#38bdf8" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="68" cy="170" r="10" fill="#38bdf8"/>
+  <circle cx="136" cy="100" r="10" fill="#38bdf8"/>
+  <circle cx="252" cy="70" r="10" fill="#38bdf8"/>
+  <rect x="36" y="32" width="248" height="40" rx="16" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+  <text x="56" y="58" fill="#f8fafc" font-family="Inter, sans-serif" font-size="14" font-weight="600">Workflow analytics</text>
+  <g fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">
+    <text x="72" y="220">Task volume</text>
+    <text x="196" y="220">Completion</text>
+  </g>
+</svg>
