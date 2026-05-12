@@ -1,8 +1,9 @@
 """OpenAI integration.
 
 Supports ``chat``, ``embed``, and ``moderate`` actions via the OpenAI SDK.
-Requires ``OPENAI_API_KEY`` to be set; returns a descriptive error dict
-when the key is absent so callers degrade gracefully.
+Uses Replit AI Integrations (AI_INTEGRATIONS_OPENAI_API_KEY) when available,
+falling back to OPENAI_API_KEY. Returns a descriptive error dict when no key
+is configured so callers degrade gracefully.
 """
 
 from __future__ import annotations
@@ -17,12 +18,33 @@ from integrations.base_integration import BaseIntegration
 logger = logging.getLogger(__name__)
 
 
+def _get_openai_api_key() -> str:
+    """Return the best available OpenAI API key.
+
+    Prefers Replit AI Integrations key (AI_INTEGRATIONS_OPENAI_API_KEY),
+    falling back to any user-supplied OPENAI_API_KEY.
+    """
+    return (
+        os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or ""
+    )
+
+
+def _get_openai_base_url() -> str | None:
+    """Return the OpenAI-compatible base URL for Replit AI Integrations, if set."""
+    return os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL") or None
+
+
 class OpenAIIntegration(BaseIntegration):
     name = "openai"
     description = "Language model completions and embeddings via the OpenAI API."
     service = "OpenAI"
     version = "0.2.0"
-    enabled = bool(os.getenv("OPENAI_API_KEY"))
+
+    @property
+    def enabled(self) -> bool:  # type: ignore[override]
+        return bool(_get_openai_api_key())
 
     async def call(self, action: str, payload: Any = None) -> Any:
         """Dispatch to OpenAI API based on *action*.
@@ -34,7 +56,7 @@ class OpenAIIntegration(BaseIntegration):
         """
         # gather API keys for retry-on-rate-limit support
         keys = []
-        primary = os.getenv("OPENAI_API_KEY")
+        primary = _get_openai_api_key()
         if primary:
             keys.append(primary)
         for extra in os.getenv("OPENAI_API_KEYS", "").split(","):
@@ -48,7 +70,7 @@ class OpenAIIntegration(BaseIntegration):
 
         if not keys and not gemini_key:
             return {"integration": self.name, "action": action, "status": "unconfigured",
-                    "message": "Set OPENAI_API_KEY or GEMINI_API_KEY to enable integration."}
+                    "message": "Set AI_INTEGRATIONS_OPENAI_API_KEY or OPENAI_API_KEY to enable integration."}
 
         # attempt to use OpenAI SDK; fall back to Gemini on ANY failure
         try:
@@ -67,8 +89,13 @@ class OpenAIIntegration(BaseIntegration):
         default_embed = os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
         default_moderate = os.getenv("OPENAI_DEFAULT_MODERATE_MODEL")
 
+        base_url = _get_openai_base_url()
+
         for idx, api_key in enumerate(keys):
-            client = openai.AsyncOpenAI(api_key=api_key)
+            client_kwargs: dict[str, Any] = {"api_key": api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            client = openai.AsyncOpenAI(**client_kwargs)
             try:
                 if action == "chat":
                     p = payload or {}
@@ -159,5 +186,5 @@ class OpenAIIntegration(BaseIntegration):
                 "content": content, "model": model}
 
     async def health_check(self) -> bool:
-        # considered healthy if either OpenAI or Gemini key is available
-        return bool(os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        # considered healthy if either OpenAI (via Replit AI or direct) or Gemini key is available
+        return bool(_get_openai_api_key() or os.getenv("GEMINI_API_KEY"))
