@@ -6,6 +6,7 @@
 # ── Docker meta-files (not needed inside the image) ──────────────────────────
 docker-bake.hcl
 docker-compose*.yml
+Makefile
 .env.example
 
 # ── Node / pnpm ───────────────────────────────────────────────────────────────
