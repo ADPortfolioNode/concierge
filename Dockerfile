@@ -1,35 +1,3 @@
-<<<<<<< HEAD
-# --- Build Stage ---
-# Use a specific Python version for reproducibility.
-FROM python:3.11-slim as builder
-
-# Set environment variables to ensure clean and predictable builds.
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-
-WORKDIR /app
-
-# Install dependencies
-# This leverages Docker's layer caching.
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
-
-# --- Final Stage ---
-# Use a minimal, non-root base image for security.
-FROM python:3.11-slim
-WORKDIR /app
-
-# Copy dependencies from the build stage.
-COPY --from=builder /app/wheels /wheels
-COPY --from=builder /app/requirements.txt .
-RUN pip install --no-cache /wheels/*
-
-# Copy the application source code.
-COPY . .
-
-# Command to run the application with live reload for development.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-=======
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — Build the React/Vite frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,4 +82,3 @@ EXPOSE 8000
 
 # Default: API + SPA server
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
->>>>>>> 63023efe998310626d5b38225a84098520cb9ceb
