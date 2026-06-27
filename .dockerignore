@@ -46,13 +46,33 @@ frontend/dist/
 artifacts/concierge/dist/
 
 # ── Secrets (critical - never bake real env/secrets into image) ──────────────
+# Explicitly ignore ALL environment and secret files so no keys ever enter the image.
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
+
 *.pem
 *.key
 *.crt
+*.p12
+*.jks
 secrets/
+*.secret
+*.token
+*.apikey
+*.credentials
+
+# Recursively ignore in all subdirectories
+**/.env
+**/.env.*
+**/.env.local
+**/.env.*.local
+**/secrets/
+**/*.pem
+**/*.key
+**/*.token
 
 # ── Additional bloat reduction for faster builds ─────────────────────────────
 # Git and CI

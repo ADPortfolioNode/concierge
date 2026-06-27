@@ -1,10 +1,27 @@
 # Recommended .gitignore for a Python/Node.js project to establish a clean ground truth.
 
 # ── Secrets / Environment Files ───────────────────────────────────────────────
-# Ignore all .env files, but keep the example for onboarding.
+# NEVER commit real secrets or keys. Only .env.example (with placeholders) is allowed.
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
+
+# Additional secret-related files
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+secrets/
+*.secret
+*.env
+id_rsa*
+id_dsa*
+*.token
+*.apikey
+*.credentials
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 logs/
