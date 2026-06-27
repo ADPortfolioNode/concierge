@@ -50,3 +50,33 @@ qdrant_data/
 volumes/
 memory_backup.jsonl
 *.zip
+
+# ── Additional project-specific ignores ──────────────────────────────────────
+# Caches
+.cache/
+.swc/
+.turbo/
+*.tsbuildinfo
+
+# Additional logs and debug
+*.log.*
+pnpm-debug.log*
+.eslintcache
+
+# Secrets & keys (extra protection)
+*.pem
+*.key
+*.crt
+secrets/
+*.secret
+
+# Docker compose overrides (local only)
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+
+# Temporary / backup
+*.bak
+*.tmp
+*.swp
+*~

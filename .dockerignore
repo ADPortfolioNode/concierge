@@ -44,3 +44,52 @@ frontend/node_modules/
 artifacts/**/node_modules/
 frontend/dist/
 artifacts/concierge/dist/
+
+# ── Secrets (critical - never bake real env/secrets into image) ──────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# ── Additional bloat reduction for faster builds ─────────────────────────────
+# Git and CI
+.git/
+.gitignore
+.github/
+.gitattributes
+
+# Docs and misc (keep only what's needed)
+*.md
+!README.md
+*.txt
+!requirements*.txt
+!package.json
+!pnpm-*.yaml
+!pnpm-lock.yaml
+
+# Test and dev only
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+test-results/
+coverage/
+
+# Caches and temp
+.cache/
+.tmp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# Additional logs
+**/*.log
+**/*.log.*
+
+# Docker self
+docker-compose*.yml
+Dockerfile*
+.docker/
