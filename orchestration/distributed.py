@@ -66,6 +66,6 @@ def create_distributed_nodes(count: int, memory: Optional[MemoryStore] = None, m
     nodes = []
     for i in range(count):
         cm = AsyncConcurrencyManager(max_agents=3)
-        node = SacredTimeline(concurrency_manager=cm, memory_store=memory)
+        node = SacredTimeline(memory_store=memory)
         nodes.append(node)
     return nodes, global_cm

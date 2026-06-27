@@ -45,7 +45,6 @@ def run_agent_task(self, context: str, goal: str) -> Dict[str, Any]:
         memory = MemoryStore()
         concurrency = AsyncConcurrencyManager()
         timeline = SacredTimeline(
-            concurrency_manager=concurrency,
             memory_store=memory,
         )
 

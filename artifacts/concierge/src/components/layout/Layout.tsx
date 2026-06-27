@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import ChatContainer from '../chat/ChatContainer';
 import ErrorBanner from '../ui/ErrorBanner';
+import { makeApiUrl } from '@/config/activeServer';
 
 // ── nav group separator ───────────────────────────────────────────────────
 const NavSep: React.FC = () => (
@@ -104,6 +105,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [progress, setProgress] = useState(0);
   const [steps, setSteps] = useState<StartupStep[]>(INITIAL_STEPS);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   // attempt = which retry we're on (0-based); null = succeeded; BACKOFF_MAX_TRIES = exhausted
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -138,63 +140,50 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         setAttempt(i);
 
         try {
-          const res = await fetchWithTimeout('/api/health');
-          if (!cancelled && res.ok) {
-            const data = await res.json() as { status?: string };
-            if (data.status === 'ok') {
-              if (cancelled) return;
+          // Use the documented ready endpoint (supports /api prefix via alias)
+          const healthUrl = makeApiUrl('/api/health/ready');
+          const res = await fetchWithTimeout(healthUrl);
+          if (!cancelled) {
+            const data = await res.json().catch(() => ({})) as { status?: string };
+            const ok = res.ok || data.status === 'ok';
+            if (ok) {
               setStepStatus(0, 'done');
 
-              // Step 1 — capabilities
+              // best-effort secondary checks (non-blocking)
               setStepStatus(1, 'loading');
-              try {
-                await fetchWithTimeout('/api/v1/capabilities');
-                if (!cancelled) setStepStatus(1, 'done');
-              } catch {
-                if (!cancelled) setStepStatus(1, 'error');
-              }
+              fetchWithTimeout(makeApiUrl('/api/v1/capabilities')).then(() => setStepStatus(1, 'done')).catch(() => setStepStatus(1, 'error'));
 
-              // Step 2 — memory / messages
-              if (cancelled) return;
               setStepStatus(2, 'loading');
-              try {
-                await fetchWithTimeout('/api/v1/concierge/conversation');
-                if (!cancelled) setStepStatus(2, 'done');
-              } catch {
-                if (!cancelled) setStepStatus(2, 'error');
-              }
+              fetchWithTimeout(makeApiUrl('/api/v1/concierge/conversation')).then(() => setStepStatus(2, 'done')).catch(() => setStepStatus(2, 'error'));
 
-              // Step 3 — ready
-              if (cancelled) return;
               setStepStatus(3, 'loading');
               setProgress(100);
-              await new Promise(r => setTimeout(r, 350));
+              await new Promise(r => setTimeout(r, 250));
               if (!cancelled) {
                 setStepStatus(3, 'done');
-                await new Promise(r => setTimeout(r, 400));
+                await new Promise(r => setTimeout(r, 200));
                 if (!cancelled) setIsReady(true);
               }
-              return; // success — exit loop
+              return;
             }
           }
         } catch {
-          // timeout or network error — fall through to backoff
+          // will retry
         }
 
-        // Not the last attempt: back off with full jitter + live countdown
+        // backoff with countdown for remaining attempts
         if (i < BACKOFF_MAX_TRIES - 1 && !cancelled) {
           setStepStatus(0, 'error');
           const delay = backoffDelay(i);
           const endAt = Date.now() + delay;
 
-          // tick the countdown label every 500 ms
           await new Promise<void>(resolve => {
             const tick = setInterval(() => {
               const remaining = Math.max(0, endAt - Date.now());
               if (!cancelled) setCountdown(Math.ceil(remaining / 1000));
               if (remaining <= 0) { clearInterval(tick); resolve(); }
-            }, 500);
-            setTimeout(() => { clearInterval(tick); resolve(); }, delay + 50);
+            }, 400);
+            setTimeout(() => { clearInterval(tick); resolve(); }, delay + 30);
           });
 
           if (!cancelled) {
@@ -204,7 +193,6 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         }
       }
 
-      // All retries exhausted
       if (!cancelled) {
         setStepStatus(0, 'error');
         setFailed(true);
@@ -219,69 +207,19 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     };
   }, [retryKey]);
 
-  if (!isReady) {
-    const isFailed = failed;
-    const showCountdown = !isFailed && countdown !== null && countdown > 0;
-    const retryLabel = isFailed
-      ? 'Could not reach the API server'
-      : showCountdown
-        ? `Retrying in ${countdown}s… (attempt ${attempt + 1} of ${BACKOFF_MAX_TRIES})`
-        : attempt > 0
-          ? `Attempt ${attempt + 1} of ${BACKOFF_MAX_TRIES}…`
-          : null;
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'linear-gradient(135deg, #F0F8FF 0%, #EFF6FF 100%)', color: '#0F172A', fontFamily: 'system-ui, sans-serif' }}>
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 36 }}>
-          <img src={`${import.meta.env.BASE_URL}logo-optimized.svg`} alt="Concierge" style={{ height: 48 }} fetchPriority="high" />
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, letterSpacing: '-0.02em', color: '#0F172A' }}>Concierge</h1>
-        </div>
-
-        {/* progress bar */}
-        <div style={{ width: 300, background: '#DBEAFE', borderRadius: 8, overflow: 'hidden', height: 6, marginBottom: 28 }}>
-          <div style={{ width: `${isFailed ? progress : progress}%`, background: isFailed ? '#EF4444' : 'linear-gradient(90deg, #2563EB, #38BDF8)', height: '100%', transition: 'width 0.4s ease-out', borderRadius: 8 }} />
-        </div>
-
-        {/* step list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 260 }}>
-          {steps.map((step, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: step.status === 'pending' ? 0.3 : 1, transition: 'opacity 0.3s' }}>
-              <StepIcon status={step.status} />
-              <span style={{ fontSize: 13, color: step.status === 'done' ? '#0F172A' : step.status === 'error' ? '#B91C1C' : '#64748B', transition: 'color 0.3s' }}>
-                {step.label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        {/* retry / countdown hint */}
-        {retryLabel && (
-          <p style={{ marginTop: 20, fontSize: 12, color: isFailed ? '#B91C1C' : '#64748B', textAlign: 'center', maxWidth: 260 }}>
-            {retryLabel}
-          </p>
-        )}
-
-        {/* manual retry button — shown only after all attempts are exhausted */}
-        {isFailed && (
-          <button
-            onClick={() => setRetryKey(k => k + 1)}
-            style={{ marginTop: 16, padding: '8px 20px', borderRadius: 6, border: '1px solid #BFDBFE', background: '#FFFFFF', color: '#2563EB', fontSize: 13, cursor: 'pointer', transition: 'background 0.2s', fontWeight: 600 }}
-            onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
-            onMouseLeave={e => (e.currentTarget.style.background = '#FFFFFF')}
-          >
-            Retry connection
-          </button>
-        )}
-      </div>
-    );
-  }
+  // UX improvement: never fully block the app shell behind startup.
+  // Render header + main content + chat immediately.
+  // Show a friendly top status banner only while connecting on first load.
+  const showBlockingLoader = !isReady && attempt === 0 && !failed;
+  const isConnecting = !isReady && !failed;
+  const showConnectionBanner = !isReady && (failed || attempt > 0);
 
   const closeNav = () => setMobileNavOpen(false);
 
   // responsive layout styles handled via CSS grid in index.css
   return (
     <div className="app-container">
+      <style>{`@media (max-width:959px){.chat-toggle-btn{display:none!important}}`}</style>
       <header className="app-header" style={{ position: 'relative' }}>
         <div className="header-inner">
           <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -315,6 +253,16 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           >
             <HamburgerIcon open={mobileNavOpen} />
           </button>
+
+          {/* Desktop chat toggle for focus / more workspace space (visible >=960px) */}
+          <button
+            onClick={() => setChatOpen(o => !o)}
+            title={chatOpen ? 'Hide chat sidebar' : 'Show chat sidebar'}
+            style={{ fontSize: 12, padding: '4px 10px', border: '1px solid #BFDBFE', borderRadius: 6, background: 'white', cursor: 'pointer', marginLeft: 6, display: 'inline-flex', alignItems: 'center' }}
+            className="chat-toggle-btn"
+          >
+            {chatOpen ? '⤫ Chat' : 'Chat ▸'}
+          </button>
         </div>
 
         {/* Mobile/tablet drawer */}
@@ -335,11 +283,43 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         )}
       </header>
 
+      {/* Non-blocking connection status (top banner while connecting or on failure).
+          The rest of the app (nav, pages, persistent chat) is always usable. */}
+      {(showConnectionBanner || isConnecting) && (
+        <div style={{
+          background: failed ? '#FEF2F2' : '#EFF6FF',
+          borderBottom: `1px solid ${failed ? '#FECACA' : '#BFDBFE'}`,
+          padding: '6px 16px',
+          fontSize: 12,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          color: failed ? '#991B1B' : '#1E40AF'
+        }}>
+          <span>
+            {failed ? '⚠️ Cannot reach backend' : 'Connecting to backend…'}
+            {countdown !== null && !failed ? ` (retry in ${countdown}s)` : ''}
+            {attempt > 0 ? ` • attempt ${attempt + 1}` : ''}
+          </span>
+          {failed && (
+            <button
+              onClick={() => setRetryKey(k => k + 1)}
+              style={{ fontSize: 11, padding: '2px 10px', border: '1px solid #FECACA', background: 'white', borderRadius: 4, cursor: 'pointer', color: '#991B1B' }}
+            >
+              Retry
+            </button>
+          )}
+          <span style={{ marginLeft: 'auto', opacity: 0.7 }}>Chat &amp; pages load independently</span>
+        </div>
+      )}
+
       <main className="app-main">{children}</main>
 
-      <aside className="app-chat" role="complementary" aria-label="AI Concierge chat">
-        <ChatContainer />
-      </aside>
+      {chatOpen && (
+        <aside className="app-chat" role="complementary" aria-label="AI Concierge chat">
+          <ChatContainer />
+        </aside>
+      )}
 
       {/* global error banner — position:fixed, bottom of viewport */}
       <ErrorBanner />

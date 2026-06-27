@@ -66,7 +66,7 @@ class OpenAIIntegration(BaseIntegration):
 
         # capture gemini credentials for fallback
         gemini_key = os.getenv("GEMINI_API_KEY")
-        gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
         if not keys and not gemini_key:
             return {"integration": self.name, "action": action, "status": "unconfigured",
@@ -170,18 +170,23 @@ class OpenAIIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "error",
                     "message": "Gemini fallback only supports chat."}
         messages = prompt_or_payload.get("messages") or [{"role": "user", "content": str(prompt_or_payload.get("prompt", ""))}]
-        # construct text prompt concatenating messages
         text = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
-        url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
-        headers = {"Authorization": f"Bearer {key}"}
-        payload = {"prompt": {"text": text}, "temperature": 0.7}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {"temperature": 0.7}
+        }
         import httpx
         async with httpx.AsyncClient(timeout=None) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+            resp = await client.post(url, json=payload)
             resp.raise_for_status()
             data = resp.json()
         candidates = data.get("candidates") or []
-        content = candidates[0].get("output", "") if candidates else ""
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts") or []
+            content = parts[0].get("text", "") if parts else ""
+        else:
+            content = ""
         return {"integration": self.name, "action": action, "status": "ok",
                 "content": content, "model": model}
 

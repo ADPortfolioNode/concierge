@@ -1,151 +1,46 @@
-<<<<<<< HEAD
-# Git
+﻿# Git
 .git
 .gitignore
 .dockerignore
 .github/
 .gitattributes
 
-# IDE and OS specific
+# IDE/OS
 .idea/
 .vscode/
-*.DS_Store
+*.swp
+.DS_Store
 
-# Documentation
-README.md
-RELEASE.md
-docs/
-
-# Development scripts, tests, and temp files
-start.sh
-scripts/
-temp_bash_test*.sh
-
-# Python cache and virtual environments
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.venv/
-venv/
-env/
-pip-cache/
-*.egg-info/
-
-# Node.js dependencies (these should be installed inside the container)
+# Node / pnpm
 node_modules/
-frontend/node_modules/
+.pnpm-store/
 
-# Build artifacts
-dist/
-build/
-concierge-dist.zip
-
-# Logs
-logs/
-start.log
-ngrok.log
-playwright_backend.log
-
-# Local environment configuration
-.env
-.env.*
-!.env.example
-frontend/.env
-frontend/.env.local
-
-# Data & temporary directories
-volumes/
-chroma/
-chroma_db/
-qdrant_data/
-.vercel_tmp_env/
-build_packages/
-vercel.json
-.vercel/
-
-# Test outputs
-tests/
-async_test*.py
-capability_harness.py
-htmlcov/
-.coverage
-.pytest_cache/
-=======
-# ── Version control ───────────────────────────────────────────────────────────
-.git/
-.gitignore
-.gitattributes
-
-# ── Docker meta-files (not needed inside the image) ──────────────────────────
-docker-bake.hcl
-docker-compose*.yml
-Makefile
-.env.example
-
-# ── Node / pnpm ───────────────────────────────────────────────────────────────
-node_modules/
-**/node_modules/
-# Built artefacts are produced inside Docker — never copy local builds in
-artifacts/*/dist/
-artifacts/*/build/
-*.tsbuildinfo
-
-# ── Other artifact packages not needed by Docker ─────────────────────────────
-# Only artifacts/concierge (the web frontend) is built in the image.
-# Mobile app, API server, and mockup sandbox are excluded.
-artifacts/concierge-mobile/
-artifacts/api-server/
-artifacts/mockup-sandbox/
-
-# ── Python ────────────────────────────────────────────────────────────────────
+# Python
 __pycache__/
-**/__pycache__/
 *.py[cod]
-*.pyo
-.pythonlibs/
+*.egg-info/
 .venv/
+env/
 venv/
-.pytest_cache/
 
-# ── Replit-specific ───────────────────────────────────────────────────────────
-.replit
-replit.nix
-.replitignore
-.cache/
-.local/
-.config/
-.agents/
+# Logs / test / dev
+*.log
+logs/
+test-results/
+frontend/test-results/
+pytest*.log
 
-# ── Secrets / environment files ───────────────────────────────────────────────
-.env
-.env.*
-!.env.example
-
-# ── Large/sensitive runtime files ─────────────────────────────────────────────
-memory_backup.jsonl
-*.jsonl
-.migration-backup/
+# Runtime data (volumes in prod)
+# NOTE: we exclude generated runtime files, but seed data files must be available
+# for the Dockerfile COPY step. Use negation to keep only the small seed files.
 media/
 data/
-screenshots/
-attached_assets/
+!data/cfg1.json
+!data/projects.jsonl
+chroma_db/
 
-# ── Editor / OS artefacts ─────────────────────────────────────────────────────
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.sublime-workspace
-
-# ── Test artefacts ────────────────────────────────────────────────────────────
-coverage/
-playwright-report/
-test-results/
-htmlcov/
-
-# ── Logs ──────────────────────────────────────────────────────────────────────
-*.log
-npm-debug.log*
-yarn-error.log
->>>>>>> ba3e36e0566fb095502dfcaddb8195433f4c9f1a
+# Dev builds (Docker rebuilds them)
+frontend/node_modules/
+artifacts/**/node_modules/
+frontend/dist/
+artifacts/concierge/dist/

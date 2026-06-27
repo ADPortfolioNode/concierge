@@ -48,6 +48,10 @@ except ImportError:
         except Exception:
             pass
 
+# Silence noisy ChromaDB telemetry errors (harmless version mismatch with posthog)
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
+os.environ.setdefault("CHROMA_TELEMETRY", "false")
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
@@ -285,37 +289,33 @@ async def _lifespan(application: FastAPI):
         SacredTimeline = None
     logger.info(f"Core modules imported in {time.time() - _step_t0:.3f}s.")
 
-    # NEW: Wait for Redis
+    # NEW: Wait for Redis (fast-fail for pure local dev without external Redis)
     update_pbar("Connecting to Redis")
     _redis_ready = False
-    _redis_start_time = time.time() # Use the configurable timeout
-    _redis_timeout = getattr(settings, "redis_init_timeout", 30)
-    while time.time() - _redis_start_time < _redis_timeout:
-        try:
-            r = get_redis()
-            if r is None:
-                set_pbar_status("Redis not configured, skipping.")
-                logger.info("Redis is not configured. Skipping wait.")
-                _redis_ready = True
-                break
-            
-            # Enforce a strict timeout so a hanging socket doesn't trap the thread and event loop
-            is_ready = await asyncio.wait_for(asyncio.to_thread(r.ping), timeout=2.0)
-            if is_ready:
-                set_pbar_status("Redis connection successful.")
-                logger.info("Redis is ready.")
-                _redis_ready = True
-                break
-            await asyncio.sleep(2)
-        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError, asyncio.TimeoutError, ConnectionRefusedError):
-            set_pbar_status("Redis connection failed, retrying...")
-            await asyncio.sleep(2)
-        except Exception:
-            logger.exception("Unexpected error while waiting for Redis")
-            break # Don't get stuck in a loop on unexpected errors
+    _redis_start_time = time.time()
+    _redis_timeout = min(getattr(settings, "redis_init_timeout", 5), 12)
+    # Quick exit if Redis URL not pointing at a real external service
+    redis_url = os.getenv("REDIS_URL", "") or os.getenv("CELERY_BROKER_URL", "")
+    if not redis_url or "localhost" in redis_url or "127.0.0.1" in redis_url:
+        # In local dev without a running redis container we skip fast
+        logger.info("Redis not configured or localhost only — skipping wait for fast local startup.")
+        _redis_ready = True
+    else:
+        while time.time() - _redis_start_time < _redis_timeout:
+            try:
+                r = get_redis()
+                if r is None:
+                    _redis_ready = True
+                    break
+                is_ready = await asyncio.wait_for(asyncio.to_thread(r.ping), timeout=1.5)
+                if is_ready:
+                    _redis_ready = True
+                    break
+                await asyncio.sleep(1)
+            except Exception:
+                await asyncio.sleep(1)
     if not _redis_ready:
-        set_pbar_status("Timed out connecting to Redis.")
-        logger.warning("Timed out waiting for Redis. Continuing, but some features may fail.")
+        logger.warning("Continuing without Redis (some distributed features disabled).")
 
     # NEW: Wait for Vector DB
     # Safely get vector_db, providing a default if the attribute is missing from settings.
@@ -330,12 +330,15 @@ async def _lifespan(application: FastAPI):
         _vector_db_name = "Qdrant"
         _vector_db_url = f"http://{getattr(settings, 'qdrant_host', 'localhost')}:{getattr(settings, 'qdrant_port', 6333)}/readyz"
     
-    _vdb_timeout = getattr(settings, 'vector_db_init_timeout', 30)
-    if _vector_db_url:
+    _vdb_timeout = min(getattr(settings, 'vector_db_init_timeout', 8), 15)
+    chroma_host = getattr(settings, 'chroma_host', 'localhost')
+    q_host = getattr(settings, 'qdrant_host', 'localhost')
+    if _vector_db_url and not (chroma_host in ('localhost','127.0.0.1') or q_host in ('localhost','127.0.0.1')):
         update_pbar(f"Connecting to {_vector_db_name}")
         await _wait_for_url(_vector_db_url, _vector_db_name, timeout=_vdb_timeout)
     else:
-        update_pbar("Vector DB not configured, skipping")
+        logger.info("Vector DB on localhost or not configured — skipping external wait for fast startup.")
+        update_pbar("Vector DB (local/in-memory mode)")
 
     # Initialize Celery app and pass the configurable timeout
     update_pbar("Initializing task engine (Celery)")
@@ -970,14 +973,14 @@ async def list_tasks():
     try:
         from task_tree_store import get_redis
         client = get_redis()
-        task_keys = list(client.scan_iter(match='task_tree:*', count=100))
         if not client:
             logger.warning("Cannot list tasks, Redis is not available.")
             return _api_response([])
+        task_keys = list(client.scan_iter(match='task_tree:*', count=100))
         tasks = []
         for key in await asyncio.to_thread(client.scan_iter, match='task_tree:*', count=100):
             thread_id = key.split(':', 1)[1] if ':' in key else key
-            task_tree = await get_task_tree(thread_id)
+            task_tree = get_task_tree(thread_id)
             if not task_tree: # type: ignore
                 continue
             metadata = task_tree.get('metadata') or {}
@@ -1019,7 +1022,7 @@ async def kill_task(task_id: str):
 @app.get('/api/v1/tasks/{task_id}/status')
 async def task_status(task_id: str):
     try:
-        task_tree = await get_task_tree(task_id)
+        task_tree = get_task_tree(task_id)
     except Exception as exc:
         logger.exception('Failed to fetch task status for %s', task_id)
         resp = _api_response(None, status='error')
@@ -1451,6 +1454,12 @@ async def health_ready():
 async def health_ready_aliased():
     """Alias for /health/ready to support clients that may incorrectly prefix with /api."""
     return await health_ready()
+
+
+@app.get('/api/health')
+async def health_aliased():
+    """Direct /api/health alias for frontend startup checks (maps to /health)."""
+    return await health()
 
 
 @app.get('/health/system')

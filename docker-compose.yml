@@ -1,216 +1,115 @@
-# Self-contained Docker distribution — unzip and run docker compose up --build
+# Concierge AI — Clean Docker Compose (matches current Dockerfile + app.py)
+#
+# Quick start (recommended):
+#   docker compose up --build
+#
+# With background workers (Redis + Celery):
+#   docker compose --profile full up --build
+#
+# The Dockerfile builds the React frontend (pnpm) and bundles it into the
+# Python image. The FastAPI app serves both the API and the SPA on port 8000.
+#
+# Copy .env.example → .env and set at least one LLM key (OPENAI_API_KEY or GEMINI_API_KEY).
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Concierge AI — Docker Compose
-#
-# Profiles
-#   (default)   → api only — Redis not required, tasks run inline
-#   full        → api + redis broker + celery worker
-#
-# Quick start (API + SPA, no Redis):
-#   docker compose up
-#
-# Full stack (API + Redis + Celery worker):
-#   docker compose --profile full up
-#
-# Environment — copy .env.example to .env and fill in secrets:
-#   OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY
-# ─────────────────────────────────────────────────────────────────────────────
-
-x-common-env: &common-env # Combined environment variables
+x-env: &env
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-  VECTOR_DB: ${VECTOR_DB:-chroma}
-  # Other common environment variables from HEAD
-  CHROMA_HOST: ${CHROMA_HOST:-chroma}
-  CHROMA_PORT: ${CHROMA_PORT:-8000}
-  QDRANT_HOST: ${QDRANT_HOST:-qdrant}
-  QDRANT_PORT: ${QDRANT_PORT:-6333}
-  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-  CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0} # Changed to /0 to match main
-  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-  REDIS_HOST: ${REDIS_HOST:-redis}
-  REDIS_PORT: ${REDIS_PORT:-6379}
-  PORT: ${PORT:-8000} # Default to 8000 as in main
-  WORKERS: ${WORKERS:-2}
+  GROK_API_KEY: ${GROK_API_KEY:-}
+  PORT: "8000"
   LOG_LEVEL: ${LOG_LEVEL:-info}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+  CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  # Disable noisy Chroma telemetry (cosmetic only)
+  ANONYMIZED_TELEMETRY: "false"
+  CHROMA_TELEMETRY: "false"
 
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: concierge-ai:latest
+    container_name: concierge_api
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      <<: *env
+      # Allow local dev frontends
+      CORS_ALLOW_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+    volumes:
+      - media_data:/app/media
+      - app_data:/app/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health')"]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    # command overridden only for local source reloads (bind mount in dev)
+    # default CMD in Dockerfile is fine for production-like runs
 
+  # Optional distributed task execution
   redis:
-    profiles: [full] # Added from main
+    profiles: ["full"]
     image: redis:7-alpine
-    container_name: concierge_redis # Renamed from quesarc_redis
+    container_name: concierge_redis
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --save 60 1 --loglevel warning # Updated from main
+    command: redis-server --save 60 1 --loglevel warning
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 5
-
-  api: # Renamed from 'app' to 'api'
-    build:
-      context: .
-      args:
-        INSTALL_FULL_REQUIREMENTS: "1"
-    container_name: concierge_api # Renamed from quesarc_app
-    image: concierge-ai:latest # Updated image name from main
-    ports:
-      - "${HOST_PORT:-8000}:8000" # Use HOST_PORT from main
-    healthcheck:
-      test: ["CMD", "python3", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health')"] # Updated from main
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      # Increased start_period to allow for long startup sequence (VDB/Redis checks, model loading, etc.)
-      start_period: 120s
-    networks:
-      default:
-        aliases:
-          - backend
-    volumes:
-      - .:/app
-      - media_data:/app/media # Added from main
-      - app_data:/app/data # Added from main
-    depends_on:
-      redis:
-        condition: service_healthy # Redis must be healthy before app starts.
-      chroma:
-        # The app service has its own logic to wait for chroma, so we only
-        # need to wait for the container to start, not to be healthy.
-        condition: service_started
-      qdrant:
-        # The app service has its own logic to wait for qdrant, so we only
-        # need to wait for the container to start, not to be healthy.
-        condition: service_started
-    environment:
-      <<: *common-env
-      MEMORY_COMPRESS_THRESHOLD: 999999
-      PORT: 8000 # Explicitly set for the container
-      BACKEND_URL: http://backend:8000 # Ensure internal communication uses the correct port
-      CORS_ALLOW_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000' # Retained from HEAD
-      FORCE_TQDM: "true" # Retained from HEAD
-    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-exclude", "frontend/*", "--reload-exclude", ".*", "--reload-exclude", "logs/*"] # Retained from HEAD
     restart: unless-stopped
 
   worker:
-    profiles: [full] # Added from main
-    image: concierge-ai:latest # Updated image name from main
-    container_name: concierge_worker # Renamed from quesarc_worker
-    working_dir: /app
-    command: > # Updated from main
-      celery -A tasks.main_tasks worker
-        --loglevel=${LOG_LEVEL:-info}
-        --concurrency=${CELERY_CONCURRENCY:-4}
-        --queues=default,timeline
+    profiles: ["full"]
+    image: concierge-ai:latest
+    container_name: concierge_worker
+    command: celery -A tasks.main_tasks worker --loglevel=${LOG_LEVEL:-info} --concurrency=${CELERY_CONCURRENCY:-4} --queues=default,timeline
+    environment:
+      <<: *env
+      PYTHONPATH: /app
     volumes:
-      - .:/app
-      - media_data:/app/media # Added from main
-      - app_data:/app/data # Added from main
+      - media_data:/app/media
+      - app_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
-      api: # Depends on api (formerly app)
-        condition: service_healthy # Worker should only start when app is healthy.
-    environment:
-      # Environment must match the `app` service for agents to work
-      <<: *common-env
-      PYTHONPATH: /app
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
+  # Optional monitoring (only with full profile)
   flower:
-    profiles: [full] # Added from main
-    image: concierge-ai:latest # Updated image name from main
-    container_name: concierge_flower # Renamed from quesarc_flower
-    working_dir: /app
-    # The -A flag points to the Celery app instance. The broker URL is picked
-    # up from the environment variables, resolving the warning from Flower.
+    profiles: ["full"]
+    image: concierge-ai:latest
+    container_name: concierge_flower
     command: ["celery", "-A", "tasks.celery_app", "flower", "--port=5555"]
-    volumes:
-      - .:/app
     environment:
-      # Inherit common environment and set PYTHONPATH to ensure celery can find the app module
-      <<: *common-env
+      <<: *env
       PYTHONPATH: /app
-    depends_on:
-      redis:
-        condition: service_healthy
-      api: # Depends on api (formerly app)
-        condition: service_healthy # Flower should only start when app is healthy.
     ports:
       - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
     restart: unless-stopped
-    # Flower depends on healthy broker to avoid ConnectionRefusedError
-
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: concierge_chroma # Renamed from quesarc_chroma
-    # Expose on 8001 to avoid conflict with the main app on 8000.
-    ports:
-      - "8001:8000"
-    environment:
-      - CHROMA_SERVER_ALLOW_ORIGIN=*
-      # This flag is required to tell Chroma to run in persistent mode.
-      - IS_PERSISTENT=TRUE
-    volumes:
-      # ChromaDB persistent volume locked in — data survives container restarts
-      - chroma_data:/chroma/chroma
-
-  frontend:
-    # containerized development server for React frontend. we mount the project
-    # directory but keep a separate volume for `node_modules` so that
-    # Linux-native packages are installed inside the container rather than reusing
-    # whatever the host built (Windows packages would cause "MODULE_NOT_FOUND"
-    # errors).
-    image: node:18-alpine
-    container_name: quesarc_frontend
-    working_dir: /app
-    ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app:cached
-      - frontend_node_modules:/app/node_modules
-    environment:
-      - IN_DOCKER=true
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5173"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      # Give the frontend a generous start period to account for `npm ci`
-      start_period: 60s
-    # Run `npm ci` for a clean, deterministic install from package-lock.json.
-    # Then, launch the Vite dev server. We pass `--host` to ensure Vite
-    # listens on all network interfaces (0.0.0.0).
-    command: ["sh","-c","npm ci --no-audit --no-fund && npm run dev -- --host"]
-
-  qdrant:
-    # Use the standard minimal image. The healthcheck is removed because the image # Retained from HEAD
-    # does not contain any tools like curl. The 'app' service has its own # Retained from HEAD
-    # internal logic to wait for Qdrant to be ready.
-    image: qdrant/qdrant:v1.9.0
-    container_name: concierge_qdrant # Renamed from quesarc_qdrant
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
 
 volumes:
-  qdrant_data:
+  media_data:
+  app_data:
   redis_data:
-  media_data: # Added from main
-  app_data: # Added from main
-  frontend_node_modules:
-  # Named volume for ChromaDB persistence — prevents "[Errno 30] Read-only
-  # file system" errors that occur when writing to the image layer.
-  chroma_data:
 
-networks:
-  default:
-    name: quesarc_network
+# Note: For live frontend development (Vite HMR) run separately:
+#   pnpm install
+#   pnpm --filter @workspace/concierge dev
+# (it proxies /api to localhost:8000) while running uvicorn or the api container.

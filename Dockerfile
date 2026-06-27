@@ -18,12 +18,50 @@ COPY lib/ lib/
 # Frontend package
 COPY artifacts/concierge/ artifacts/concierge/
 
-# Install — honour the lock file exactly
+# Install — honour the lock file exactly.
+# pnpm 9+ (corepack @latest) enforces build script approval.
+# We explicitly allow all for the builder stage (trusted lockfile + Docker).
+RUN pnpm config set dangerously-allow-all-builds true
 RUN pnpm install --frozen-lockfile
 
+# The pnpm-workspace.yaml aggressively disables all platform-specific
+# @rollup/rollup-*, lightningcss-*, and @tailwindcss/oxide-* packages
+# (to keep the Windows dev experience clean). Inside Alpine (musl) we need
+# the x64-musl bindings for Vite/Rollup + Tailwind/LightningCSS + Oxide
+# production build.
+# Add at root (so all workspace packages can resolve the native binding via pnpm's store).
+# Use -w (--workspace-root) to explicitly allow adding to root in a workspace.
+RUN pnpm --filter @workspace/concierge add -D \
+  @rollup/rollup-linux-x64-musl@4.59.0 \
+  lightningcss-linux-x64-musl@1.31.1 \
+  @tailwindcss/oxide-linux-x64-musl@4.2.1
+
+# Re-install the workspace package (non-frozen) so the added native bindings are properly linked for the filter
+RUN pnpm install --filter @workspace/concierge --no-frozen-lockfile
+
+# Patch the installed native packages' optionalDependencies (they were stripped by workspace overrides).
+# This fixes "Cannot find native binding" for oxide/rollup/lightningcss in Alpine.
+RUN node -e '
+const fs = require("fs");
+const path = require("path");
+function patch(parent, binding, ver) {
+  const p = path.join("node_modules", parent, "package.json");
+  if (fs.existsSync(p)) {
+    const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
+    pkg.optionalDependencies = pkg.optionalDependencies || {};
+    pkg.optionalDependencies[binding] = ver;
+    fs.writeFileSync(p, JSON.stringify(pkg, null, 2));
+    console.log("Patched", parent);
+  }
+}
+patch("@tailwindcss/oxide", "@tailwindcss/oxide-linux-x64-musl", "4.2.1");
+patch("lightningcss", "lightningcss-linux-x64-musl", "1.31.1");
+patch("rollup", "@rollup/rollup-linux-x64-musl", "4.59.0");
+'
+
 # Production build (BASE_PATH=/ → served at root by FastAPI)
-RUN BASE_PATH=/ NODE_ENV=production \
-    pnpm --filter @workspace/concierge run build
+# Wrap to print the actual error on failure (Docker build often truncates)
+RUN BASE_PATH=/ NODE_ENV=production sh -c 'pnpm --filter @workspace/concierge run build || (echo "=== VITE BUILD FAILED (last 100 lines) ===" && pnpm --filter @workspace/concierge run build 2>&1 | tail -100 ; exit 1)'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,6 +87,7 @@ RUN pip install --no-cache-dir -r requirements.full.txt
 
 # ── Python source ────────────────────────────────────────────────────────────
 COPY app.py main.py task_tree_store.py task_agent.py ./
+COPY VERSION ./
 
 COPY agents/        agents/
 COPY api/           api/

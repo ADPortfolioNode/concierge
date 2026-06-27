@@ -49,7 +49,7 @@ Prereqs:
     rule-based output if all keys are exhausted.
   • If you have a `GEMINI_API_KEY` defined, the system will use OpenAI keys
     first; once those are exhausted it will make a call to Google Gemini
-    (model specified by `GEMINI_MODEL`, default `text-bison-001`) before
+    (model specified by `GEMINI_MODEL`, default `gemini-1.5-flash`) before
     resorting to the rule-based stub.  This allows you to leverage both
     providers transparently.
 
@@ -208,20 +208,59 @@ Over time `start.sh` has been hardened; it now:
 These improvements make the helper robust enough for daily development and
 CI usage.
 
-## Build & Docker
+## Build & Docker (Production)
 
-The repository includes a `Dockerfile` and `docker-compose.yml` to
-spin up supporting services (e.g. a vector database). You can use
-`start.sh` or manually invoke `docker-compose`:
+For production use Docker with the full profile for best results (Redis + Celery for reliable task orchestration and timeline):
 
 ```bash
-# start containers (with prior down to avoid port conflicts)
-docker-compose down || true
-docker-compose up -d
+# Full production-like stack (recommended for Planner / ResearchAgent / timeline)
+docker compose --profile full up --build -d
+
+# API + SPA only (tasks run inline, less features)
+docker compose up --build -d
 ```
 
-`start.sh` simplifies this with additional options such as
-`--clear` and `--build` as shown above.
+See Makefile and start.sh for helpers. The Dockerfile builds the React frontend and bundles the SPA.
+
+### Windows + Docker Desktop (required to run the command you are using)
+
+The exact error:
+
+```
+unable to get image 'concierge-ai:latest': ... open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+```
+
+means the Docker Desktop engine (the Linux VM / WSL2 backend) is **not running**.
+
+Steps:
+1. Launch **Docker Desktop** (from Start menu or tray).
+2. Wait until the whale icon is happy and the dashboard says the engine is running (no red banner).
+3. In PowerShell confirm: `docker ps` (should not error).
+4. Then run exactly:
+
+   ```powershell
+   docker compose --profile full up --build -d
+   ```
+
+   or (from Git Bash / WSL if you prefer the helper):
+
+   ```bash
+   ./start.sh --full
+   ```
+
+After the stack is healthy:
+- UI: http://localhost:8000
+- Health: `curl http://localhost:8000/_health`
+- Tasks / Flower (if full): http://localhost:5555
+- Stop: `docker compose --profile full down`
+
+**Note on .env:** If you copied `.env.example`, edit or remove the `REDIS_ENABLED=false` lines at the bottom before using `--profile full`, otherwise the API may avoid the worker.
+
+**LLM keys:** The demo keys in the example have low quotas. Real paid keys (with usage room) are required for planner, research, image, and other non-trivial paths.
+
+**Important for LLM fallbacks:** Set a current `GEMINI_MODEL=gemini-1.5-flash` (or pro) and use paid/ sufficient quota keys. Multiple keys via OPENAI_API_KEYS=comma,separated for rotation on 429.
+
+Bare `python -m uvicorn` is for local dev only and is less stable without Redis.
 
 ## Memory & Recall
 

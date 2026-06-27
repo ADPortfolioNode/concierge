@@ -1,0 +1,172 @@
+﻿node.exe : npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of 
+npm.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...version of npm.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Scope: all 10 workspace projects
+? Verifying lockfile against supply-chain policies (1094 entries)...
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +1112
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 1112, reused 0, downloaded 0, added 0
+Progress: resolved 1112, reused 0, downloaded 1, added 0
+Progress: resolved 1112, reused 0, downloaded 9, added 0
+Progress: resolved 1112, reused 0, downloaded 20, added 0
+Progress: resolved 1112, reused 0, downloaded 38, added 0
+Progress: resolved 1112, reused 0, downloaded 49, added 0
+Progress: resolved 1112, reused 0, downloaded 56, added 0
+Progress: resolved 1112, reused 0, downloaded 67, added 0
+Progress: resolved 1112, reused 0, downloaded 72, added 3
+Progress: resolved 1112, reused 0, downloaded 78, added 4
+Progress: resolved 1112, reused 0, downloaded 82, added 4
+Progress: resolved 1112, reused 0, downloaded 85, added 4
+Progress: resolved 1112, reused 0, downloaded 90, added 4
+Progress: resolved 1112, reused 0, downloaded 97, added 4
+Progress: resolved 1112, reused 0, downloaded 108, added 4
+Progress: resolved 1112, reused 0, downloaded 119, added 4
+Progress: resolved 1112, reused 0, downloaded 128, added 4
+[WARN] Request took 10292ms: https://registry.npmjs.org/@tailwindcss%2Foxide
+Progress: resolved 1112, reused 0, downloaded 130, added 4
+Progress: resolved 1112, reused 0, downloaded 135, added 8
+[WARN] Request took 13777ms: https://registry.npmjs.org/@react-native%2Fbabel-preset
+Progress: resolved 1112, reused 0, downloaded 139, added 8
+[WARN] Request took 12325ms: https://registry.npmjs.org/@types%2Fnode
+Progress: resolved 1112, reused 0, downloaded 142, added 8
+[WARN] Request took 10601ms: https://registry.npmjs.org/@react-native%2Fbabel-plugin-codegen
+[WARN] Request took 10505ms: https://registry.npmjs.org/@react-native%2Fvirtualized-lists
+[WARN] Request took 11439ms: https://registry.npmjs.org/@expo%2Fcli
+[WARN] Request took 10760ms: https://registry.npmjs.org/@react-native%2Fdev-middleware
+[WARN] Request took 10901ms: https://registry.npmjs.org/@react-native%2Fcommunity-cli-plugin
+[WARN] Request took 11833ms: https://registry.npmjs.org/electron-to-chromium
+Progress: resolved 1112, reused 0, downloaded 143, added 8
+[WARN] Request took 20499ms: https://registry.npmjs.org/@playwright%2Ftest
+[WARN] Request took 11441ms: https://registry.npmjs.org/@react-native%2Fcodegen
+Progress: resolved 1112, reused 0, downloaded 150, added 8
+[WARN] Request took 11783ms: https://registry.npmjs.org/framer-motion
+Progress: resolved 1112, reused 0, downloaded 164, added 8
+Progress: resolved 1112, reused 0, downloaded 200, added 11
+Progress: resolved 1112, reused 0, downloaded 219, added 12
+Progress: resolved 1112, reused 0, downloaded 240, added 12
+Progress: resolved 1112, reused 0, downloaded 255, added 12
+Progress: resolved 1112, reused 0, downloaded 263, added 15
+[WARN] Request took 10697ms: https://registry.npmjs.org/playwright
+[WARN] Request took 11084ms: https://registry.npmjs.org/playwright-core
+Progress: resolved 1112, reused 0, downloaded 269, added 16
+Progress: resolved 1112, reused 0, downloaded 271, added 16
+Γ£ô Lockfile passes supply-chain policies (1094 entries in 38.3s)
+Progress: resolved 1112, reused 0, downloaded 278, added 16
+Progress: resolved 1112, reused 0, downloaded 306, added 16
+Progress: resolved 1112, reused 0, downloaded 309, added 16
+Progress: resolved 1112, reused 0, downloaded 312, added 16
+Progress: resolved 1112, reused 0, downloaded 313, added 18
+Progress: resolved 1112, reused 0, downloaded 314, added 18
+Progress: resolved 1112, reused 0, downloaded 316, added 20
+Progress: resolved 1112, reused 0, downloaded 326, added 20
+Progress: resolved 1112, reused 0, downloaded 328, added 20
+Progress: resolved 1112, reused 0, downloaded 329, added 20
+Progress: resolved 1112, reused 0, downloaded 330, added 20
+Progress: resolved 1112, reused 0, downloaded 331, added 20
+Progress: resolved 1112, reused 0, downloaded 332, added 20
+Progress: resolved 1112, reused 0, downloaded 336, added 20
+Progress: resolved 1112, reused 0, downloaded 337, added 20
+Progress: resolved 1112, reused 0, downloaded 338, added 20
+Progress: resolved 1112, reused 0, downloaded 340, added 20
+Progress: resolved 1112, reused 0, downloaded 341, added 20
+Progress: resolved 1112, reused 0, downloaded 342, added 20
+Progress: resolved 1112, reused 0, downloaded 353, added 20
+Progress: resolved 1112, reused 0, downloaded 354, added 20
+Progress: resolved 1112, reused 0, downloaded 355, added 20
+Progress: resolved 1112, reused 0, downloaded 356, added 20
+Progress: resolved 1112, reused 0, downloaded 370, added 20
+Progress: resolved 1112, reused 0, downloaded 371, added 20
+Progress: resolved 1112, reused 0, downloaded 373, added 20
+Progress: resolved 1112, reused 0, downloaded 377, added 24
+Progress: resolved 1112, reused 0, downloaded 388, added 24
+Progress: resolved 1112, reused 0, downloaded 392, added 24
+Progress: resolved 1112, reused 0, downloaded 417, added 24
+Progress: resolved 1112, reused 0, downloaded 427, added 24
+Progress: resolved 1112, reused 0, downloaded 428, added 24
+Progress: resolved 1112, reused 0, downloaded 429, added 24
+Progress: resolved 1112, reused 0, downloaded 436, added 26
+Progress: resolved 1112, reused 0, downloaded 462, added 28
+Progress: resolved 1112, reused 0, downloaded 473, added 28
+Progress: resolved 1112, reused 0, downloaded 509, added 32
+Progress: resolved 1112, reused 0, downloaded 553, added 34
+Progress: resolved 1112, reused 0, downloaded 558, added 36
+Progress: resolved 1112, reused 0, downloaded 559, added 36
+Progress: resolved 1112, reused 0, downloaded 560, added 36
+Progress: resolved 1112, reused 0, downloaded 561, added 36
+Progress: resolved 1112, reused 0, downloaded 562, added 36
+Progress: resolved 1112, reused 0, downloaded 564, added 36
+Progress: resolved 1112, reused 0, downloaded 566, added 36
+Progress: resolved 1112, reused 0, downloaded 567, added 36
+Progress: resolved 1112, reused 0, downloaded 572, added 36
+Progress: resolved 1112, reused 0, downloaded 604, added 36
+Progress: resolved 1112, reused 0, downloaded 630, added 40
+Progress: resolved 1112, reused 0, downloaded 652, added 40
+Progress: resolved 1112, reused 0, downloaded 659, added 40
+Progress: resolved 1112, reused 0, downloaded 663, added 40
+Progress: resolved 1112, reused 0, downloaded 677, added 44
+Progress: resolved 1112, reused 0, downloaded 678, added 44
+Progress: resolved 1112, reused 0, downloaded 679, added 44
+Progress: resolved 1112, reused 0, downloaded 698, added 44
+Progress: resolved 1112, reused 0, downloaded 746, added 48
+Progress: resolved 1112, reused 0, downloaded 759, added 48
+Progress: resolved 1112, reused 0, downloaded 760, added 48
+Progress: resolved 1112, reused 0, downloaded 774, added 48
+Progress: resolved 1112, reused 0, downloaded 781, added 48
+Progress: resolved 1112, reused 0, downloaded 784, added 48
+Progress: resolved 1112, reused 0, downloaded 784, added 49
+Progress: resolved 1112, reused 0, downloaded 785, added 49
+Progress: resolved 1112, reused 0, downloaded 787, added 49
+Progress: resolved 1112, reused 0, downloaded 788, added 49
+Progress: resolved 1112, reused 0, downloaded 788, added 51
+Progress: resolved 1112, reused 0, downloaded 789, added 51
+Progress: resolved 1112, reused 0, downloaded 789, added 52
+Progress: resolved 1112, reused 0, downloaded 805, added 52
+Progress: resolved 1112, reused 0, downloaded 813, added 52
+Progress: resolved 1112, reused 0, downloaded 814, added 52
+Progress: resolved 1112, reused 0, downloaded 821, added 52
+Progress: resolved 1112, reused 0, downloaded 832, added 52
+Progress: resolved 1112, reused 0, downloaded 838, added 52
+Progress: resolved 1112, reused 0, downloaded 844, added 52
+Progress: resolved 1112, reused 0, downloaded 860, added 55
+Progress: resolved 1112, reused 0, downloaded 894, added 56
+Progress: resolved 1112, reused 0, downloaded 895, added 56
+Progress: resolved 1112, reused 0, downloaded 896, added 56
+Progress: resolved 1112, reused 0, downloaded 897, added 56
+Progress: resolved 1112, reused 0, downloaded 911, added 57
+Progress: resolved 1112, reused 0, downloaded 915, added 58
+Progress: resolved 1112, reused 0, downloaded 917, added 58
+Progress: resolved 1112, reused 0, downloaded 918, added 59
+Progress: resolved 1112, reused 0, downloaded 934, added 59
+Progress: resolved 1112, reused 0, downloaded 939, added 60
+Progress: resolved 1112, reused 0, downloaded 943, added 60
+Progress: resolved 1112, reused 0, downloaded 944, added 60
+Progress: resolved 1112, reused 0, downloaded 948, added 60
+Progress: resolved 1112, reused 0, downloaded 951, added 60
+Progress: resolved 1112, reused 0, downloaded 952, added 60
+Progress: resolved 1112, reused 0, downloaded 957, added 60
+Progress: resolved 1112, reused 0, downloaded 964, added 60
+Progress: resolved 1112, reused 0, downloaded 965, added 60
+Progress: resolved 1112, reused 0, downloaded 982, added 62
+Progress: resolved 1112, reused 0, downloaded 988, added 63
+Progress: resolved 1112, reused 0, downloaded 996, added 63
+Progress: resolved 1112, reused 0, downloaded 1000, added 64
+Progress: resolved 1112, reused 0, downloaded 1001, added 64
+Progress: resolved 1112, reused 0, downloaded 1025, added 64
+node.exe : npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of 
+npm.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (npm warn Unknow...version of npm.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm.
+Scope: all 10 workspace projects

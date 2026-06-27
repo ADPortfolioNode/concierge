@@ -257,10 +257,10 @@ main {
   min-height: 0;
 }
 
-/* Desktop: 2-col layout — chat (fluid) | content */
+/* Desktop: 2-col layout — content | chat (assistant sidebar on right) */
 @media (min-width: 960px) {
   .app-container {
-    grid-template-columns: clamp(260px, 26vw, 420px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) clamp(260px, 26vw, 420px);
     grid-template-rows: auto minmax(0, 1fr);
   }
   .app-header {
@@ -271,13 +271,14 @@ main {
     display: none;
   }
   .app-chat {
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 2;
-    border-right: 1px solid #DBEAFE;
+    border-left: 1px solid #DBEAFE;
+    border-right: none;
     border-top: none;
   }
   .app-main {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 2;
   }
 }

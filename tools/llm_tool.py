@@ -525,10 +525,10 @@ class LLMTool:
 
         # Gemini (Google) integration
         self._gemini_key = os.getenv("GEMINI_API_KEY")
-        # optional model name for Gemini-style calls
-        self._gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
+        # Modern default: gemini-1.5-flash (fast, good free tier). Override with GEMINI_MODEL or GEMINI_MODELS
+        self._gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         # allow a prioritized comma-separated list of Gemini models via GEMINI_MODELS
-        # e.g. GEMINI_MODELS="text-bison-001,chat-bison-001"
+        # e.g. GEMINI_MODELS="gemini-1.5-flash,gemini-1.5-pro"
         raw_gm = os.getenv("GEMINI_MODELS", "").strip()
         if raw_gm:
             self._gemini_models = [m.strip() for m in raw_gm.split(",") if m.strip()]
@@ -714,32 +714,31 @@ class LLMTool:
     async def _call_gemini(self, prompt: str, context: Optional[str]) -> str:
         """Call the Gemini API and return a full string response.
 
-        This is a very lightweight implementation; we don't attempt streaming.  The
-        method mirrors the semantics of :meth:`astream` by returning a plain text
-        string that will later be chunked by the caller.
+        Updated for current Gemini generateContent API (v1beta).
         """
         assert self._gemini_key, "Gemini API key must be configured"
-        # try models in priority order
         client = _get_client()
-        payload = {"prompt": {"text": prompt}, "temperature": 0.7}
         last_exc: Optional[Exception] = None
         for model in self._gemini_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
-            headers = {"Authorization": f"Bearer {self._gemini_key}"}
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self._gemini_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.7}
+            }
             try:
-                resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
+                resp = await client.post(url, json=payload, timeout=self.timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 candidates = data.get("candidates") or []
-                if not candidates:
-                    raise RuntimeError("no output from Gemini for model %s" % model)
-                return candidates[0].get("output", "")
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts") or []
+                    if parts:
+                        return parts[0].get("text", "")
+                raise RuntimeError(f"no output from Gemini for model {model}")
             except Exception as exc:
                 logger.warning("Gemini model %s failed: %s", model, exc)
                 last_exc = exc
-                # try next model in list
                 continue
-        # if all models failed, raise the last exception
         if last_exc:
             raise last_exc
         raise RuntimeError("Gemini call failed: no models configured")

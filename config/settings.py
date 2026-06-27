@@ -34,8 +34,12 @@ class Settings:
     autonomous_task_priority: float = float(os.getenv("AUTONOMOUS_TASK_PRIORITY", "2.0"))
     contradiction_risk_threshold: float = float(os.getenv("CONTRADICTION_RISK_THRESHOLD", "0.5"))
     low_confidence_threshold: float = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.3"))
-    vector_db_init_timeout: int = int(os.getenv("VECTOR_DB_INIT_TIMEOUT", "200"))
-    redis_init_timeout: int = int(os.getenv("REDIS_INIT_TIMEOUT", "60"))
+    vector_db_init_timeout: int = int(os.getenv("VECTOR_DB_INIT_TIMEOUT", "8"))
+    redis_init_timeout: int = int(os.getenv("REDIS_INIT_TIMEOUT", "5"))
+    # Resilience / production config flags
+    redis_enabled: bool = os.getenv("REDIS_ENABLED", "true").lower() != "false"
+    celery_enabled: bool = os.getenv("CELERY_ENABLED", "true").lower() != "false"
+    use_inline_tasks: bool = os.getenv("USE_INLINE_TASKS", "false").lower() == "true"
     # how many user requests may be processed concurrently by the timeline
     max_concurrent_requests: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "2"))
     # media storage configuration

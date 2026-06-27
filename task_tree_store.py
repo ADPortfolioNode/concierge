@@ -13,7 +13,11 @@ _redis_client: Optional[redis.Redis] = None
 
 
 def get_redis() -> Optional[redis.Redis]:
-    """Get a Redis client instance, reusing a single connection."""
+    """Get a Redis client instance, reusing a single connection. Respects REDIS_ENABLED / USE_INLINE_TASKS."""
+    from config.settings import get_settings
+    s = get_settings()
+    if not getattr(s, 'redis_enabled', True) or getattr(s, 'use_inline_tasks', False):
+        return None
     global _redis_client
     if _redis_client is None:
         redis_url = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0")

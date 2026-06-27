@@ -43,14 +43,16 @@ class GeminiIntegration(BaseIntegration):
         p = payload or {}
         messages = p.get("messages") or [{"role": "user", "content": str(p.get("prompt", ""))}]
         text = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
-        model = p.get("model", "text-bison-001")
-        url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
-        headers = {"Authorization": f"Bearer {api_key}"}
-        body = {"prompt": {"text": text}, "temperature": 0.7}
+        model = p.get("model", "gemini-1.5-flash")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        body = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {"temperature": 0.7}
+        }
 
         async def _do_call():
             async with httpx.AsyncClient(timeout=None) as client:
-                resp = await client.post(url, json=body, headers=headers)
+                resp = await client.post(url, json=body)  # key is in query param
                 resp.raise_for_status()
                 return resp.json()
 
