@@ -258,6 +258,16 @@ After the stack is healthy:
 
 **LLM keys:** The demo keys in the example have low quotas. Real paid keys (with usage room) are required for planner, research, image, and other non-trivial paths.
 
+### Git pushes after secret history cleanup
+If you ever see "push cannot contain secrets", refspec errors from pasting multiple commands on one line, or need to purge old keys from history, see the dedicated guide:
+
+```bash
+# Read the exact one-command-at-a-time steps
+cat docs/git-history-cleanup.md
+```
+
+It covers `git filter-repo`, creating a safe `replacements.txt`, `--force-with-lease`, GitHub bypass, and key rotation. The project .gitignore/.dockerignore + settings refactor already protect against future leaks in new commits.
+
 **Important for LLM fallbacks:** Set a current `GEMINI_MODEL=gemini-1.5-flash` (or pro) and use paid/ sufficient quota keys. Multiple keys via OPENAI_API_KEYS=comma,separated for rotation on 429.
 
 Bare `python -m uvicorn` is for local dev only and is less stable without Redis.
