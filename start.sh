@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -282,16 +281,3 @@ if [[ "$RUN_TEST" == true ]]; then
 fi
 
 echo "==> Done."
-=======
-#!/bin/sh
-set -e
-
-exec gunicorn app:app \
-  --worker-class uvicorn.workers.UvicornWorker \
-  --workers "${WORKERS:-2}" \
-  --bind "0.0.0.0:${PORT:-8000}" \
-  --timeout 120 \
-  --graceful-timeout 30 \
-  --access-logfile - \
-  --log-level "${LOG_LEVEL:-info}"
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
