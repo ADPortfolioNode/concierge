@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """FastAPI application exposing the async SacredTimeline endpoint.
 
 This app creates the necessary async components on startup and exposes a
@@ -1640,13 +1639,6 @@ if __name__ == "__main__":
         os.environ["FRONTEND_URL"] = url
         sys.argv.pop(idx)
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
-=======
-"""FastAPI application exposing the async SacredTimeline endpoint.
-
-This app creates the necessary async components on startup and exposes a
-single POST endpoint `/ask` which accepts JSON payload `{"input": "..."}`.
-"""
-from __future__ import annotations
 
 import logging
 import asyncio
@@ -3306,4 +3298,3 @@ if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run("app:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5

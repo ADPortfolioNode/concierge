@@ -21,10 +21,7 @@ def _resolve_path(env_name: str, default: str) -> Path:
 class Settings:
     """Runtime settings for Concierge."""
     max_concurrent_agents: int = int(os.getenv("MAX_CONCURRENT_AGENTS", "3"))
-<<<<<<< HEAD
     vector_db: str = os.getenv("VECTOR_DB", "chroma")
-=======
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     memory_collection: str = os.getenv("MEMORY_COLLECTION", "quesarc_memory")
     # priority score weights
     relevance_weight: float = float(os.getenv("RELEVANCE_WEIGHT", "1.0"))
@@ -37,15 +34,12 @@ class Settings:
     autonomous_task_priority: float = float(os.getenv("AUTONOMOUS_TASK_PRIORITY", "2.0"))
     contradiction_risk_threshold: float = float(os.getenv("CONTRADICTION_RISK_THRESHOLD", "0.5"))
     low_confidence_threshold: float = float(os.getenv("LOW_CONFIDENCE_THRESHOLD", "0.3"))
-<<<<<<< HEAD
     vector_db_init_timeout: int = int(os.getenv("VECTOR_DB_INIT_TIMEOUT", "8"))
     redis_init_timeout: int = int(os.getenv("REDIS_INIT_TIMEOUT", "5"))
     # Resilience / production config flags
     redis_enabled: bool = os.getenv("REDIS_ENABLED", "true").lower() != "false"
     celery_enabled: bool = os.getenv("CELERY_ENABLED", "true").lower() != "false"
     use_inline_tasks: bool = os.getenv("USE_INLINE_TASKS", "false").lower() == "true"
-=======
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     # how many user requests may be processed concurrently by the timeline
     max_concurrent_requests: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "2"))
     # media storage configuration
@@ -55,7 +49,6 @@ class Settings:
     media_url_prefix: str = os.getenv("MEDIA_URL_PREFIX", "/media")
     media_fallback_dir: Path = field(default_factory=lambda: _resolve_path("MEDIA_DIR_FALLBACK", "/tmp/media"))
 
-<<<<<<< HEAD
     # LLM / API keys (loaded from .env or environment — never hard-coded)
     # IMPORTANT: All literal .env key name strings for secrets live ONLY in this file.
     # All other code MUST obtain values via get_settings().xxx (e.g. settings.openai_api_key)
@@ -81,8 +74,6 @@ class Settings:
     openai_default_embed_model: str = os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
     openai_default_moderate_model: str = os.getenv("OPENAI_DEFAULT_MODERATE_MODEL", "") or ""
 
-=======
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     def __post_init__(self) -> None:
         self.media_images_dir = self.media_dir / "images"
 

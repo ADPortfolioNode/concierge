@@ -5,7 +5,6 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
-<<<<<<< HEAD
     "build:frontend": "pnpm --filter @workspace/concierge run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
@@ -14,10 +13,6 @@
     "dev": "concurrently -k -n BACKEND,FRONTEND -c blue,green \"pnpm dev:backend\" \"pnpm dev:frontend\"",
     "start": "pnpm build:frontend && pnpm dev:backend",
     "clean:port": "powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select -Expand OwningProcess -Unique | ForEach { Stop-Process -Id \\$_ -Force -ErrorAction SilentlyContinue }\""
-=======
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
   },
   "private": true,
   "devDependencies": {

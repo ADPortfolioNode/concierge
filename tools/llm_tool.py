@@ -23,11 +23,8 @@ import os
 import re
 from typing import AsyncIterator, Optional
 
-<<<<<<< HEAD
 from config.settings import get_settings
 
-=======
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 # ensure environment variables from .env are available even if the
 # module is imported before the application entrypoint executes
 try:
@@ -374,13 +371,9 @@ async def _stream_text_as_tokens(text: str, delay: float = 0.01) -> AsyncIterato
 def _conversational_reply(user_msg: str) -> str:
     """Return a natural reply for a conversational user message."""
     msg = user_msg.lower().strip()
-<<<<<<< HEAD
     settings = get_settings()
     s = settings
     has_openai = bool(s.openai_api_key or s.openai_api_keys)
-=======
-    has_openai = bool(os.getenv("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEYS"))
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 
     if any(k in msg for k in ("capabilit", "what can you", "what do you do", "help me with", "what are you", "features")):
         if has_openai:
@@ -501,7 +494,6 @@ class LLMTool:
             # dotenv not installed or file missing — fall back to whatever's in os.environ
             pass
 
-<<<<<<< HEAD
         settings = get_settings()
 
         self.max_tokens = settings.llm_max_tokens
@@ -509,32 +501,11 @@ class LLMTool:
         # primary API key plus optional extras for rate‑limit fallback
         # (key name strings live only in config/settings.py)
         self._api_key = settings.openai_api_key
-=======
-        # allow overriding token budget for LLM responses via environment
-        # variable, so users can adjust memory usage without changing code.
-        raw_max_tokens = os.getenv("LLM_MAX_TOKENS", "1024")
-        try:
-            self.max_tokens = int(raw_max_tokens)
-            if self.max_tokens <= 0:
-                raise ValueError("LLM_MAX_TOKENS must be positive")
-        except Exception:
-            self.max_tokens = 1024
-
-        # primary API key plus optional extras for rate‑limit fallback
-        self._api_key = (
-            os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY")
-            or os.getenv("OPENAI_API_KEY")
-        )
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         # allow a comma-separated list of additional keys via OPENAI_API_KEYS
         # e.g. OPENAI_API_KEYS="key2,key3"  (keys are tried in order after the
         # primary key).  This makes it easy to fail over to a second account
         # when the first one returns 429.
-<<<<<<< HEAD
         raw_keys = settings.openai_api_keys
-=======
-        raw_keys = os.getenv("OPENAI_API_KEYS", "")
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         extras = [k.strip() for k in raw_keys.split(",") if k.strip()]
         self._api_keys: list[str] = []
         if self._api_key:
@@ -542,7 +513,6 @@ class LLMTool:
         for k in extras:
             if k not in self._api_keys:
                 self._api_keys.append(k)
-<<<<<<< HEAD
         self._base_url = settings.openai_api_base or "https://api.openai.com/v1"
 
         # Gemini (Google) integration
@@ -552,21 +522,6 @@ class LLMTool:
         # allow a prioritized comma-separated list of Gemini models via GEMINI_MODELS
         # e.g. GEMINI_MODELS="gemini-1.5-flash,gemini-1.5-pro"
         raw_gm = settings.gemini_models.strip()
-=======
-        self._base_url = (
-            os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL")
-            or os.getenv("OPENAI_API_BASE")
-            or "https://api.openai.com/v1"
-        )
-
-        # Gemini (Google) integration
-        self._gemini_key = os.getenv("GEMINI_API_KEY")
-        # optional model name for Gemini-style calls
-        self._gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
-        # allow a prioritized comma-separated list of Gemini models via GEMINI_MODELS
-        # e.g. GEMINI_MODELS="text-bison-001,chat-bison-001"
-        raw_gm = os.getenv("GEMINI_MODELS", "").strip()
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         if raw_gm:
             self._gemini_models = [m.strip() for m in raw_gm.split(",") if m.strip()]
         else:
@@ -577,19 +532,11 @@ class LLMTool:
         # components can still inspect os.environ directly when needed.
         self._env_snapshot = {
             "OPENAI_API_KEY": self._api_key,
-<<<<<<< HEAD
             "OPENAI_API_KEYS": settings.openai_api_keys,
             "OPENAI_API_BASE": self._base_url,
             "GEMINI_API_KEY": self._gemini_key,
             "GEMINI_MODEL": self._gemini_model,
             "GEMINI_MODELS": settings.gemini_models,
-=======
-            "OPENAI_API_KEYS": os.getenv("OPENAI_API_KEYS", ""),
-            "OPENAI_API_BASE": self._base_url,
-            "GEMINI_API_KEY": self._gemini_key,
-            "GEMINI_MODEL": self._gemini_model,
-            "GEMINI_MODELS": os.getenv("GEMINI_MODELS", ""),
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
             "LLM_MAX_TOKENS": str(self.max_tokens),
         }
 
@@ -759,7 +706,6 @@ class LLMTool:
     async def _call_gemini(self, prompt: str, context: Optional[str]) -> str:
         """Call the Gemini API and return a full string response.
 
-<<<<<<< HEAD
         Updated for current Gemini generateContent API (v1beta).
         """
         assert self._gemini_key, "Gemini API key must be configured"
@@ -785,34 +731,6 @@ class LLMTool:
                 logger.warning("Gemini model %s failed: %s", model, exc)
                 last_exc = exc
                 continue
-=======
-        This is a very lightweight implementation; we don't attempt streaming.  The
-        method mirrors the semantics of :meth:`astream` by returning a plain text
-        string that will later be chunked by the caller.
-        """
-        assert self._gemini_key, "Gemini API key must be configured"
-        # try models in priority order
-        client = _get_client()
-        payload = {"prompt": {"text": prompt}, "temperature": 0.7}
-        last_exc: Optional[Exception] = None
-        for model in self._gemini_models:
-            url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
-            headers = {"Authorization": f"Bearer {self._gemini_key}"}
-            try:
-                resp = await client.post(url, json=payload, headers=headers, timeout=self.timeout)
-                resp.raise_for_status()
-                data = resp.json()
-                candidates = data.get("candidates") or []
-                if not candidates:
-                    raise RuntimeError("no output from Gemini for model %s" % model)
-                return candidates[0].get("output", "")
-            except Exception as exc:
-                logger.warning("Gemini model %s failed: %s", model, exc)
-                last_exc = exc
-                # try next model in list
-                continue
-        # if all models failed, raise the last exception
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         if last_exc:
             raise last_exc
         raise RuntimeError("Gemini call failed: no models configured")
@@ -825,11 +743,7 @@ class LLMTool:
         without an async event loop. It will try all configured API keys and
         raise if no key is available or the request fails.
         """
-<<<<<<< HEAD
         model = model or get_settings().openai_default_embed_model
-=======
-        model = model or os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         if not self._api_keys:
             raise RuntimeError("No OpenAI API key configured for embeddings")
 
