@@ -1,7 +1,0 @@
-.vercel
-.env*.local
-node_modules/
-dist/
-.venv/
-*.log
-backend_logs.json
