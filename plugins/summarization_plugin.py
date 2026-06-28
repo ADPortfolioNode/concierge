@@ -8,6 +8,8 @@ returns the top 3 most representative sentences.
 from __future__ import annotations
 
 import math
+
+from config.settings import get_settings
 import re
 from collections import Counter
 from typing import List
@@ -27,8 +29,8 @@ class SummarizationPlugin(BasePlugin):
 
         # Try LLM-based summarization first
         try:
-            import os
-            if os.getenv("OPENAI_API_KEY"):
+            settings = get_settings()
+            if settings.openai_api_key:
                 from tools.llm_tool import LLMTool
                 llm = LLMTool()
                 prompt = (

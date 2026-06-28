@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
+from config.settings import get_settings
 import urllib.parse
 import base64
 import json
@@ -17,7 +17,6 @@ import time
 from pathlib import Path
 from typing import Optional
 import httpx
-from config.settings import get_settings
 
 from plugins.base_plugin import BasePlugin
 
@@ -41,7 +40,8 @@ class ImageGenerationPlugin(BasePlugin):
         if not prompt:
             prompt = "abstract colorful art"
 
-        api_key = os.getenv("OPENAI_API_KEY")
+        settings = get_settings()
+        api_key = settings.openai_api_key
         if api_key:
             return await self._dalle(prompt, api_key)
         return self._placeholder(prompt)
@@ -127,7 +127,8 @@ class ImageGenerationPlugin(BasePlugin):
             # if the error appears to be due to billing or rate limits, and we
             # have a Gemini key, try that before giving up entirely
             msg = str(exc).lower()
-            gemini_key = os.getenv("GEMINI_API_KEY")
+            settings = get_settings()
+            gemini_key = settings.gemini_api_key
             if gemini_key and ("billing" in msg or "rate limit" in msg or "429" in msg):
                 try:
                     logger.info("OpenAI image limit hit, attempting Gemini fallback")

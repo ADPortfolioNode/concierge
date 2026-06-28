@@ -186,13 +186,13 @@ async def update_service_registry(status: str, url: Optional[str] = None):
     except Exception:
         logger.exception("Failed to update service registry in Redis.")
 
-_openai_set = bool(os.getenv("OPENAI_API_KEY"))
-_gemini_set = bool(os.getenv("GEMINI_API_KEY"))
+settings = get_settings()
+_openai_set = bool(settings.openai_api_key)
+_gemini_set = bool(settings.gemini_api_key)
 logger.info(f"OPENAI_API_KEY set: {_openai_set}; GEMINI_API_KEY set: {_gemini_set}")
 if not _jobs_available and _jobs_import_err_msg:
     logger.warning("Distributed jobs layer unavailable: %s", _jobs_import_err_msg)
 
-settings = get_settings()
 SERVER_URL = os.getenv('SERVER_URL', 'http://localhost:8000')
 
 

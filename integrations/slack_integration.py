@@ -8,12 +8,12 @@ Also supports ``webhook_post`` for Incoming Webhook URLs (``SLACK_WEBHOOK_URL``)
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import httpx
 
 from integrations.base_integration import BaseIntegration
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,11 @@ class SlackIntegration(BaseIntegration):
     description = "Team notifications and bot interactions via Slack."
     service = "Slack"
     version = "0.2.0"
-    enabled = bool(os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_WEBHOOK_URL"))
+
+    @property
+    def enabled(self) -> bool:  # type: ignore[override]
+        s = get_settings()
+        return bool(s.slack_bot_token or s.slack_webhook_url)
 
     async def call(self, action: str, payload: Any = None) -> Any:
         """Dispatch to Slack API based on *action*.
@@ -36,8 +40,9 @@ class SlackIntegration(BaseIntegration):
           ``list_channels``     — payload: {"limit": int (opt, default 100)}
           ``get_channel_history``— payload: {"channel": str, "limit": int (opt, default 20)}
         """
-        token = os.getenv("SLACK_BOT_TOKEN")
-        webhook = os.getenv("SLACK_WEBHOOK_URL")
+        s = get_settings()
+        token = s.slack_bot_token
+        webhook = s.slack_webhook_url
         p = payload or {}
 
         if not token and not webhook:
@@ -93,4 +98,5 @@ class SlackIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "error", "message": str(exc)}
 
     async def health_check(self) -> bool:
-        return bool(os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_WEBHOOK_URL"))
+        s = get_settings()
+        return bool(s.slack_bot_token or s.slack_webhook_url)

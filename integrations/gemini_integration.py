@@ -12,13 +12,13 @@ key is absent so callers can degrade gracefully.
 from __future__ import annotations
 
 import logging
-import os
 import asyncio
 from typing import Any
 
 import httpx
 
 from integrations.base_integration import BaseIntegration
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,15 @@ class GeminiIntegration(BaseIntegration):
     description = "Text responses via Google Gemini (Generative Language API)"
     service = "GoogleGemini"
     version = "0.1.0"
-    enabled = bool(os.getenv("GEMINI_API_KEY"))
+
+    @property
+    def enabled(self) -> bool:  # type: ignore[override]
+        settings = get_settings()
+        return bool(settings.gemini_api_key)
 
     async def call(self, action: str, payload: Any = None) -> Any:
-        api_key = os.getenv("GEMINI_API_KEY")
+        settings = get_settings()
+        api_key = settings.gemini_api_key
         if not api_key:
             return {"integration": self.name, "action": action, "status": "unconfigured",
                     "message": "Set GEMINI_API_KEY to enable Gemini integration."}
@@ -78,4 +83,5 @@ class GeminiIntegration(BaseIntegration):
                 "content": content, "model": model}
 
     async def health_check(self) -> bool:
-        return bool(os.getenv("GEMINI_API_KEY"))
+        settings = get_settings()
+        return bool(settings.gemini_api_key)

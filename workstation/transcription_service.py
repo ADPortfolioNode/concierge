@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from config.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +30,7 @@ async def transcribe(path: Path, language: Optional[str] = None) -> str:
     # Stub response so the rest of the pipeline works end-to-end.
     return (
         f"[Transcription stub] File: {path.name}. "
-        "Set WHISPER_ENABLED=1 and OPENAI_API_KEY to enable real transcription."
+        "Set WHISPER_ENABLED=1 and OPENAI_API_KEY (or settings) to enable real transcription."
     )
 
 

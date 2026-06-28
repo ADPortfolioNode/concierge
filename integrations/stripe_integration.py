@@ -8,12 +8,12 @@ Requires ``STRIPE_SECRET_KEY`` to be set.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import httpx
 
 from integrations.base_integration import BaseIntegration
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,10 @@ class StripeIntegration(BaseIntegration):
     description = "Payment processing, subscriptions, and billing via Stripe."
     service = "Stripe"
     version = "0.2.0"
-    enabled = bool(os.getenv("STRIPE_SECRET_KEY"))
+
+    @property
+    def enabled(self) -> bool:  # type: ignore[override]
+        return bool(get_settings().stripe_secret_key)
 
     async def call(self, action: str, payload: Any = None) -> Any:
         """Dispatch to Stripe REST API based on *action*.
@@ -36,7 +39,7 @@ class StripeIntegration(BaseIntegration):
           ``list_customers``        — payload: {"limit": int (opt, default 10)}
           ``create_payment_intent`` — payload: {"amount": int (cents), "currency": str, "customer": str (opt)}
         """
-        secret = os.getenv("STRIPE_SECRET_KEY")
+        secret = get_settings().stripe_secret_key
         if not secret:
             return {"integration": self.name, "action": action, "status": "unconfigured",
                     "message": "Set STRIPE_SECRET_KEY to enable Stripe integration."}
@@ -81,4 +84,4 @@ class StripeIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "error", "message": str(exc)}
 
     async def health_check(self) -> bool:
-        return bool(os.getenv("STRIPE_SECRET_KEY"))
+        return bool(get_settings().stripe_secret_key)
