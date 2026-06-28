@@ -103,9 +103,15 @@ const ACTIVE_SERVER = (() => {
 export const ACTIVE_SERVER_SET = ACTIVE_SERVER;
 
 const SERVER_URLS: Record<string, string> = {
+<<<<<<< HEAD
   // Local dev should target the FastAPI app on 8000.
   local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://127.0.0.1:8000'),
   docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://backend:8000'),
+=======
+  // Local dev should target the FastAPI app on 8001.
+  local: normalizeServerUrl(VITE_API_URL_LOCAL || VITE_API_URL || 'http://127.0.0.1:8001'),
+  docker: normalizeServerUrl(VITE_API_URL_DOCKER || VITE_API_URL || 'http://backend:8001'),
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
   staging: normalizeServerUrl(VITE_API_URL_STAGING || VITE_API_URL || ''),
   production: normalizeServerUrl(VITE_API_URL_PRODUCTION || VITE_API_URL || ''),
   auto: normalizeServerUrl(VITE_API_URL || ''),
@@ -124,7 +130,11 @@ export const ACTIVE_API_BASE: string = (() => {
   if (ACTIVE_SERVER_SET !== 'local') {
     return candidate;
   }
+<<<<<<< HEAD
   return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8000');
+=======
+  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8001');
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 })();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;

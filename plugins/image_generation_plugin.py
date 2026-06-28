@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Optional
 import httpx
+from config.settings import get_settings
 
 from plugins.base_plugin import BasePlugin
 

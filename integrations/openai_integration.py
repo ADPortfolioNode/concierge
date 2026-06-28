@@ -9,11 +9,18 @@ is configured so callers degrade gracefully.
 from __future__ import annotations
 
 import logging
+<<<<<<< HEAD
+=======
+import os
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 import asyncio
 from typing import Any
 
 from integrations.base_integration import BaseIntegration
+<<<<<<< HEAD
 from config.settings import get_settings
+=======
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +28,7 @@ logger = logging.getLogger(__name__)
 def _get_openai_api_key() -> str:
     """Return the best available OpenAI API key.
 
+<<<<<<< HEAD
     Values are centralized in config/settings (key literals only appear in settings.py).
     """
     settings = get_settings()
@@ -33,6 +41,21 @@ def _get_openai_base_url() -> str | None:
     # settings already prefers AI_INTEGRATIONS_ variants
     base = settings.openai_api_base
     return base if base and base != "https://api.openai.com/v1" else None
+=======
+    Prefers Replit AI Integrations key (AI_INTEGRATIONS_OPENAI_API_KEY),
+    falling back to any user-supplied OPENAI_API_KEY.
+    """
+    return (
+        os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or ""
+    )
+
+
+def _get_openai_base_url() -> str | None:
+    """Return the OpenAI-compatible base URL for Replit AI Integrations, if set."""
+    return os.getenv("AI_INTEGRATIONS_OPENAI_BASE_URL") or None
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 
 
 class OpenAIIntegration(BaseIntegration):
@@ -53,21 +76,33 @@ class OpenAIIntegration(BaseIntegration):
           ``embed``    — payload: {"input": str | list[str], "model": str (optional)}
           ``moderate`` — payload: {"input": str}
         """
+<<<<<<< HEAD
         settings = get_settings()
 
+=======
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         # gather API keys for retry-on-rate-limit support
         keys = []
         primary = _get_openai_api_key()
         if primary:
             keys.append(primary)
+<<<<<<< HEAD
         for extra in (settings.openai_api_keys or "").split(","):
+=======
+        for extra in os.getenv("OPENAI_API_KEYS", "").split(","):
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
             extra = extra.strip()
             if extra and extra not in keys:
                 keys.append(extra)
 
         # capture gemini credentials for fallback
+<<<<<<< HEAD
         gemini_key = settings.gemini_api_key
         gemini_model = settings.gemini_model
+=======
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        gemini_model = os.getenv("GEMINI_MODEL", "text-bison-001")
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 
         if not keys and not gemini_key:
             return {"integration": self.name, "action": action, "status": "unconfigured",
@@ -85,10 +120,17 @@ class OpenAIIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "error", "message": str(import_exc)}
 
         last_exc: Exception | None = None
+<<<<<<< HEAD
         # default models from centralized settings (env key strings only in settings.py)
         default_chat = settings.openai_default_chat_model
         default_embed = settings.openai_default_embed_model
         default_moderate = settings.openai_default_moderate_model or None
+=======
+        # default models controlled by environment variables for easy switching
+        default_chat = os.getenv("OPENAI_DEFAULT_CHAT_MODEL", "gpt-4o-mini")
+        default_embed = os.getenv("OPENAI_DEFAULT_EMBED_MODEL", "text-embedding-3-small")
+        default_moderate = os.getenv("OPENAI_DEFAULT_MODERATE_MODEL")
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
 
         base_url = _get_openai_base_url()
 
@@ -163,7 +205,11 @@ class OpenAIIntegration(BaseIntegration):
 
     async def _gemini_chat(self, prompt_or_payload: dict, model: str, action: str) -> dict:
         """Simple Gemini chat helper; only used as fallback in this integration."""
+<<<<<<< HEAD
         key = get_settings().gemini_api_key
+=======
+        key = os.getenv("GEMINI_API_KEY")
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         if not key:
             raise RuntimeError("Gemini key not configured")
         # only chat is currently supported; other actions forward to OpenAI
@@ -171,6 +217,7 @@ class OpenAIIntegration(BaseIntegration):
             return {"integration": self.name, "action": action, "status": "error",
                     "message": "Gemini fallback only supports chat."}
         messages = prompt_or_payload.get("messages") or [{"role": "user", "content": str(prompt_or_payload.get("prompt", ""))}]
+<<<<<<< HEAD
         text = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
         payload = {
@@ -188,9 +235,28 @@ class OpenAIIntegration(BaseIntegration):
             content = parts[0].get("text", "") if parts else ""
         else:
             content = ""
+=======
+        # construct text prompt concatenating messages
+        text = "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+        url = f"https://generativelanguage.googleapis.com/v1beta2/models/{model}:generate"
+        headers = {"Authorization": f"Bearer {key}"}
+        payload = {"prompt": {"text": text}, "temperature": 0.7}
+        import httpx
+        async with httpx.AsyncClient(timeout=None) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+        candidates = data.get("candidates") or []
+        content = candidates[0].get("output", "") if candidates else ""
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
         return {"integration": self.name, "action": action, "status": "ok",
                 "content": content, "model": model}
 
     async def health_check(self) -> bool:
+<<<<<<< HEAD
         # considered healthy if either OpenAI or Gemini key is available (via settings)
         return bool(_get_openai_api_key() or get_settings().gemini_api_key)
+=======
+        # considered healthy if either OpenAI (via Replit AI or direct) or Gemini key is available
+        return bool(_get_openai_api_key() or os.getenv("GEMINI_API_KEY"))
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5

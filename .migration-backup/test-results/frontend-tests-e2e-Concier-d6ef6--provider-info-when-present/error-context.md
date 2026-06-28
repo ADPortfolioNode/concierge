@@ -1,0 +1,203 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - link "Concierge" [ref=e7] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e8]:
+        - link "Home" [ref=e9] [cursor=pointer]:
+          - /url: /
+        - link "Goals" [ref=e10] [cursor=pointer]:
+          - /url: /goals
+        - link "Tasks" [ref=e11] [cursor=pointer]:
+          - /url: /tasks
+        - link "Workspace" [ref=e12] [cursor=pointer]:
+          - /url: /workspace
+        - link "Strategy" [ref=e13] [cursor=pointer]:
+          - /url: /strategy
+        - link "How‑To" [ref=e14] [cursor=pointer]:
+          - /url: /howto
+        - link "Capabilities" [ref=e15] [cursor=pointer]:
+          - /url: /capabilities
+  - complementary [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]: "Provider: gemini – switched"
+      - generic [ref=e20]:
+        - generic "message-1773770330630" [ref=e22]:
+          - generic [ref=e23]: hey
+          - generic [ref=e24]: 3/17/2026, 1:58:50 PM
+        - generic "message-1773770330631" [ref=e26]:
+          - generic [ref=e27]: yo
+          - generic [ref=e28]: "Provider: gemini (switched)"
+          - button "▸ details" [ref=e30] [cursor=pointer]:
+            - generic [ref=e31]: ▸
+            - text: details
+          - generic [ref=e32]: 3/17/2026, 1:58:50 PM
+      - generic [ref=e35]:
+        - button "📎" [ref=e36] [cursor=pointer]
+        - textbox "Message — Enter to send, Shift+Enter for newline" [ref=e37]
+        - button "↑" [disabled] [ref=e38]
+  - main [ref=e39]:
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - heading "Welcome to Concierge" [level=1] [ref=e42]
+        - paragraph [ref=e43]: An AI orchestrator powered by GPT-4o. Click any sample prompt to prefill the chat, or type your own in the panel on the left.
+      - generic [ref=e44]:
+        - heading "Quick start" [level=2] [ref=e45]
+        - generic [ref=e46]:
+          - button "↗ Hello — what can you do?" [ref=e47] [cursor=pointer]:
+            - generic [ref=e48]: ↗
+            - generic [ref=e49]: Hello — what can you do?
+          - button "↗ Summarise what you know about my last project." [ref=e50] [cursor=pointer]:
+            - generic [ref=e51]: ↗
+            - generic [ref=e52]: Summarise what you know about my last project.
+          - button "↗ Create a 2-week sprint plan for a new feature." [ref=e53] [cursor=pointer]:
+            - generic [ref=e54]: ↗
+            - generic [ref=e55]: Create a 2-week sprint plan for a new feature.
+          - button "↗ What tasks are currently queued?" [ref=e56] [cursor=pointer]:
+            - generic [ref=e57]: ↗
+            - generic [ref=e58]: What tasks are currently queued?
+          - button "↗ Upload a file and analyse it." [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]: ↗
+            - generic [ref=e61]: Upload a file and analyse it.
+      - generic [ref=e62]:
+        - heading "Capabilities & example prompts" [level=2] [ref=e63]
+        - generic [ref=e64]:
+          - generic [ref=e65]:
+            - generic [ref=e66]:
+              - generic [ref=e67]: 💬
+              - generic [ref=e69]: Conversational AI
+            - paragraph [ref=e70]: Chat with an LLM-backed orchestrator. Ask questions, brainstorm ideas, or have it explain concepts in plain language.
+            - generic [ref=e71]:
+              - generic [ref=e72]: Sample prompts
+              - button "↗ Explain the difference between RAG and fine-tuning in plain English." [ref=e73] [cursor=pointer]:
+                - generic [ref=e74]: ↗
+                - generic [ref=e75]: Explain the difference between RAG and fine-tuning in plain English.
+              - button "↗ What are the pros and cons of using a microservices architecture?" [ref=e76] [cursor=pointer]:
+                - generic [ref=e77]: ↗
+                - generic [ref=e78]: What are the pros and cons of using a microservices architecture?
+              - button "↗ Help me write a professional email declining a vendor proposal." [ref=e79] [cursor=pointer]:
+                - generic [ref=e80]: ↗
+                - generic [ref=e81]: Help me write a professional email declining a vendor proposal.
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - generic [ref=e84]: 🎯
+              - generic [ref=e85]:
+                - generic [ref=e86]: Goal Planning
+                - link "Open page →" [ref=e87] [cursor=pointer]:
+                  - /url: /goals
+            - paragraph [ref=e88]: Set high-level outcomes. Concierge decomposes them into prioritised tasks, tracks progress, and surfaces blockers.
+            - generic [ref=e89]:
+              - generic [ref=e90]: Sample prompts
+              - button "↗ Create a 4-week goal to migrate our REST API to GraphQL." [ref=e91] [cursor=pointer]:
+                - generic [ref=e92]: ↗
+                - generic [ref=e93]: Create a 4-week goal to migrate our REST API to GraphQL.
+              - button "↗ I want to reduce page load time by 40% — plan it out." [ref=e94] [cursor=pointer]:
+                - generic [ref=e95]: ↗
+                - generic [ref=e96]: I want to reduce page load time by 40% — plan it out.
+              - button "↗ Set weekly goals for improving test coverage from 60% to 90%." [ref=e97] [cursor=pointer]:
+                - generic [ref=e98]: ↗
+                - generic [ref=e99]: Set weekly goals for improving test coverage from 60% to 90%.
+              - button "↗ Design a banner image for the goal." [ref=e100] [cursor=pointer]:
+                - generic [ref=e101]: ↗
+                - generic [ref=e102]: Design a banner image for the goal.
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]: ✅
+              - generic [ref=e106]:
+                - generic [ref=e107]: Task Orchestration
+                - link "Open page →" [ref=e108] [cursor=pointer]:
+                  - /url: /tasks
+            - paragraph [ref=e109]: "Run background tasks: read & analyse files, generate code, analyse datasets, and write results — all asynchronously."
+            - generic [ref=e110]:
+              - generic [ref=e111]: Sample prompts
+              - button "↗ Analyse the CSV I just uploaded and summarise the key trends." [ref=e112] [cursor=pointer]:
+                - generic [ref=e113]: ↗
+                - generic [ref=e114]: Analyse the CSV I just uploaded and summarise the key trends.
+              - button "↗ Generate a Python script to parse JSON logs and extract error counts." [ref=e115] [cursor=pointer]:
+                - generic [ref=e116]: ↗
+                - generic [ref=e117]: Generate a Python script to parse JSON logs and extract error counts.
+              - button "↗ Read my uploaded spec and list all the missing edge cases." [ref=e118] [cursor=pointer]:
+                - generic [ref=e119]: ↗
+                - generic [ref=e120]: Read my uploaded spec and list all the missing edge cases.
+              - button "↗ Create an image illustrating the analysis results." [ref=e121] [cursor=pointer]:
+                - generic [ref=e122]: ↗
+                - generic [ref=e123]: Create an image illustrating the analysis results.
+          - generic [ref=e124]:
+            - generic [ref=e125]:
+              - generic [ref=e126]: 📁
+              - generic [ref=e127]:
+                - generic [ref=e128]: Workspace & Files
+                - link "Open page →" [ref=e129] [cursor=pointer]:
+                  - /url: /workspace
+            - paragraph [ref=e130]: Upload documents, images, CSVs, PDFs, and more. Attach them to projects and reference them in any prompt.
+            - generic [ref=e131]:
+              - generic [ref=e132]: Sample prompts
+              - button "↗ I've uploaded a PDF spec — summarise the authentication requirements." [ref=e133] [cursor=pointer]:
+                - generic [ref=e134]: ↗
+                - generic [ref=e135]: I've uploaded a PDF spec — summarise the authentication requirements.
+              - button "↗ Attach the financial model CSV to the Q2 Planning project." [ref=e136] [cursor=pointer]:
+                - generic [ref=e137]: ↗
+                - generic [ref=e138]: Attach the financial model CSV to the Q2 Planning project.
+              - button "↗ Extract all the TODO comments from the uploaded source file." [ref=e139] [cursor=pointer]:
+                - generic [ref=e140]: ↗
+                - generic [ref=e141]: Extract all the TODO comments from the uploaded source file.
+              - button "↗ Show me the image I just uploaded." [ref=e142] [cursor=pointer]:
+                - generic [ref=e143]: ↗
+                - generic [ref=e144]: Show me the image I just uploaded.
+              - button "↗ Transcribe the audio file I uploaded and summarise it." [ref=e145] [cursor=pointer]:
+                - generic [ref=e146]: ↗
+                - generic [ref=e147]: Transcribe the audio file I uploaded and summarise it.
+          - generic [ref=e148]:
+            - generic [ref=e149]:
+              - generic [ref=e150]: 🧠
+              - generic [ref=e152]: Memory & Context
+            - paragraph [ref=e153]: Concierge stores summaries in a vector graph. Past conversations inform future answers — automatically.
+            - generic [ref=e154]:
+              - generic [ref=e155]: Sample prompts
+              - button "↗ What decisions did we make about the database schema last session?" [ref=e156] [cursor=pointer]:
+                - generic [ref=e157]: ↗
+                - generic [ref=e158]: What decisions did we make about the database schema last session?
+              - button "↗ Remind me what the critic agent approved in the last autonomous run." [ref=e159] [cursor=pointer]:
+                - generic [ref=e160]: ↗
+                - generic [ref=e161]: Remind me what the critic agent approved in the last autonomous run.
+              - button "↗ What was the outcome of the Q1 strategy planning session?" [ref=e162] [cursor=pointer]:
+                - generic [ref=e163]: ↗
+                - generic [ref=e164]: What was the outcome of the Q1 strategy planning session?
+          - generic [ref=e165]:
+            - generic [ref=e166]:
+              - generic [ref=e167]: 🔌
+              - generic [ref=e168]:
+                - generic [ref=e169]: Plugins & Integrations
+                - link "Open page →" [ref=e170] [cursor=pointer]:
+                  - /url: /capabilities
+            - paragraph [ref=e171]: Extend the orchestrator with registered tools, plugins, and external service integrations.
+            - generic [ref=e172]:
+              - generic [ref=e173]: Sample prompts
+              - button "↗ What plugins are currently registered and enabled?" [ref=e174] [cursor=pointer]:
+                - generic [ref=e175]: ↗
+                - generic [ref=e176]: What plugins are currently registered and enabled?
+              - button "↗ Run the web search tool for \"latest LLM benchmarks 2026\"." [ref=e177] [cursor=pointer]:
+                - generic [ref=e178]: ↗
+                - generic [ref=e179]: Run the web search tool for "latest LLM benchmarks 2026".
+              - button "↗ Which integrations are available and what do they connect to?" [ref=e180] [cursor=pointer]:
+                - generic [ref=e181]: ↗
+                - generic [ref=e182]: Which integrations are available and what do they connect to?
+      - generic [ref=e183]:
+        - heading "Explore the app" [level=2] [ref=e184]
+        - generic [ref=e185]:
+          - link "🎯 Goals" [ref=e186] [cursor=pointer]:
+            - /url: /goals
+          - link "✅ Tasks" [ref=e187] [cursor=pointer]:
+            - /url: /tasks
+          - link "📁 Workspace" [ref=e188] [cursor=pointer]:
+            - /url: /workspace
+          - link "🗺️ Strategy" [ref=e189] [cursor=pointer]:
+            - /url: /strategy
+          - link "🔌 Capabilities" [ref=e190] [cursor=pointer]:
+            - /url: /capabilities
+          - link "📖 How-To Guide" [ref=e191] [cursor=pointer]:
+            - /url: /howto
+```

@@ -40,11 +40,15 @@ def _resolve_redis_url(url: str) -> str:
 
 
 def get_redis() -> Optional[redis.Redis]:
+<<<<<<< HEAD
     """Return a Redis client, or None if Redis is unavailable or disabled (cached per process)."""
     from config.settings import get_settings
     s = get_settings()
     if not getattr(s, 'redis_enabled', True) or getattr(s, 'use_inline_tasks', False):
         return None
+=======
+    """Return a Redis client, or None if Redis is unavailable (cached per process)."""
+>>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     global _redis_client, _redis_available
     if _redis_available is False:
         return None

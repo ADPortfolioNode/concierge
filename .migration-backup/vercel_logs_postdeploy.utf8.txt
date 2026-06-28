@@ -1,0 +1,18 @@
+﻿node.exe : > [debug] [2026-03-22T14:02:45.491Z] Found config in file "E:\2024 RESET\concierge\vercel.json"
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (> [debug] [2026...ge\vercel.json":String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+> [debug] [2026-03-22T14:02:45.495Z] Vercel CLI 50.35.0
+> [debug] [2026-03-22T14:02:45.501Z] Agent/TTY/nonInteractive: isAgent=false agentName=none stdin.isTTY=true --non-interactive=false 
+explicitFalse=false => nonInteractive=false
+> [debug] [2026-03-22T14:02:45.502Z] user supplied known subcommand: "logs"
+Error: The --follow flag does not support filtering. Remove: --since, --limit
+> [debug] [2026-03-22T14:02:47.583Z] Valid access token, skipping token refresh.
+> [debug] [2026-03-22T14:02:47.604Z] #1 ΓåÆ GET https://api.vercel.com/v2/user
+> [debug] [2026-03-22T14:02:47.935Z] #1 ΓåÉ 200 OK: sfo1::l2472-1774188167076-215534bcc69f [331ms]
+> [debug] [2026-03-22T14:02:49.882Z] Telemetry event tracked
+> [debug] [2026-03-22T14:02:49.992Z] Telemetry subprocess killed due to timeout
+> [debug] [2026-03-22T14:02:50.020Z] Telemetry subprocess exited with code null
