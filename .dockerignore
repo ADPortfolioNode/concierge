@@ -89,6 +89,7 @@ secrets/
 !package.json
 !pnpm-*.yaml
 !pnpm-lock.yaml
+!VERSION
 
 # Test and dev only
 **/__tests__/
