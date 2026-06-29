@@ -257,17 +257,10 @@ main {
   min-height: 0;
 }
 
-<<<<<<< HEAD
 /* Desktop: 2-col layout — content | chat (assistant sidebar on right) */
 @media (min-width: 960px) {
   .app-container {
     grid-template-columns: minmax(0, 1fr) clamp(260px, 26vw, 420px);
-=======
-/* Desktop: 2-col layout — chat (fluid) | content */
-@media (min-width: 960px) {
-  .app-container {
-    grid-template-columns: clamp(260px, 26vw, 420px) minmax(0, 1fr);
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     grid-template-rows: auto minmax(0, 1fr);
   }
   .app-header {
@@ -278,7 +271,6 @@ main {
     display: none;
   }
   .app-chat {
-<<<<<<< HEAD
     grid-column: 2;
     grid-row: 2;
     border-left: 1px solid #DBEAFE;
@@ -287,15 +279,6 @@ main {
   }
   .app-main {
     grid-column: 1;
-=======
-    grid-column: 1;
-    grid-row: 2;
-    border-right: 1px solid #DBEAFE;
-    border-top: none;
-  }
-  .app-main {
-    grid-column: 2;
->>>>>>> f665b8188591020c7f82f8a93d3211e3cc2ffcb5
     grid-row: 2;
   }
 }

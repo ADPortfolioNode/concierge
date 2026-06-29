@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { ConversationMessage } from '../types/domain';
 import * as ConciergeAPI from '@/api/conciergeService';
 import { fetchTaskTree, TaskTree } from '@/api/taskService';
+import {
+  diffStepSnapshots,
+  flattenStepSnapshots,
+  formatWorkflowUpdateMessage,
+  isWorkflowTerminal,
+  type StepSnapshotMap,
+  type WorkflowUpdate,
+  workflowProgress,
+} from '@/utils/workflowStatus';
 import { ACTIVE_API_BASE, makeApiUrl } from '@/config/activeServer';
 // Industry-standard hybrid memory pattern: persist conversation history in
 // browser storage (IndexedDB with localStorage fallback) so the full chat
@@ -71,6 +80,8 @@ interface AppState {
   timelinePlan: any | null;
   taskThreadId: string | null;
   taskTree: TaskTree | null;
+  workflowUpdates: WorkflowUpdate[];
+  stepSnapshot: StepSnapshotMap;
   selectedRiverNode: any | null;
   selectedTaskMeta: any | null;
   startTimelineStream?: () => void;
@@ -89,6 +100,7 @@ interface AppState {
   // timeline actions
   setTimelinePlan: (plan: any) => void;
   setTaskTree: (tree: TaskTree | null) => void;
+  applyTaskTreeUpdate: (tree: TaskTree, threadId?: string) => void;
   setTaskThreadId: (id: string | null) => void;
   setSelectedTaskMeta: (meta: any) => void;
   setSelectedRiverNode: (meta: any) => void;
@@ -120,6 +132,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   timelinePlan: null,
   taskThreadId: null,
   taskTree: null,
+  workflowUpdates: [],
+  stepSnapshot: {},
   selectedTaskMeta: null,
   selectedRiverNode: null,
   setError: (msg) => set({ error: msg }),
@@ -139,6 +153,70 @@ export const useAppStore = create<AppState>((set, get) => ({
   // timeline actions
   setTimelinePlan: (plan) => set({ timelinePlan: plan }),
   setTaskTree: (tree) => set({ taskTree: tree }),
+  applyTaskTreeUpdate: (tree, threadId) => {
+    const tid = threadId || tree.task_id;
+    const prev = get().stepSnapshot;
+    const next = flattenStepSnapshots(tree);
+    const deltas = diffStepSnapshots(tid, prev, next);
+    const mergedUpdates = [...get().workflowUpdates, ...deltas].slice(-40);
+
+    const systemMessages: ConversationMessage[] = [];
+    for (const u of deltas) {
+      if (u.kind === 'completed' || u.kind === 'failed' || u.kind === 'workflow_complete' || u.kind === 'workflow_failed') {
+        systemMessages.push({
+          id: `wf-${u.id}`,
+          role: 'system',
+          content: formatWorkflowUpdateMessage(u),
+          timestamp: u.timestamp,
+          media: null,
+          meta: { raw: { stepId: u.stepId, threadId: tid, kind: u.kind } },
+        });
+      }
+    }
+
+    const { completed, total } = workflowProgress(tree);
+    const wasTerminal = get().taskTree ? isWorkflowTerminal(get().taskTree!) : false;
+    const nowTerminal = isWorkflowTerminal(tree);
+    if (!wasTerminal && nowTerminal && total > 0) {
+      const rootFailed = (tree.status || '').toLowerCase() === 'error' || deltas.some((d) => d.kind === 'failed');
+      const fin: WorkflowUpdate = {
+        id: `${tid}:workflow:${Date.now()}`,
+        threadId: tid,
+        stepId: tid,
+        stepName: tree.task_name || 'Workflow',
+        kind: rootFailed ? 'workflow_failed' : 'workflow_complete',
+        status: tree.status,
+        progress: tree.progress ?? 100,
+        summary: (tree.metadata as { result_summary?: string } | undefined)?.result_summary,
+        timestamp: new Date().toISOString(),
+      };
+      mergedUpdates.push(fin);
+      systemMessages.push({
+        id: `wf-${fin.id}`,
+        role: 'system',
+        content: formatWorkflowUpdateMessage(fin) + (completed === total ? `\n\n${completed}/${total} steps finished.` : ''),
+        timestamp: fin.timestamp,
+        media: null,
+        meta: { raw: { threadId: tid, kind: fin.kind } },
+      });
+    }
+
+    set({
+      taskTree: tree,
+      taskThreadId: tid,
+      stepSnapshot: next,
+      workflowUpdates: mergedUpdates,
+      ...(systemMessages.length
+        ? {
+            conversation: [...get().conversation, ...systemMessages],
+          }
+        : {}),
+    });
+
+    if (systemMessages.length) {
+      saveHistory(get().conversation).catch(() => { /* best-effort */ });
+    }
+  },
   setTaskThreadId: (id) => set({ taskThreadId: id }),
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
   setSelectedRiverNode: (meta) => set({ selectedRiverNode: meta }),
@@ -150,7 +228,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         (window as any).__TASK_THREAD_POLLER__ = null;
       }
     }
-    set({ taskThreadId: null, taskTree: null, selectedRiverNode: null });
+    set({ taskThreadId: null, taskTree: null, workflowUpdates: [], stepSnapshot: {}, selectedRiverNode: null });
   },
   pollTaskThreadStatus: async (taskId: string) => {
     if (typeof window === 'undefined') return;
@@ -158,8 +236,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const tick = async () => {
         try {
           const tree = await fetchTaskTree(taskId);
-          set({ taskTree: tree, taskThreadId: taskId });
-          if (tree.status === 'done' || tree.status === 'completed' || tree.status === 'error' || tree.progress === 100) {
+          get().applyTaskTreeUpdate(tree, taskId);
+          const terminal = isWorkflowTerminal(tree);
+          const unavailable = tree.status === 'unavailable' || tree.status === 'pending';
+          if (terminal || unavailable) {
             const poller = (window as any).__TASK_THREAD_POLLER__;
             if (poller) {
               clearInterval(poller);

@@ -11,7 +11,7 @@ from celery import Task
 from agents.coding_agent import CodingAgent
 from agents.research_agent import ResearchAgent
 from task_agent import TaskAgent
-from task_tree_store import upsert_task_node
+from task_tree_store import rollup_thread_status, upsert_task_node
 from memory.memory_store import MemoryStore
 from tools.llm_tool import LLMTool
 
@@ -52,6 +52,7 @@ class StepAssistant(Task):
             upsert_task_node(
                 thread_id=thread_id,
                 task_id=step_task_id,
+                parent_id=kwargs.get("task", {}).get("depends_on", [None])[0] if kwargs.get("task", {}).get("depends_on") else thread_id,
                 status="error",
                 progress=100,
                 color="#ef4444",
@@ -117,6 +118,7 @@ def execute_step_task(self, task: dict, thread_id: str, context: dict):
         color="#fbbf24",
         metadata={"task_name": task_name, "start_time": time.time(), "celery_task_id": celery_task_id},
     )
+    rollup_thread_status(thread_id)
 
     llm, memory = _get_clients()
     agent = _route_task_to_agent(task, memory, llm)
@@ -129,20 +131,24 @@ def execute_step_task(self, task: dict, thread_id: str, context: dict):
         upsert_task_node(
             thread_id=thread_id,
             task_id=task_id,
+            parent_id=task.get("depends_on")[0] if task.get("depends_on") else thread_id,
             status="error",
             progress=0,
             color="#ef4444",
             metadata={"result_summary": str(agent_exc), "end_time": time.time(), "celery_task_id": celery_task_id},
         )
+        rollup_thread_status(thread_id)
         return {"task_id": task_id, "result": {}, "summary": str(agent_exc)}
 
     summary = result.get("summary") or result.get("output") or str(result)
     upsert_task_node(
         thread_id=thread_id,
         task_id=task_id,
+        parent_id=task.get("depends_on")[0] if task.get("depends_on") else thread_id,
         status="done",
         progress=100,
         color="#22c55e",
         metadata={"result_summary": summary, "end_time": time.time(), "celery_task_id": celery_task_id},
     )
+    rollup_thread_status(thread_id)
     return {"task_id": task_id, "result": result, "summary": summary}

@@ -17,7 +17,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
     try {
-      reportApiError(error instanceof Error ? error : new Error(String(error)));
+      // Skip noisy Sentry warnings when code runs inside browser extensions/content scripts
+      const extChrome = (typeof globalThis !== 'undefined' ? (globalThis as any).chrome : undefined);
+      if (extChrome && extChrome.runtime) {
+        console.warn('[API ERROR] (extension context, Sentry disabled)');
+      } else {
+        reportApiError(error instanceof Error ? error : new Error(String(error)));
+      }
     } catch {
       // ignore reporting failures
     }

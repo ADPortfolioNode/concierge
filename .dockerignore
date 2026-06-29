@@ -1,4 +1,12 @@
-﻿# Git
+﻿# Root files that must be present for the Docker build (negations first)
+!VERSION
+!package.json
+!pnpm-*.yaml
+!pnpm-lock.yaml
+!requirements*.txt
+!README.md
+
+# Git
 .git
 .gitignore
 .dockerignore

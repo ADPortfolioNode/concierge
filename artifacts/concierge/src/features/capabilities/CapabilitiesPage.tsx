@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { CapabilityItem } from '@/api/capabilitiesService';
+import { makeApiUrl } from '@/config/activeServer';
 
 type Category = 'plugins' | 'tools' | 'integrations';
 
@@ -135,7 +136,8 @@ export default function CapabilitiesPage() {
     setErrors({ plugins: null, tools: null, integrations: null });
 
     try {
-      const url = force ? '/api/v1/capabilities?force=true' : '/api/v1/capabilities';
+      const base = force ? '/api/v1/capabilities?force=true' : '/api/v1/capabilities';
+      const url = makeApiUrl ? makeApiUrl(base) : base;  // use configured base when available
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Network error: ${response.status} ${response.statusText}`);

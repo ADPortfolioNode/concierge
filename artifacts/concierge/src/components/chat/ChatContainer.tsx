@@ -3,6 +3,7 @@ import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import PageMetaBar from '../PageMetaBar';
 import AssistantRiver from '@/components/river/AssistantRiver';
+import WorkflowStatusFeed from './WorkflowStatusFeed';
 import { useAppStore } from '@/state/appStore';
 import { fetchConversation } from '@/api/conciergeService';
 
@@ -111,6 +112,7 @@ const ChatContainer: React.FC = () => {
       <ConciergeHeader />
       {/* page-specific live meta */}
       <PageMetaBar />
+      <WorkflowStatusFeed />
       {taskTree ? (
         <AssistantRiver
           tree={taskTree}

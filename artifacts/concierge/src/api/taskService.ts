@@ -26,10 +26,10 @@ export interface TaskTree {
 }
 
 export const getTasks = async () => {
-  return apiClient.get<ApiResponse>('/tasks');
+  return apiClient.get<ApiResponse>('tasks');
 };
 
 export async function fetchTaskTree(taskId: string): Promise<TaskTree> {
-  const { data } = await apiClient.get<{ data: TaskTree }>(`/tasks/${encodeURIComponent(taskId)}/status`);
+  const { data } = await apiClient.get<{ data: TaskTree }>(`tasks/${encodeURIComponent(taskId)}/status`);
   return data.data;
 }

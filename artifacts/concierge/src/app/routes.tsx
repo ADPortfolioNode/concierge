@@ -3,6 +3,7 @@ import { Routes as Switch, Route, Navigate } from 'react-router-dom';
 
 const HomePage = React.lazy(() => import('../features/concierge/HomePage'));
 const TasksPage = React.lazy(() => import('../features/tasks/TasksPage'));
+const TaskStatusPage = React.lazy(() => import('../features/tasks/TaskStatusPage'));
 const GoalsPage = React.lazy(() => import('../features/goals/GoalsPage'));
 const WorkspacePage = React.lazy(() => import('../features/workspace/WorkspacePage'));
 const MediaPage = React.lazy(() => import('../features/media/MediaPage'));
@@ -44,6 +45,7 @@ const Routes: React.FC = () => {
         <Suspense fallback={<div style={{ padding: 32, color: '#94a3b8' }}>Loading page...</div>}>
           <Switch>
             <Route path="/" element={<HomePage />} />
+            <Route path="/tasks/:taskId" element={<TaskStatusPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/goals" element={<GoalsPage />} />
             <Route path="/workspace" element={<WorkspacePage />} />

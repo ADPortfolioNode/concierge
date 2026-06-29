@@ -37,7 +37,7 @@ services:
     environment:
       <<: *env
       # Allow local dev frontends
-      CORS_ALLOW_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000"
+      CORS_ALLOW_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000,http://localhost:${HOST_PORT:-8000},http://127.0.0.1:${HOST_PORT:-8000}"
     volumes:
       - media_data:/app/media
       - app_data:/app/data
@@ -72,7 +72,7 @@ services:
     profiles: ["full"]
     image: concierge-ai:latest
     container_name: concierge_worker
-    command: celery -A tasks.main_tasks worker --loglevel=${LOG_LEVEL:-info} --concurrency=${CELERY_CONCURRENCY:-4} --queues=default,timeline
+    command: celery -A tasks.main_tasks worker --loglevel=${LOG_LEVEL:-info} --concurrency=${CELERY_CONCURRENCY:-4} --queues=celery,default,timeline
     environment:
       <<: *env
       PYTHONPATH: /app

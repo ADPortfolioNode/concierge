@@ -30,3 +30,15 @@ async def _try_mount_real_app():
 @app.get('/_health')
 async def _health():
     return {"status": "ok"}
+
+@app.get('/health/ready')
+async def health_ready():
+    return {"status": "ok"}
+
+@app.get('/api/health/ready')
+async def api_health_ready():
+    return {"status": "ok"}
+
+@app.get('/api/health')
+async def api_health():
+    return {"status": "ok"}

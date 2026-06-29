@@ -31,6 +31,7 @@ from tools.file_memory_tool import FileMemoryTool
 from tools.code_execution_tool import CodeExecutionTool
 from tools.tool_router import ToolRouter
 from jobs.task_tree_store import append_task_logs, get_task_tree, initialize_thread, upsert_task_node
+from task_tree_store import finalize_chat_thread
 from celery import chain
 from tasks.step_assistant_tasks import execute_step_task
 
@@ -193,6 +194,15 @@ class SacredTimeline:
             register_tool(CodeExecutionTool())
         except Exception:
             logger.exception("Failed to register default tools")
+
+    def _finalize_chat_if_idle(self, thread_id: Optional[str], response: str) -> None:
+        """Mark assistant_thread roots done when a chat reply finishes with no workflow."""
+        if not thread_id:
+            return
+        try:
+            finalize_chat_thread(thread_id, summary=response[:200] if response else None)
+        except Exception:
+            logger.exception("Failed to finalize chat thread %s", thread_id)
 
     async def _generate_chat_reply(self, user_input: str) -> str:
         """Produce a friendly chat-style response for non-goal input.
@@ -777,11 +787,13 @@ class SacredTimeline:
                 resp["notice"] = queued_notice
             elif note:
                 resp["notice"] = note
+            self._finalize_chat_if_idle(thread_id, resp["response"])
             return resp
 
         # bypass orchestration for conversational questions
         if _is_conversational(user_input):
             reply = await self._generate_chat_reply(user_input)
+            self._finalize_chat_if_idle(thread_id, reply)
             return {"status": "success", "response": reply}
 
         # ask planner to decompose into tasks. planner may return a trivial "echo"
@@ -830,6 +842,7 @@ class SacredTimeline:
                 if word_count <= 5:
                     # small talk or unstructured input; hand off to chat reply
                     reply = await self._generate_chat_reply(user_input)
+                    self._finalize_chat_if_idle(thread_id, reply)
                     return {"status": "success", "response": reply}
 
             # This is a real goal. Dispatch it to Celery and return immediately.
@@ -847,6 +860,7 @@ class SacredTimeline:
 
         # no tasks at all: still conversational
         reply = await self._generate_chat_reply(user_input)
+        self._finalize_chat_if_idle(thread_id, reply)
         return {"status": "success", "response": reply}
 
 

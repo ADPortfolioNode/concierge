@@ -22,6 +22,7 @@ celery_app = Celery(
         "tasks.agent_tasks",
         "tasks.plugin_tasks",
         "tasks.workspace_tasks",
+        "tasks.step_assistant_tasks",
     ],
 )
 
@@ -32,4 +33,6 @@ celery_app.conf.update(
     accept_content=["json"],
     result_expires=3600,          # keep results for 1 hour
     worker_prefetch_multiplier=1,  # fair dispatch for long-running tasks
+    # Celery's built-in default queue name is "celery"; worker must consume it.
+    task_default_queue="celery",
 )

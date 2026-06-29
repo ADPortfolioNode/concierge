@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchTaskTree, TaskTreeNode } from '@/api/taskService';
 import { makeApiUrl } from '@/config/activeServer';
 import { useAppStore } from '@/state/appStore';
@@ -363,6 +364,7 @@ const NODE_HALF_W = 96;
 const NODE_HALF_H = 28;
 
 const AgenticThreadCanvas: React.FC = () => {
+  const navigate = useNavigate();
   const taskThreadId = useAppStore((s) => s.taskThreadId);
   const [nodes, setNodes] = useState<VisualNode[]>([]);
   const [edges, setEdges] = useState<VisualEdge[]>([]);
@@ -1047,9 +1049,9 @@ const AgenticThreadCanvas: React.FC = () => {
   }, []);
 
   const handleOpenThreadStatus = useCallback(() => {
-    if (!taskThreadId || !selectedNodeId) return;
-    window.open(makeApiUrl(`/tasks/${encodeURIComponent(taskThreadId)}/status`), '_blank');
-  }, [taskThreadId, selectedNodeId]);
+    if (!taskThreadId) return;
+    navigate(`/tasks/${encodeURIComponent(taskThreadId)}`);
+  }, [navigate, taskThreadId]);
 
   const handleDeselect = useCallback(() => setSelectedNodeId(null), []);
 

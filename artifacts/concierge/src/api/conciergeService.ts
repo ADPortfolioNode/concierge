@@ -12,7 +12,7 @@ export const sendMessage = async (message: string, history?: HistoryEntry[]) => 
   if (!message || !message.trim()) {
     throw new Error('message must be a nonempty string');
   }
-  const res = await apiClient.post<ApiResponse>('/concierge/message', { message, history });
+  const res = await apiClient.post<ApiResponse>('concierge/message', { message, history });
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
@@ -20,7 +20,7 @@ export const sendMessage = async (message: string, history?: HistoryEntry[]) => 
 };
 
 export const fetchConversation = async () => {
-  const res = await apiClient.get<ApiResponse>('/concierge/conversation');
+  const res = await apiClient.get<ApiResponse>('concierge/conversation');
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
@@ -28,7 +28,7 @@ export const fetchConversation = async () => {
 };
 
 export const getTimeline = async () => {
-  const res = await apiClient.get<ApiResponse>('/concierge/timeline');
+  const res = await apiClient.get<ApiResponse>('concierge/timeline');
   if ((res as any).error) {
     throw new Error((res as any).error);
   }
@@ -45,7 +45,7 @@ export const getTimeline = async () => {
 };
 
 export const getMedia = async () => {
-  const res = await apiClient.get<ApiResponse>('/concierge/media');
+  const res = await apiClient.get<ApiResponse>('concierge/media');
   if ((res as any).error) throw new Error((res as any).error);
   return res;
 };

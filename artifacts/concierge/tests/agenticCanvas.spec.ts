@@ -49,8 +49,17 @@ async function navigateToVisualizer(page: Page, viewport?: { width: number; heig
   if (viewport) {
     await page.setViewportSize(viewport);
   }
-  await page.goto('/tasks');
-  await page.waitForLoadState('networkidle');
+  await page.goto('/');
+  await page.waitForLoadState('domcontentloaded');
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Tasks', exact: true }).click();
+  await page.waitForURL('**/tasks');
+
+  // Visualizer controls only appear when a thread or tasks exist; seed one for canvas tests.
+  await page.evaluate(() => {
+    (window as any).getAppStore().setTaskThreadId('test-thread-123');
+  });
+  await page.waitForTimeout(400);
+
   const visualizerBtn = page.getByRole('button', { name: 'Visualizer' });
   await expect(visualizerBtn).toBeVisible({ timeout: 10_000 });
   await visualizerBtn.click();

@@ -38,7 +38,7 @@ export interface JobAccepted {
  * Enqueue an agent orchestration job.
  */
 export async function submitAgentJob(goal: string, context = ''): Promise<JobAccepted> {
-  const { data } = await apiClient.post<{ data: JobAccepted }>('/jobs/run_agent', {
+  const { data } = await apiClient.post<{ data: JobAccepted }>('jobs/run_agent', {
     goal,
     context,
   });
@@ -52,7 +52,7 @@ export async function submitPluginJob(
   pluginName: string,
   inputData: Record<string, unknown> = {},
 ): Promise<JobAccepted> {
-  const { data } = await apiClient.post<{ data: JobAccepted }>('/jobs/run_plugin', {
+  const { data } = await apiClient.post<{ data: JobAccepted }>('jobs/run_plugin', {
     plugin_name: pluginName,
     input_data: inputData,
   });
@@ -68,7 +68,7 @@ export async function submitFileJob(
   taskType: 'read_file' | 'dataset_analysis' | 'generate_code' = 'read_file',
   extra?: Record<string, unknown>,
 ): Promise<JobAccepted> {
-  const { data } = await apiClient.post<{ data: JobAccepted }>('/jobs/process_file', {
+  const { data } = await apiClient.post<{ data: JobAccepted }>('jobs/process_file', {
     upload_id: uploadId,
     filename,
     task_type: taskType,
@@ -85,7 +85,7 @@ export async function submitFileJob(
  * Fetch the current status of a Celery job.
  */
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
-  const { data } = await apiClient.get<{ data: JobStatus }>(`/jobs/${encodeURIComponent(jobId)}`);
+  const { data } = await apiClient.get<{ data: JobStatus }>(`jobs/${encodeURIComponent(jobId)}`);
   return data.data;
 }
 

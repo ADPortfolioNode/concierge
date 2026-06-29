@@ -50,7 +50,7 @@ SHOW_HELP=false
 # --- Parse flags ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --full)             PROFILE="--profile full"; shift ;;
+    --full)             PROFILE="full"; COMPOSE_PROFILES_ARG="full"; shift ;;
     --dev)              MODE="dev"; shift ;;
     --local)            MODE="local"; shift ;;
     --build)            BUILD_FLAG="--build"; shift ;;
@@ -74,35 +74,56 @@ if [[ "$SHOW_HELP" == true ]]; then
 fi
 
 # --- Helper: docker compose vs docker-compose ---
-# Prefer modern Compose v2 (supports --profile for the "full" stack).
-# We check via the docker cli first for robustness in Git Bash / MINGW64 + Docker Desktop.
-DC=""
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-  DC="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-  DC="docker-compose"
-fi
-
-has_docker() {
-  [[ -n "$DC" ]]
-}
-
-# Returns 0 if the current $DC supports --profile (Compose v2+)
-supports_profiles() {
-  if [[ -z "${DC:-}" ]]; then
+# Compose v2 plugin ("docker compose") is required for --profile / --full.
+# Legacy docker-compose v1 does not support profiles and will error with
+# "unknown flag: --profile". Never pass --profile to v1.
+COMPOSE_PROFILES_ARG=""
+# Docker CLI for Compose v2 plugin (Git Bash on Windows may need docker.exe).
+DOCKER_BIN="docker"
+compose_v2_available() {
+  if ! command -v docker >/dev/null 2>&1; then
     return 1
   fi
-  if [[ "$DC" == "docker compose" ]]; then
+  if docker compose version >/dev/null 2>&1; then
+    DOCKER_BIN="docker"
     return 0
   fi
-  # docker-compose: check version string or --help for the flag
-  if $DC version --short 2>/dev/null | grep -qE '^[2-9]'; then
-    return 0
-  fi
-  if $DC --help 2>&1 | grep -q -- '--profile'; then
+  if command -v docker.exe >/dev/null 2>&1 && docker.exe compose version >/dev/null 2>&1; then
+    DOCKER_BIN="docker.exe"
     return 0
   fi
   return 1
+}
+
+has_docker() {
+  compose_v2_available || command -v docker-compose >/dev/null 2>&1
+}
+
+compose_supports_profiles() {
+  compose_v2_available
+}
+
+# Run compose. Uses COMPOSE_PROFILES_ARG when --full was passed.
+compose_cmd() {
+  if compose_v2_available; then
+    if [[ -n "$COMPOSE_PROFILES_ARG" ]]; then
+      "$DOCKER_BIN" compose --profile "$COMPOSE_PROFILES_ARG" "$@"
+    else
+      "$DOCKER_BIN" compose "$@"
+    fi
+    return
+  fi
+  if [[ -n "$COMPOSE_PROFILES_ARG" ]]; then
+    echo "ERROR: --full requires Docker Compose v2 (docker compose), not legacy docker-compose."
+    echo "       Run: docker compose --profile full up --build -d"
+    exit 1
+  fi
+  if command -v docker-compose >/dev/null 2>&1; then
+    docker-compose "$@"
+    return
+  fi
+  echo "ERROR: Docker Compose not found."
+  exit 1
 }
 
 check_docker_daemon() {
@@ -135,7 +156,16 @@ echo "Mode: $MODE   Profile: ${PROFILE:-none}   Build: ${BUILD_FLAG:-no-build}"
 if [[ "$DO_CLEAN" == true ]]; then
   echo "==> Cleaning stack..."
   if has_docker; then
-    $DC down -v --remove-orphans || true
+    # Tear down profile services (redis/worker/flower) so network/volumes release.
+    if [[ -n "$COMPOSE_PROFILES_ARG" ]]; then
+      compose_cmd down -v --remove-orphans || true
+    else
+      # No --full: still try full profile down first to clear leftover workers.
+      if compose_v2_available; then
+        "$DOCKER_BIN" compose --profile full down -v --remove-orphans 2>/dev/null || true
+      fi
+      compose_cmd down -v --remove-orphans || true
+    fi
   fi
   if [[ "$MODE" == "dev" || "$MODE" == "local" ]]; then
     rm -rf frontend/dist artifacts/concierge/dist 2>/dev/null || true
@@ -150,52 +180,31 @@ case "$MODE" in
     fi
     check_docker_daemon
 
-    # Force modern Compose when a profile is requested (Git Bash + Docker Desktop
-    # sometimes makes the early detection pick the legacy docker-compose binary).
-    if [[ -n "$PROFILE" ]] && docker compose version >/dev/null 2>&1; then
-      DC="docker compose"
-    fi
-
-    if [[ -n "$PROFILE" ]] && ! supports_profiles; then
-      echo "ERROR: Detected compose command '$DC' does not support the --profile flag."
+    if [[ -n "$PROFILE" ]] && ! compose_supports_profiles; then
+      echo "ERROR: --full requires Docker Compose v2 (the 'docker compose' plugin)."
       echo ""
-      echo "The --full profile (Redis + Celery worker + flower) requires Docker Compose v2+."
+      echo "The --full profile (Redis + Celery worker + flower) needs Compose v2+."
       echo ""
       echo "On Windows (recommended):"
-      echo "  1. Use the Docker Compose plugin that comes with Docker Desktop:"
+      echo "  1. Use Docker Desktop and confirm:  docker compose version"
+      echo "  2. Then run:"
       echo "       docker compose --profile full up --build -d"
       echo ""
-      echo "  2. Or ensure 'docker compose version' succeeds in this shell."
-      echo "     If you are in Git Bash / MSYS, make sure Docker is in PATH."
-      echo ""
-      echo "  3. Old 'docker-compose' (v1) will show 'unknown flag: --profile'."
-      echo ""
-      echo "Tip: You can also run the command directly without start.sh."
+      echo "Legacy 'docker-compose' (v1) does not support --profile."
       exit 1
     fi
 
     echo "==> Starting FULL PRODUCTION BUILD (default)"
     echo "    Using Dockerfile multi-stage build (frontend + Python runtime)"
-    if [[ -n "$PROFILE" ]] && docker compose version >/dev/null 2>&1; then
-      # Force the modern 'docker compose' (v2) when a profile is requested.
-      # This works around flaky detection in Git Bash / MINGW64 even when
-      # 'docker compose' works when typed directly.
-      CMD="docker compose up $PROFILE $BUILD_FLAG -d"
-    else
-      CMD="$DC up $PROFILE $BUILD_FLAG -d"
-    fi
     if [[ "$NO_FRONTEND" == true ]]; then
       # Note: there is no separate frontend service anymore; api serves the SPA.
-      # With profile we explicitly bring up the worker services.
-      if [[ -n "$PROFILE" ]] && docker compose version >/dev/null 2>&1; then
-        docker compose up $PROFILE $BUILD_FLAG -d api redis worker
-      elif [[ -n "$PROFILE" ]]; then
-        $DC up $PROFILE $BUILD_FLAG -d api redis worker
+      if [[ -n "$PROFILE" ]]; then
+        compose_cmd up $BUILD_FLAG -d api redis worker
       else
-        $DC up $BUILD_FLAG -d api
+        compose_cmd up $BUILD_FLAG -d api
       fi
     else
-      eval "$CMD"
+      compose_cmd up $BUILD_FLAG -d
     fi
     echo "==> Production stack is up (or building)."
     echo "    Access UI at http://localhost:${HOST_PORT:-8000}"
@@ -205,25 +214,22 @@ case "$MODE" in
     echo "==> Local development mode"
     if [[ "$FORCE_DOCKER_DEV" == true ]] && has_docker; then
       check_docker_daemon
-      if [[ -n "$PROFILE" ]] && docker compose version >/dev/null 2>&1; then
-        DC="docker compose"
-      fi
-      if [[ -n "$PROFILE" ]] && ! supports_profiles; then
-        echo "ERROR: Detected compose command '$DC' does not support --profile (needed for --full)."
+      if [[ -n "$PROFILE" ]] && ! compose_supports_profiles; then
+        echo "ERROR: --full requires Docker Compose v2 (docker compose)."
         echo "Use: docker compose --profile full up --build -d instead."
         exit 1
       fi
       echo "    Using Docker with live mounts (dev containers)"
-      $DC up $PROFILE --build -d
+      compose_cmd up --build -d
     else
       if ! command -v pnpm >/dev/null 2>&1; then
         echo "pnpm not found. Falling back to Docker dev mode."
         if has_docker; then
-          if [[ -n "$PROFILE" ]] && ! supports_profiles; then
-            echo "ERROR: Detected compose command '$DC' does not support --profile."
+          if [[ -n "$PROFILE" ]] && ! compose_supports_profiles; then
+            echo "ERROR: --full requires Docker Compose v2 (docker compose)."
             exit 1
           fi
-          $DC up $PROFILE --build -d
+          compose_cmd up --build -d
         else
           echo "ERROR: Neither pnpm nor Docker available."
           exit 1
@@ -272,7 +278,7 @@ if [[ "$RUN_TEST" == true ]]; then
   echo "==> Running tests..."
   if has_docker && [[ "$MODE" == "prod" ]]; then
     TEST_ARGS="${TEST_ARGS:-tests/}"
-    $DC exec -T api python -m pytest $TEST_ARGS || true
+    compose_cmd exec -T api python -m pytest $TEST_ARGS || true
   else
     if command -v pnpm >/dev/null 2>&1; then
       pnpm --filter @workspace/concierge test || true

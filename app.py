@@ -64,7 +64,13 @@ import redis
 import hashlib
 import re #
 from datetime import datetime 
-from task_tree_store import get_redis, get_task_tree, upsert_task_node, _find_node_in_tree #
+from task_tree_store import (
+    get_redis,
+    get_task_tree,
+    upsert_task_node,
+    _find_node_in_tree,
+    reconcile_thread_status,
+) #
 
 # Defer heavy/optional imports to runtime to keep module imports small for
 # serverless builds. Populate these in the lifespan startup.
@@ -625,6 +631,8 @@ _DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:8000", # Add backend's own port for Swagger UI
     "http://localhost:8001", # Docker-compose host port for backend
     "http://127.0.0.1:8001", # Docker-compose host port for backend
+    "http://localhost:8002", # Alternate host port when 8000 is occupied
+    "http://127.0.0.1:8002",
     "https://deoismconcierge.vercel.app",
     "https://deoismconcierge-adportfolionodes-projects.vercel.app",
 ]
@@ -983,6 +991,10 @@ async def list_tasks():
             task_tree = get_task_tree(thread_id)
             if not task_tree: # type: ignore
                 continue
+            root_status = (task_tree.get('status') or '').lower()
+            if root_status in ('running', 'started', 'thinking', 'queued', 'waiting', 'pending'):
+                await asyncio.to_thread(reconcile_thread_status, thread_id)
+                task_tree = get_task_tree(thread_id) or task_tree
             metadata = task_tree.get('metadata') or {}
             tasks.append({
                 'id': thread_id,
@@ -1020,17 +1032,39 @@ async def kill_task(task_id: str):
 
 
 @app.get('/api/v1/tasks/{task_id}/status')
-async def task_status(task_id: str):
+async def task_status(task_id: str, request: Request):
+    accept = (request.headers.get('accept') or '').lower()
+    if 'text/html' in accept and 'application/json' not in accept:
+        return RedirectResponse(url=f'/tasks/{task_id}', status_code=302)
+
     try:
+        await asyncio.to_thread(reconcile_thread_status, task_id)
         task_tree = get_task_tree(task_id)
     except Exception as exc:
         logger.exception('Failed to fetch task status for %s', task_id)
-        resp = _api_response(None, status='error')
-        resp['errors'] = {'message': str(exc)}
-        return JSONResponse(status_code=503, content=resp)
+        # Return a graceful response instead of hard 503 so UI polling does not spam console errors.
+        # Frontend treats missing/unknown as pending.
+        resp = _api_response({
+            'task_id': task_id,
+            'status': 'unavailable',
+            'state': 'PENDING',
+            'progress': 0,
+            'children': [],
+            'metadata': {'error': 'task store temporarily unavailable'}
+        }, status='error')
+        return resp
 
     if task_tree is None:
-        raise HTTPException(status_code=404, detail='task_id not found')
+        # Return a pending skeleton instead of 404 so poller does not treat it as fatal.
+        # Real terminal states will come when the tree is written by worker.
+        return _api_response({
+            'task_id': task_id,
+            'status': 'pending',
+            'state': 'PENDING',
+            'progress': 0,
+            'children': [],
+            'metadata': {'note': 'task tree not yet available'}
+        })
     return _api_response(task_tree)
 
 @app.get('/api/v1/concierge/timeline/graph')
@@ -1684,7 +1718,7 @@ except ImportError:
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse
+from fastapi.responses import JSONResponse, StreamingResponse, Response, HTMLResponse, FileResponse, RedirectResponse
 from pydantic import BaseModel, model_validator
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
@@ -2630,6 +2664,10 @@ async def list_tasks():
             task_tree = get_task_tree(thread_id)
             if not task_tree:
                 continue
+            root_status = (task_tree.get('status') or '').lower()
+            if root_status in ('running', 'started', 'thinking', 'queued', 'waiting', 'pending'):
+                await asyncio.to_thread(reconcile_thread_status, thread_id)
+                task_tree = get_task_tree(thread_id) or task_tree
             metadata = task_tree.get('metadata') or {}
             tasks.append({
                 'id': thread_id,
@@ -2676,17 +2714,39 @@ async def kill_task(task_id: str):
 
 
 @app.get('/api/v1/tasks/{task_id}/status')
-async def task_status(task_id: str):
+async def task_status(task_id: str, request: Request):
+    accept = (request.headers.get('accept') or '').lower()
+    if 'text/html' in accept and 'application/json' not in accept:
+        return RedirectResponse(url=f'/tasks/{task_id}', status_code=302)
+
     try:
+        await asyncio.to_thread(reconcile_thread_status, task_id)
         task_tree = get_task_tree(task_id)
     except Exception as exc:
         logger.exception('Failed to fetch task status for %s', task_id)
-        resp = _api_response(None, status='error')
-        resp['errors'] = {'message': str(exc)}
-        return JSONResponse(status_code=503, content=resp)
+        # Return a graceful response instead of hard 503 so UI polling does not spam console errors.
+        # Frontend treats missing/unknown as pending.
+        resp = _api_response({
+            'task_id': task_id,
+            'status': 'unavailable',
+            'state': 'PENDING',
+            'progress': 0,
+            'children': [],
+            'metadata': {'error': 'task store temporarily unavailable'}
+        }, status='error')
+        return resp
 
     if task_tree is None:
-        raise HTTPException(status_code=404, detail='task_id not found')
+        # Return a pending skeleton instead of 404 so poller does not treat it as fatal.
+        # Real terminal states will come when the tree is written by worker.
+        return _api_response({
+            'task_id': task_id,
+            'status': 'pending',
+            'state': 'PENDING',
+            'progress': 0,
+            'children': [],
+            'metadata': {'note': 'task tree not yet available'}
+        })
     return _api_response(task_tree)
 
 @app.get('/api/v1/concierge/timeline/graph')
@@ -3239,6 +3299,11 @@ async def api_memory_health():
 async def api_health():
     return await health()
 
+@app.get('/api/health/ready')
+async def api_health_ready():
+    """Alias for /health/ready to support clients that may incorrectly prefix with /api."""
+    return await health_ready()
+
 
 @app.get('/api/health/system')
 async def api_health_system():
@@ -3288,10 +3353,71 @@ def _find_static_dir() -> Optional[Path]:
 
 STATIC_DIR = _find_static_dir()
 
+# --- Ensure jobs routes are mounted before the root SPA static mount ---
+# The duplicated blocks + conditional lifespan include can leave the route
+# unregistered at import time (causing 405 on /api/v1/jobs/run_agent from the SPA client).
+# Force-include + a direct POST fallback here (before the "/" mount) guarantees it.
+try:
+    if not any(getattr(r, "path", "") == "/api/v1/jobs/run_agent" for r in getattr(app, "routes", [])):
+        # Try the full router first (preferred)
+        try:
+            from jobs import job_router as _jr_mod
+            _jr = getattr(_jr_mod, "router", _jr_mod)
+            if _jr is not None:
+                app.include_router(_jr)
+        except Exception:
+            pass
+        # Always ensure a direct handler exists for the agent job POST (works even without full router)
+        if not any(getattr(r, "path", "") == "/api/v1/jobs/run_agent" for r in getattr(app, "routes", [])):
+            from pydantic import BaseModel
+            class _RunAgentBody(BaseModel):
+                goal: str
+                context: str = ""
+            from tasks.agent_tasks import run_agent_task
+            async def _direct_run_agent(body: _RunAgentBody):
+                res = run_agent_task.delay(context=body.context, goal=body.goal)
+                return {"status": "accepted", "job_id": res.id, "type": "run_agent"}
+            app.add_api_route("/api/v1/jobs/run_agent", _direct_run_agent, methods=["POST"], name="run_agent_direct")
+except Exception:
+    # Never break app startup over optional job wiring
+    pass
+
 if STATIC_DIR:
-    # This single mount replaces both `serve_asset` and `spa_fallback`.
-    # It serves static files and provides a fallback to index.html for client-side routing.
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="spa")
+    _assets_dir = STATIC_DIR / "assets"
+
+    @app.middleware("http")
+    async def _spa_cache_control(request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/assets/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        elif path in ("/", "/index.html"):
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+    # Hashed chunks under /assets must 404 when missing — not fall back to index.html (that
+    # breaks dynamic import() with "Failed to fetch dynamically imported module").
+    if _assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="spa_assets")
+
+    _SPA_RESERVED_PREFIXES = ("api/", "media/", "health", "memory/", "ws/")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_catchall(request: Request, full_path: str = ""):
+        path = request.url.path.lstrip("/")
+        if path.startswith(_SPA_RESERVED_PREFIXES) or path in ("_health",):
+            raise HTTPException(status_code=404, detail="Not Found")
+        if path:
+            candidate = STATIC_DIR / path
+            try:
+                candidate.resolve().relative_to(STATIC_DIR.resolve())
+            except ValueError:
+                raise HTTPException(status_code=404, detail="Not Found")
+            if candidate.is_file():
+                return FileResponse(candidate)
+        index = STATIC_DIR / "index.html"
+        return FileResponse(index, media_type="text/html")
 
 
 if __name__ == "__main__":
