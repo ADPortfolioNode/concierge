@@ -97,3 +97,13 @@ docker-compose.*.yml
 *.tmp
 *.swp
 *~
+
+# Agent / IDE session artifacts (local only)
+terminals/
+agent-tools/
+mcps/
+test_phase6_out*.txt
+
+# Accidental local scratch files
+Cleaning
+[runtime
