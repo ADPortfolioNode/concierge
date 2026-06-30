@@ -56,9 +56,19 @@ _CONVERSATIONAL_KEYWORDS = {
 }
 
 
+_GOAL_INTENT_KEYWORDS = (
+    "image", "images", "iages", "picture", "photo", "logo", "icon", "draw",
+    "render", "generate", "create", "design", "summarize", "summary", "code",
+    "implement", "build", "plan", "analyze", "analyse", "research",
+)
+
+
 def _is_conversational(text: str) -> bool:
     """Return True if *text* is a conversational question vs. an actionable goal."""
     lowered = text.strip().lower()
+    # Actionable intents (incl. short ones like "generate logo") go to the planner
+    if any(k in lowered for k in _GOAL_INTENT_KEYWORDS):
+        return False
     # Very short inputs are conversational
     if len(lowered.split()) <= 3:
         return True

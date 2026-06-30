@@ -1172,11 +1172,24 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
 
     task_tree = get_task_tree(thread_id)
     if task_tree is None:
-        raise HTTPException(status_code=404, detail='thread_id not found')
+        return _api_response({
+            "thread_id": thread_id,
+            "node_id": node_id,
+            "memories": [],
+            "status": "pending",
+            "note": "task tree not yet available",
+        })
 
     node = _find_task_node(task_tree, node_id)
+    if node is None and node_id == thread_id:
+        node = task_tree
     if node is None:
-        raise HTTPException(status_code=404, detail='node_id not found')
+        return _api_response({
+            "thread_id": thread_id,
+            "node_id": node_id,
+            "memories": [],
+            "status": "unknown_node",
+        })
 
     context_parts = [node_id]
     if isinstance(node, dict):
@@ -2838,11 +2851,24 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
 
     task_tree = get_task_tree(thread_id)
     if task_tree is None:
-        raise HTTPException(status_code=404, detail='thread_id not found')
+        return _api_response({
+            "thread_id": thread_id,
+            "node_id": node_id,
+            "memories": [],
+            "status": "pending",
+            "note": "task tree not yet available",
+        })
 
     node = _find_task_node(task_tree, node_id)
+    if node is None and node_id == thread_id:
+        node = task_tree
     if node is None:
-        raise HTTPException(status_code=404, detail='node_id not found')
+        return _api_response({
+            "thread_id": thread_id,
+            "node_id": node_id,
+            "memories": [],
+            "status": "unknown_node",
+        })
 
     context_parts = [node_id]
     if isinstance(node, dict):

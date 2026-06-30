@@ -43,16 +43,26 @@ def run_plugin(self, plugin_name: str, input_data: Dict[str, Any]) -> Dict[str, 
                 "task_id": task_id,
             }
 
-        # Plugins expose a synchronous `run` or `execute` method.
-        runner = getattr(plugin, "run", None) or getattr(plugin, "execute", None)
-        if runner is None:
+        if hasattr(plugin, "run_sync"):
+            result = plugin.run_sync(input_data)
+        elif hasattr(plugin, "run"):
+            import asyncio
+            import inspect
+
+            run_fn = plugin.run
+            if inspect.iscoroutinefunction(run_fn):
+                result = asyncio.run(run_fn(input_data))
+            else:
+                result = run_fn(input_data)
+        elif hasattr(plugin, "execute"):
+            result = plugin.execute(input_data)
+        else:
             return {
                 "status": "failed",
                 "error": f"Plugin {plugin_name!r} has no run/execute method",
                 "task_id": task_id,
             }
 
-        result = runner(input_data)
         return {"status": "completed", "result": result, "task_id": task_id}
 
     except Exception as exc:

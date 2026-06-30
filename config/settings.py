@@ -62,6 +62,15 @@ class Settings:
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
     gemini_models: str = os.getenv("GEMINI_MODELS", "")
+    gemini_image_models: str = os.getenv(
+        "GEMINI_IMAGE_MODELS",
+        "gemini-2.5-flash-image,gemini-3.1-flash-image",
+    )
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_image_models: str = os.getenv(
+        "OLLAMA_IMAGE_MODELS",
+        "x/flux2-klein,x/z-image-turbo",
+    )
     llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
     # Integration secrets (centralized so key names are not repeated elsewhere in code)

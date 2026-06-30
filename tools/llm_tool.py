@@ -409,7 +409,10 @@ def _conversational_reply(user_msg: str) -> str:
     if any(k in msg for k in ("hello", "hi ", "hey", "howdy", "greetings", "good morning", "good afternoon", "good evening", "sup ")):
         return "Hello! I'm Concierge, your AI-powered assistant. I can help you plan tasks, research topics, generate code, analyze files, and more. What would you like to tackle today?"
 
-    if any(k in msg for k in ("image", "picture", "photo", "generate an image", "draw", "create an image", "flaming", "teddy bear", "dall")):
+    if any(k in msg for k in (
+        "image", "images", "iages", "picture", "photo", "render", "logo", "icon",
+        "generate an image", "draw", "create an image", "flaming", "teddy bear", "dall",
+    )):
         if has_openai:
             return (
                 "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
@@ -453,6 +456,14 @@ def _conversational_reply(user_msg: str) -> str:
 
     # Default thoughtful response
     topic = re.sub(r"[^\w\s]", "", user_msg[:80]).strip()
+    if has_openai:
+        return (
+            f"I understand you're asking about \"{topic}\". "
+            "The live LLM call didn't complete, so I'm answering from built-in rules for now. "
+            "Try rephrasing as a clear goal (e.g. \"Generate an image of …\" or \"Create a sprint plan for …\") "
+            "and I'll start a tracked workflow you can follow on the Tasks page. "
+            "What would you like to do?"
+        )
     return (
         f"I understand you're asking about \"{topic}\". "
         "I'm currently running without an OpenAI API key, so my reasoning is rule-based rather than generative. "
