@@ -327,7 +327,7 @@ class ImageGenerationPlugin(BasePlugin):
         seed = int(hashlib.md5(prompt.encode()).hexdigest()[:8], 16) % 1000
         remote = f"https://picsum.photos/seed/{seed}/1024/1024"
         try:
-            resp = httpx.get(remote, timeout=20)
+            resp = httpx.get(remote, timeout=20, follow_redirects=True)
             resp.raise_for_status()
             content = resp.content
             img_path = ImageGenerationPlugin._save_bytes_to_media_static(
@@ -357,7 +357,11 @@ class ImageGenerationPlugin(BasePlugin):
                 except Exception:
                     font = ImageFont.load_default()
                 text = (prompt[:120] + "...") if len(prompt) > 120 else prompt
-                w, h = draw.textsize(text, font=font)
+                if hasattr(draw, "textbbox"):
+                    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+                    w, h = right - left, bottom - top
+                else:
+                    w, h = draw.textsize(text, font=font)
                 draw.text(((1024 - w) / 2, (1024 - h) / 2), text, fill=(255, 255, 255), font=font)
                 buf = BytesIO()
                 img.save(buf, format="JPEG", quality=90)

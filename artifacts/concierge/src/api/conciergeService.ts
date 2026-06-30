@@ -44,10 +44,27 @@ export const getTimeline = async () => {
   return payload;
 };
 
-export const getMedia = async () => {
-  const res = await apiClient.get<ApiResponse>('concierge/media');
+export type MediaListItem = {
+  filename?: string;
+  url: string;
+  size?: number;
+  mtime?: string;
+  metadata?: {
+    prompt?: string;
+    source?: string;
+    mime_type?: string;
+    created_at?: string;
+    filename?: string;
+  };
+};
+
+export const getMedia = async (): Promise<MediaListItem[]> => {
+  const res = await apiClient.get<ApiResponse<MediaListItem[]>>('concierge/media');
   if ((res as any).error) throw new Error((res as any).error);
-  return res;
+  const payload = res.data;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload)) return payload as MediaListItem[];
+  return [];
 };
 
 // ── SSE streaming ──────────────────────────────────────────────────────────

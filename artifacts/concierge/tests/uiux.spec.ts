@@ -209,11 +209,25 @@ test.describe('Workspace & Media', () => {
     await expect(page.getByText(/Plain text|CSV|PDF/i).first()).toBeVisible();
   });
 
-  test('media empty state offers guidance', async ({ page }) => {
+  test('media page loads gallery or empty state', async ({ page }) => {
+    const apiPromise = page.waitForResponse(
+      (res) => res.url().includes('/api/v1/concierge/media') && res.status() === 200,
+      { timeout: 15000 },
+    );
     await gotoHome(page);
     await navigateViaHeader(page, 'Media', '/media');
-    await expect(page.getByText(/No media yet|attached to the current chat/i).first()).toBeVisible();
+    const apiRes = await apiPromise;
+    const json = await apiRes.json();
+    const items = Array.isArray(json?.data) ? json.data : [];
     await expect(page.getByRole('link', { name: '← Home' })).toBeVisible();
+    if (items.length > 0) {
+      await expect(
+        page.getByText(/Generated images and media saved|Multimedia/i).first(),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/No media is currently available/i)).not.toBeVisible();
+    } else {
+      await expect(page.getByText(/No media is currently available|attached to the current chat/i).first()).toBeVisible();
+    }
   });
 });
 

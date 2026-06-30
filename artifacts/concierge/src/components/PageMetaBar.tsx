@@ -172,7 +172,7 @@ async function fetchMediaBar(): Promise<Partial<BarState>> {
   const chips: Chip[] = [{ label: 'Files', value: items.length }];
   const last  = items[items.length - 1];
   const footer = last
-    ? `Latest: ${last.filename ?? last.name ?? 'media file'} · ${timeSince(last.created_at) ?? ''}`
+    ? `Latest: ${last.filename ?? last.name ?? 'media file'} · ${timeSince(last.metadata?.created_at ?? last.mtime ?? last.created_at) ?? ''}`
     : 'No media generated yet — ask Concierge to create an image';
   return { chips, footer };
 }

@@ -113,32 +113,40 @@ const SERVER_URLS: Record<string, string> = {
 
 export const API_PREFIX = '/api/v1';
 
-export const ACTIVE_API_BASE: string = (() => {
+/** Resolve API base at call time so co-hosted Docker SPAs use the page origin (not build-time defaults). */
+export function getActiveApiBase(): string {
   if (USE_RELATIVE_DEV_API) {
     return '';
   }
 
-  // Bundled production SPA on localhost: API is co-hosted on the same origin
-  // (e.g. Docker on HOST_PORT=8002). Avoid hardcoding 127.0.0.1:8000.
   if (
-    MODE === 'production' &&
     typeof window !== 'undefined' &&
     window.location &&
-    isBrowserLocalHost &&
-    !VITE_API_URL_LOCAL
+    (isBrowserLocalHost || window.location.port)
   ) {
-    return '';
+    const host = window.location.hostname.toLowerCase();
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+    if (isLocal && !VITE_API_URL_LOCAL) {
+      return '';
+    }
   }
 
-  const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? '';
+  const serverSet =
+    typeof window !== 'undefined' && window.location
+      ? detectServerSet()
+      : ACTIVE_SERVER_SET;
+
+  const candidate = SERVER_URLS[serverSet] ?? '';
   if (MODE === 'production') {
     return candidate === '' ? '' : candidate;
   }
-  if (ACTIVE_SERVER_SET !== 'local') {
+  if (serverSet !== 'local') {
     return candidate;
   }
   return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8000');
-})();
+}
+
+export const ACTIVE_API_BASE: string = getActiveApiBase();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
 
@@ -146,8 +154,9 @@ export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : AP
 export function makeApiUrl(path: string) {
   if (!path) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
-  if (ACTIVE_API_BASE) {
-    return `${ACTIVE_API_BASE}${p}`;
+  const base = getActiveApiBase();
+  if (base) {
+    return `${base}${p}`;
   }
 
   if (typeof window !== 'undefined' && window.location) {

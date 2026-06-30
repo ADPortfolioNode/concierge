@@ -1279,7 +1279,10 @@ async def concierge_media_list(request: Request):
                                 item['metadata'] = {'error': 'failed to read metadata'}
                     except Exception:
                         item['metadata'] = None
+                    meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
+                    item['created_at'] = meta.get('created_at') or item['mtime']
                     items.append(item)
+        items.sort(key=lambda x: x.get('created_at') or x.get('mtime') or '', reverse=True)
         return _api_response(items)
     except Exception as exc:
         logger.exception('Failed to list media files')
@@ -2978,7 +2981,10 @@ async def concierge_media_list(request: Request):
                                 item['metadata'] = {'error': 'failed to read metadata'}
                     except Exception:
                         item['metadata'] = None
+                    meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
+                    item['created_at'] = meta.get('created_at') or item['mtime']
                     items.append(item)
+        items.sort(key=lambda x: x.get('created_at') or x.get('mtime') or '', reverse=True)
         return _api_response(items)
     except Exception as exc:
         logger.exception('Failed to list media files')

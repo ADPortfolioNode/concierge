@@ -17,6 +17,16 @@ def _resolve_path(env_name: str, default: str) -> Path:
     return path
 
 
+def _default_ollama_base_url() -> str:
+    explicit = os.getenv("OLLAMA_BASE_URL", "").strip()
+    if explicit:
+        return explicit
+    # Inside Docker, localhost is the container — reach the host Ollama daemon instead.
+    if Path("/.dockerenv").exists():
+        return "http://host.docker.internal:11434"
+    return "http://localhost:11434"
+
+
 @dataclass
 class Settings:
     """Runtime settings for Concierge."""
@@ -66,7 +76,7 @@ class Settings:
         "GEMINI_IMAGE_MODELS",
         "gemini-2.5-flash-image,gemini-3.1-flash-image",
     )
-    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    ollama_base_url: str = field(default_factory=lambda: _default_ollama_base_url())
     ollama_image_models: str = os.getenv(
         "OLLAMA_IMAGE_MODELS",
         "x/flux2-klein,x/z-image-turbo",

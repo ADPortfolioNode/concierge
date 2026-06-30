@@ -21,6 +21,7 @@ x-env: &env
   CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
   CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
   # Disable noisy Chroma telemetry (cosmetic only)
   ANONYMIZED_TELEMETRY: "false"
   CHROMA_TELEMETRY: "false"

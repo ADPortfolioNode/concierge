@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
+import * as ConciergeAPI from '@/api/conciergeService';
 
 const normalizeMediaUrl = (url: string) => {
   if (!url) return url;
@@ -15,6 +16,39 @@ const MediaPage: React.FC = () => {
   const activeMedia = useAppStore((s) => s.activeMedia);
   const setActiveMedia = useAppStore((s) => s.setActiveMedia);
   const clearMediaLayers = useAppStore((s) => s.clearMediaLayers);
+  const fetchMedia = useAppStore((s) => s.fetchMedia);
+
+  const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [apiCount, setApiCount] = React.useState(0);
+
+  const loadMedia = React.useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setRefreshing(true);
+    try {
+      const list = await ConciergeAPI.getMedia();
+      setApiCount(list.length);
+      setError(null);
+      await fetchMedia();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      try {
+        await fetchMedia();
+      } catch {
+        // store sync is best-effort
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [fetchMedia]);
+
+  React.useEffect(() => {
+    loadMedia();
+    const interval = window.setInterval(() => loadMedia({ silent: true }), 15000);
+    return () => window.clearInterval(interval);
+  }, [loadMedia]);
 
   const uniqueMediaItems = React.useMemo(() => {
     const items = [
@@ -38,7 +72,10 @@ const MediaPage: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 24 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em', color: '#0F172A' }}>🎬 Multimedia</h1>
-          <p style={{ color: '#475569', marginTop: 8, fontSize: 14, lineHeight: 1.7 }}>Review all media attached to the current chat session.</p>
+          <p style={{ color: '#475569', marginTop: 8, fontSize: 14, lineHeight: 1.7 }}>
+            Generated images and media saved by Concierge ({uniqueMediaItems.length} shown
+            {apiCount > 0 ? ` · ${apiCount} on server` : ''}).
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
           <Link
@@ -48,17 +85,34 @@ const MediaPage: React.FC = () => {
             ← Home
           </Link>
           <button
+            onClick={() => loadMedia()}
+            disabled={refreshing}
+            style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#2563EB', borderRadius: 8, padding: '8px 14px', cursor: refreshing ? 'wait' : 'pointer', fontSize: 13, fontWeight: 600 }}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button
             onClick={() => clearMediaLayers()}
             style={{ background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.2)', color: '#B91C1C', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
-            Clear all
+            Clear view
           </button>
         </div>
       </div>
 
-      {uniqueMediaItems.length === 0 ? (
+      {error ? (
+        <div style={{ padding: 16, marginBottom: 16, background: '#FEF2F2', borderRadius: 10, color: '#B91C1C', border: '1px solid #FECACA', fontSize: 14 }}>
+          Could not load media list: {error}. Click Refresh to retry.
+        </div>
+      ) : null}
+
+      {loading ? (
         <div style={{ padding: 28, background: '#F0F8FF', borderRadius: 14, textAlign: 'center', color: '#475569', border: '1px solid #DBEAFE' }}>
-          No media is currently available. Trigger a response with images, video, or audio to see them here.
+          Loading media gallery…
+        </div>
+      ) : uniqueMediaItems.length === 0 ? (
+        <div style={{ padding: 28, background: '#F0F8FF', borderRadius: 14, textAlign: 'center', color: '#475569', border: '1px solid #DBEAFE' }}>
+          No media is currently available. Ask Concierge to generate an image, or run an image plugin job — saved files will appear here automatically.
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 24 }}>
@@ -66,9 +120,16 @@ const MediaPage: React.FC = () => {
             <h2 style={{ margin: '0 0 18px 0', fontSize: 20, color: '#0F172A' }}>Selected media</h2>
             {selected ? (
               <div>
-                <div style={{ marginBottom: 16, color: '#475569' }}>
-                  Showing the selected media item from the current response.
-                </div>
+                {selected.prompt ? (
+                  <div style={{ marginBottom: 12, color: '#475569', fontSize: 14 }}>
+                    <strong>Prompt:</strong> {selected.prompt}
+                  </div>
+                ) : null}
+                {selected.source ? (
+                  <div style={{ marginBottom: 12, color: '#64748B', fontSize: 12 }}>
+                    Source: {selected.source}
+                  </div>
+                ) : null}
                 <MediaRenderer media={{ type: selected.type, url: selected.url, overlay_text: null, mime_type: null }} />
               </div>
             ) : (
@@ -97,7 +158,12 @@ const MediaPage: React.FC = () => {
               >
                 <div>
                   <div style={{ fontWeight: 700, color: '#0F172A' }}>{item.type.toUpperCase()}</div>
-                  <div style={{ fontSize: 13, color: '#64748B' }}>{item.url}</div>
+                  <div style={{ fontSize: 13, color: '#64748B' }}>
+                    {item.prompt || item.filename || item.url}
+                  </div>
+                  {item.source ? (
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>{item.source}</div>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: '#2563EB' }}>Select →</div>
               </button>
