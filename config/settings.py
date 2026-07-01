@@ -81,6 +81,10 @@ class Settings:
         "OLLAMA_IMAGE_MODELS",
         "x/flux2-klein,x/z-image-turbo",
     )
+    image_openai_timeout: int = int(os.getenv("IMAGE_OPENAI_TIMEOUT", "20"))
+    image_gemini_timeout: int = int(os.getenv("IMAGE_GEMINI_TIMEOUT", "25"))
+    image_ollama_timeout: int = int(os.getenv("IMAGE_OLLAMA_TIMEOUT", "12"))
+    image_placeholder_timeout: int = int(os.getenv("IMAGE_PLACEHOLDER_TIMEOUT", "15"))
     llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
     # Integration secrets (centralized so key names are not repeated elsewhere in code)

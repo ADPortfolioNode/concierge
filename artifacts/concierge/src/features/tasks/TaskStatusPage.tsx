@@ -140,9 +140,23 @@ const TaskStatusPage: React.FC = () => {
       ) : tree ? (
         <>
           <TaskStatusView tree={tree} loading={refreshing} error={error} lastUpdated={lastUpdated} />
-          <PageSection title="Agent thread visualizer">
-            <ThreadVisualizer />
-          </PageSection>
+          <details style={{ marginTop: 8 }}>
+            <summary
+              style={{
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#64748B',
+                padding: '10px 0',
+                listStyle: 'none',
+              }}
+            >
+              Advanced: agent thread canvas
+            </summary>
+            <PageSection title="Agent thread visualizer">
+              <ThreadVisualizer />
+            </PageSection>
+          </details>
         </>
       ) : (
         <div style={{ padding: 28, background: '#FEF2F2', borderRadius: 14, color: '#991B1B', border: '1px solid #FECACA' }}>

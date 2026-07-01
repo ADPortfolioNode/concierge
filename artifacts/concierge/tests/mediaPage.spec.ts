@@ -12,7 +12,7 @@ test('media page loads gallery from API', async ({ page }) => {
   const items = Array.isArray(json?.data) ? json.data : [];
   expect(items.length).toBeGreaterThan(0);
 
-  await expect(page.getByText(/Generated images and media saved by Concierge/i)).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText(/No media is currently available/i)).not.toBeVisible();
-  await expect(page.getByText(/item/i)).toBeVisible();
+  await expect(page.getByText(/Media library/i)).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText(/media\/images/i)).toBeVisible();
+  await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 10000 });
 });

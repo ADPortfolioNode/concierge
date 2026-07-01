@@ -14,7 +14,12 @@ from .celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(bind=True, name="tasks.plugin_tasks.run_plugin")
+@celery_app.task(
+    bind=True,
+    name="tasks.plugin_tasks.run_plugin",
+    soft_time_limit=90,
+    time_limit=120,
+)
 def run_plugin(self, plugin_name: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a registered plugin synchronously inside a Celery worker.
 

@@ -49,6 +49,7 @@ export type MediaListItem = {
   url: string;
   size?: number;
   mtime?: string;
+  created_at?: string;
   metadata?: {
     prompt?: string;
     source?: string;

@@ -6,7 +6,7 @@ const ROUTES = [
   { path: '/strategy', navLabel: 'Strategy', heading: /Strategy/i },
   { path: '/tasks', navLabel: 'Tasks', heading: /Tasks/i },
   { path: '/workspace', navLabel: 'Workspace', heading: /Workspace/i },
-  { path: '/media', navLabel: 'Media', heading: /Multimedia/i },
+  { path: '/media', navLabel: 'Media', heading: /Media library|Multimedia/i },
   { path: '/howto', navLabel: 'Guide', heading: /How to Use Concierge/i },
   { path: '/capabilities', navLabel: 'Integrations', heading: /Integrations|Capabilities/i },
 ] as const;
@@ -222,9 +222,9 @@ test.describe('Workspace & Media', () => {
     await expect(page.getByRole('link', { name: '← Home' })).toBeVisible();
     if (items.length > 0) {
       await expect(
-        page.getByText(/Generated images and media saved|Multimedia/i).first(),
+        page.getByText(/Media library|media\/images|Generated images/i).first(),
       ).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText(/No media is currently available/i)).not.toBeVisible();
+      await expect(page.getByText(/No images in/i)).not.toBeVisible();
     } else {
       await expect(page.getByText(/No media is currently available|attached to the current chat/i).first()).toBeVisible();
     }

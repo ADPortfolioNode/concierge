@@ -51,6 +51,36 @@ def _ollama_configured() -> bool:
     return bool(base) and base not in ("none", "disabled", "false", "0")
 
 
+def _provider_timeouts() -> tuple[float, float, float, float]:
+    s = get_settings()
+    return (
+        float(s.image_openai_timeout),
+        float(s.image_gemini_timeout),
+        float(s.image_ollama_timeout),
+        float(s.image_placeholder_timeout),
+    )
+
+
+def _should_skip_remaining_providers(exc: Exception, status_code: int | None = None) -> bool:
+    """Fast-fail: do not burn minutes retrying when quota/billing/connectivity is gone."""
+    if status_code in (400, 401, 403, 404, 429):
+        return True
+    text = str(exc).lower()
+    markers = (
+        "billing",
+        "quota",
+        "rate_limit",
+        "resource_exhausted",
+        "429",
+        "too many requests",
+        "not found",
+        "connection",
+        "connect",
+        "model '",
+    )
+    return any(m in text for m in markers)
+
+
 class ImageGenerationPlugin(BasePlugin):
     name = "image_generation"
     description = (
@@ -116,8 +146,9 @@ class ImageGenerationPlugin(BasePlugin):
             "n": 1,
             "size": "1024x1024",
         }
+        openai_timeout, _, _, _ = _provider_timeouts()
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with httpx.AsyncClient(timeout=openai_timeout) as client:
                 resp = await client.post(
                     "https://api.openai.com/v1/images/generations",
                     json=payload,
@@ -219,6 +250,8 @@ class ImageGenerationPlugin(BasePlugin):
         models = [m.strip() for m in raw_models.split(",") if m.strip()]
         last_exc: Exception | None = None
 
+        _, _, ollama_timeout, _ = _provider_timeouts()
+        ollama_http = httpx.Timeout(ollama_timeout, connect=min(5.0, ollama_timeout))
         for model in models:
             url = f"{base}/v1/images/generations"
             payload = {
@@ -228,7 +261,7 @@ class ImageGenerationPlugin(BasePlugin):
                 "size": "1024x1024",
             }
             try:
-                async with httpx.AsyncClient(timeout=300) as client:
+                async with httpx.AsyncClient(timeout=ollama_http) as client:
                     resp = await client.post(url, json=payload)
                     if resp.status_code != 200:
                         logger.error(
@@ -259,6 +292,13 @@ class ImageGenerationPlugin(BasePlugin):
             except Exception as exc:
                 logger.warning("Ollama image model %s failed: %s", model, exc)
                 last_exc = exc
+                status = (
+                    exc.response.status_code
+                    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None
+                    else None
+                )
+                if _should_skip_remaining_providers(exc, status):
+                    break
                 continue
 
         if last_exc:
@@ -284,6 +324,7 @@ class ImageGenerationPlugin(BasePlugin):
         models = [m.strip() for m in raw_models.split(",") if m.strip()]
         last_exc: Exception | None = None
 
+        _, gemini_timeout, _, _ = _provider_timeouts()
         for model in models:
             url = (
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -295,7 +336,7 @@ class ImageGenerationPlugin(BasePlugin):
             }
             headers = {"Content-Type": "application/json"}
             try:
-                async with httpx.AsyncClient(timeout=120) as client:
+                async with httpx.AsyncClient(timeout=gemini_timeout) as client:
                     resp = await client.post(url, json=payload, headers=headers)
                     if resp.status_code != 200:
                         logger.error("Gemini image %s failed %s %s", model, resp.status_code, resp.text[:500])
@@ -315,6 +356,13 @@ class ImageGenerationPlugin(BasePlugin):
             except Exception as exc:
                 logger.warning("Gemini image model %s failed: %s", model, exc)
                 last_exc = exc
+                status = (
+                    exc.response.status_code
+                    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None
+                    else None
+                )
+                if _should_skip_remaining_providers(exc, status):
+                    break
                 continue
 
         if last_exc:
@@ -327,7 +375,8 @@ class ImageGenerationPlugin(BasePlugin):
         seed = int(hashlib.md5(prompt.encode()).hexdigest()[:8], 16) % 1000
         remote = f"https://picsum.photos/seed/{seed}/1024/1024"
         try:
-            resp = httpx.get(remote, timeout=20, follow_redirects=True)
+            _, _, _, placeholder_timeout = _provider_timeouts()
+            resp = httpx.get(remote, timeout=placeholder_timeout, follow_redirects=True)
             resp.raise_for_status()
             content = resp.content
             img_path = ImageGenerationPlugin._save_bytes_to_media_static(

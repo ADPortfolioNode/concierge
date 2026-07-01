@@ -1,11 +1,14 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { TaskTreeNode } from '@/api/taskService';
+import { stepDisplayName } from '@/utils/workflowStatus';
+import { truncateText } from '@/components/tasks/taskDisplayUtils';
 
 interface Props {
   tree: TaskTreeNode;
   selectedNode: TaskTreeNode | null;
   onSelectNode: (node: TaskTreeNode) => void;
+  displayTitle?: string;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,26 +33,29 @@ const flattenTaskTree = (root: TaskTreeNode): TaskTreeNode[] => {
   return nodes;
 };
 
-const AssistantRiver: React.FC<Props> = ({ tree, selectedNode, onSelectNode }) => {
+const AssistantRiver: React.FC<Props> = ({ tree, selectedNode, onSelectNode, displayTitle }) => {
   const branches = useMemo(() => flattenTaskTree(tree), [tree]);
   const width = Math.max(520, 120 + branches.length * 140);
   const height = 400;
+  const completedCount = branches.filter((b) => ['done', 'completed', 'success'].includes((b.status || '').toLowerCase())).length;
 
   return (
     <div style={{ margin: '0 0 16px', padding: '18px', borderRadius: 18, background: '#FFFFFF', border: '1px solid #DBEAFE', boxShadow: '0 4px 16px rgba(37,99,235,0.08)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#2563EB' }}>
-            Forking River Visualization
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94A3B8' }}>
+            Workflow steps
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0F172A' }}>
-            Assistant thread progress
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#0F172A', marginTop: 4 }}>
+            {branches.length} step{branches.length !== 1 ? 's' : ''}
+            {branches.length > 0 ? ` · ${completedCount} complete` : ''}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: '#64748B' }}>Root:</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#2563EB' }}>{tree.task_name || tree.task_id}</span>
-        </div>
+        {displayTitle ? (
+          <div style={{ fontSize: 12, color: '#64748B', maxWidth: 280, textAlign: 'right', lineHeight: 1.4 }}>
+            {truncateText(displayTitle, 72)}
+          </div>
+        ) : null}
       </div>
 
       <div style={{ position: 'relative', width: '100%', overflowX: 'auto' }}>
@@ -107,7 +113,7 @@ const AssistantRiver: React.FC<Props> = ({ tree, selectedNode, onSelectNode }) =
                   transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
                 />
                 <text x={x + 18} y={y + 4} fontSize="11" fill="#334155">
-                  {branch.task_name || branch.task_id}
+                  {stepDisplayName(branch)}
                 </text>
               </g>
             );
@@ -119,27 +125,36 @@ const AssistantRiver: React.FC<Props> = ({ tree, selectedNode, onSelectNode }) =
         <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{selectedNode.task_name || selectedNode.task_id}</div>
-              <div style={{ fontSize: 12, color: '#64748B' }}>{selectedNode.status.toUpperCase()}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#0F172A' }}>{stepDisplayName(selectedNode)}</div>
+              <div style={{ fontSize: 12, color: '#64748B' }}>{(selectedNode.status || selectedNode.state || 'unknown').toUpperCase()}</div>
             </div>
             <div style={{ minWidth: 80, textAlign: 'right', fontSize: 12, color: '#475569' }}>
-              {selectedNode.progress}%
+              {typeof selectedNode.progress === 'number' ? `${selectedNode.progress}%` : '—'}
             </div>
           </div>
           <div style={{ height: 8, width: '100%', background: '#DBEAFE', borderRadius: 999 }}>
-            <div style={{ width: `${Math.min(100, selectedNode.progress)}%`, height: 8, borderRadius: 999, background: getStatusColor(selectedNode.status) }} />
+            <div
+              style={{
+                width: `${Math.min(100, Math.max(0, selectedNode.progress ?? 0))}%`,
+                height: 8,
+                borderRadius: 999,
+                background: getStatusColor(selectedNode.status || selectedNode.state || ''),
+              }}
+            />
           </div>
-          <div style={{ marginTop: 12, fontSize: 13, color: '#334155', lineHeight: 1.6 }}>
+          <div style={{ marginTop: 12, fontSize: 13, color: '#334155', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
             {selectedNode.metadata?.result_summary ? (
-              <>{String(selectedNode.metadata.result_summary)}</>
+              <>{truncateText(String(selectedNode.metadata.result_summary), 320)}</>
+            ) : selectedNode.metadata?.instructions ? (
+              <>{truncateText(String(selectedNode.metadata.instructions), 320)}</>
             ) : (
-              <>{selectedNode.metadata?.instructions || 'No additional metadata available.'}</>
+              <>No step summary yet.</>
             )}
           </div>
         </div>
       ) : (
         <div style={{ marginTop: 16, fontSize: 12, color: '#94A3B8' }}>
-          Tap a branch to inspect task details, progress, and summary.
+          Select a step to view its status and summary.
         </div>
       )}
     </div>

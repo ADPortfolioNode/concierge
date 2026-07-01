@@ -243,6 +243,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     scanForMediaUrls(tree);
     if (nowTerminal) {
       get().fetchMedia().catch(() => {});
+      set({ loading: false, streamingId: null });
     }
   },
   setTaskThreadId: (id) => set({ taskThreadId: id }),
@@ -255,27 +256,50 @@ export const useAppStore = create<AppState>((set, get) => ({
         clearInterval(poller);
         (window as any).__TASK_THREAD_POLLER__ = null;
       }
+      (window as any).__TASK_THREAD_POLL_STARTED__ = null;
     }
-    set({ taskThreadId: null, taskTree: null, workflowUpdates: [], stepSnapshot: {}, selectedRiverNode: null });
+    set({
+      taskThreadId: null,
+      taskTree: null,
+      workflowUpdates: [],
+      stepSnapshot: {},
+      selectedRiverNode: null,
+      selectedTaskMeta: null,
+      loading: false,
+      streamingId: null,
+    });
   },
   pollTaskThreadStatus: async (taskId: string) => {
     if (typeof window === 'undefined') return;
+    const POLL_MS = 2000;
+    const MAX_POLL_MS = 12 * 60 * 1000;
     try {
+      const stopPoller = () => {
+        const poller = (window as any).__TASK_THREAD_POLLER__;
+        if (poller) {
+          clearInterval(poller);
+          (window as any).__TASK_THREAD_POLLER__ = null;
+        }
+        (window as any).__TASK_THREAD_POLL_STARTED__ = null;
+      };
       const tick = async () => {
+        const started = (window as any).__TASK_THREAD_POLL_STARTED__ as number | null;
+        if (started && Date.now() - started > MAX_POLL_MS) {
+          stopPoller();
+          set({ loading: false, streamingId: null });
+          return;
+        }
         try {
           const tree = await fetchTaskTree(taskId);
           get().applyTaskTreeUpdate(tree, taskId);
           const terminal = isWorkflowTerminal(tree);
           const unavailable = tree.status === 'unavailable' || tree.status === 'pending';
           if (terminal || unavailable) {
-            const poller = (window as any).__TASK_THREAD_POLLER__;
-            if (poller) {
-              clearInterval(poller);
-              (window as any).__TASK_THREAD_POLLER__ = null;
-            }
+            stopPoller();
             if (terminal) {
               get().fetchMedia().catch(() => {});
             }
+            set({ loading: false, streamingId: null });
           }
         } catch {
           // ignore temporary fetch failures
@@ -284,8 +308,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if ((window as any).__TASK_THREAD_POLLER__) {
         clearInterval((window as any).__TASK_THREAD_POLLER__);
       }
+      (window as any).__TASK_THREAD_POLL_STARTED__ = Date.now();
       await tick();
-      (window as any).__TASK_THREAD_POLLER__ = setInterval(tick, 2500);
+      (window as any).__TASK_THREAD_POLLER__ = setInterval(tick, POLL_MS);
     } catch {
       // ignore
     }
