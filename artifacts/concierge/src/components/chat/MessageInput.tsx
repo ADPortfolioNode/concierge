@@ -11,7 +11,6 @@ const MessageInput: React.FC = () => {
   const [showUploader, setShowUploader] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const loading = useAppStore((s) => s.loading);
-  const conversationLength = useAppStore((s) => s.conversation.length);
   const sendMessage = useAppStore((s) => s.sendMessage);
   const draftMessage = useAppStore((s) => s.draftMessage);
   const setDraft = useAppStore((s) => s.setDraft);
@@ -123,7 +122,7 @@ const MessageInput: React.FC = () => {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={loading ? (conversationLength === 0 ? 'Connecting to local backend...' : 'Sending...') : 'Message — Enter to send, Shift+Enter for newline'}
+          placeholder={loading ? 'Working…' : 'Message Concierge…'}
           disabled={loading}
           rows={1}
           style={{
@@ -174,40 +173,23 @@ const MessageInput: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8 }}>
-        {loading && (
-          <div style={{ fontSize: 12, color: '#475569', marginRight: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#2563EB', animation: 'pulse 1s ease-in-out infinite' }} />
-            Streaming…
-          </div>
-        )}
+      <div style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
         <button
+          type="button"
           onClick={() => clearMemory()}
           disabled={loading}
-          title="Clear conversation memory (browser storage)"
+          title="Clear chat history"
           style={{
             background: 'none',
-            border: '1px solid #DBEAFE',
-            borderRadius: 5,
+            border: 'none',
             color: '#94A3B8',
             cursor: loading ? 'not-allowed' : 'pointer',
             fontSize: 11,
-            padding: '3px 8px',
-            lineHeight: 1.4,
-            transition: 'color 0.15s, border-color 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLButtonElement;
-            el.style.color = '#DC2626';
-            el.style.borderColor = 'rgba(220,38,38,0.4)';
-          }}
-          onMouseLeave={(e) => {
-            const el = e.currentTarget as HTMLButtonElement;
-            el.style.color = '#94A3B8';
-            el.style.borderColor = '#DBEAFE';
+            padding: 0,
+            textDecoration: 'underline',
           }}
         >
-          🗑 Clear memory
+          Clear chat
         </button>
       </div>
     </div>

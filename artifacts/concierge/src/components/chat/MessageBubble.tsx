@@ -1,194 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ConversationMessage } from '@/types/domain';
 import { useAppStore } from '@/state/appStore';
 import MediaRenderer from '@/components/media/MediaRenderer';
+import RichTextWithImages from '@/components/media/RichTextWithImages';
 
 interface Props {
   msg: ConversationMessage;
   collapseCounter?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Streaming cursor
-// ---------------------------------------------------------------------------
-
-const StreamingCursor: React.FC = () => (
-  <span
-    aria-hidden
-    style={{
-      display: 'inline-block',
-      width: 2,
-      height: '1em',
-      background: 'currentColor',
-      marginLeft: 2,
-      verticalAlign: 'text-bottom',
-      animation: 'blink 0.9s step-start infinite',
-    }}
-  />
+const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => (
+  <RichTextWithImages content={content} isStreaming={isStreaming} />
 );
-
-if (typeof document !== 'undefined' && !document.getElementById('_stream-blink')) {
-  const s = document.createElement('style');
-  s.id = '_stream-blink';
-  s.textContent = '@keyframes blink { 50% { opacity: 0 } }';
-  document.head.appendChild(s);
-}
-
-// ---------------------------------------------------------------------------
-// Inline image rendering helpers
-// ---------------------------------------------------------------------------
-
-const IMAGE_URL_RE =
-  /(?:https?:\/\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?|https?:\/\/(?:picsum\.photos|i\.imgur\.com|images\.unsplash\.com)\S*|\/?media\/images\/\S+?(?:\.(?:png|jpg|jpeg|gif|webp|svg|avif))(?:\?\S*)?)/gi;
-
-interface Segment {
-  kind: 'text' | 'image';
-  value: string;
-}
-
-function splitContentIntoSegments(content: string): Segment[] {
-  const segments: Segment[] = [];
-  let lastIndex = 0;
-  IMAGE_URL_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = IMAGE_URL_RE.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ kind: 'text', value: content.slice(lastIndex, match.index) });
-    }
-    segments.push({ kind: 'image', value: match[0] });
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < content.length) {
-    segments.push({ kind: 'text', value: content.slice(lastIndex) });
-  }
-  return segments.length > 0 ? segments : [{ kind: 'text', value: content }];
-}
-
-const InlineImage: React.FC<{ src: string }> = ({ src }) => {
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
-  return (
-    <div style={{ margin: '10px 0' }}>
-      {status !== 'error' ? (
-        <img
-          src={src}
-          alt="Generated image"
-          onLoad={() => setStatus('loaded')}
-          onError={() => setStatus('error')}
-          style={{
-            maxWidth: '100%',
-            maxHeight: 400,
-            borderRadius: 6,
-            display: 'block',
-            opacity: status === 'loading' ? 0.4 : 1,
-            transition: 'opacity 0.25s',
-            border: '1px solid #DBEAFE',
-            resize: 'both',
-            overflow: 'auto',
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '8px 12px',
-            background: '#F0F8FF',
-            border: '1px solid #DBEAFE',
-            borderRadius: 6,
-            fontSize: 12,
-            color: '#64748B',
-          }}
-        >
-          🖼️ <span>Image could not be loaded</span>
-          <a href={src} target="_blank" rel="noopener noreferrer" style={{ color: '#2563EB', marginLeft: 4 }}>
-            Open ↗
-          </a>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const RichContent: React.FC<{ content: string; isStreaming: boolean }> = ({ content, isStreaming }) => {
-  const navigate = useNavigate();
-  const pushImage = useAppStore((s) => s.pushImage);
-  const segments = useMemo(() => splitContentIntoSegments(content), [content]);
-  const hasImages = segments.some((s) => s.kind === 'image');
-
-  if (!hasImages) {
-    return (
-      <div style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-        {content}
-        {isStreaming && <StreamingCursor />}
-      </div>
-    );
-  }
-  return (
-    <div>
-      {segments.map((seg, i) => {
-        if (seg.kind === 'image') {
-          const src = seg.value;
-          const isLocalMedia = src.includes('/media/images/') || src.includes('media/images/');
-          const normalizedSrc = src.startsWith('/') ? src : `/${src}`;
-
-          if (isLocalMedia) {
-            const handleOpenMedia = () => {
-              pushImage(normalizedSrc);
-              navigate('/media');
-            };
-            return (
-              <div key={i} style={{ margin: '14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', textDecoration: 'none' }}>
-                  <img
-                    src={normalizedSrc}
-                    alt="Generated image thumbnail"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: 240,
-                      borderRadius: 10,
-                      border: '1px solid #BFDBFE',
-                    }}
-                  />
-                </a>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={handleOpenMedia}
-                    style={{
-                      background: '#EFF6FF',
-                      border: '1px solid #93C5FD',
-                      color: '#2563EB',
-                      borderRadius: 6,
-                      padding: '8px 10px',
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      fontSize: 13,
-                    }}
-                  >
-                    Open in media player
-                  </button>
-                  <a href={normalizedSrc} target="_blank" rel="noopener noreferrer" style={{ color: '#64748B', fontSize: 13 }}>
-                    View original
-                  </a>
-                </div>
-              </div>
-            );
-          }
-
-          return <InlineImage key={i} src={src} />;
-        }
-        return (
-          <span key={i} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-            {seg.value}
-          </span>
-        );
-      })}
-      {isStreaming && <StreamingCursor />}
-    </div>
-  );
-};
 
 // ---------------------------------------------------------------------------
 // MetaPanel
@@ -282,6 +106,12 @@ const MetaPanel: React.FC<{ meta?: ConversationMessage['meta']; collapseCounter?
 // MessageBubble
 // ---------------------------------------------------------------------------
 
+const roleLabel = (role: ConversationMessage['role']) => {
+  if (role === 'user') return 'You';
+  if (role === 'assistant') return 'Concierge';
+  return 'System';
+};
+
 const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
   const navigate = useNavigate();
   const setActiveMedia = useAppStore((s) => s.setActiveMedia);
@@ -318,7 +148,21 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
 
   return (
     <div style={containerStyle}>
-      <div style={bubbleStyle} aria-label={`message-${msg.id}`}>
+      <div style={bubbleStyle} aria-label={`message-${msg.id}`} data-message-role={msg.role}>
+        {!isSystem && (
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: isUser ? '#1D4ED8' : '#64748B',
+              marginBottom: 6,
+            }}
+          >
+            {roleLabel(msg.role)}
+          </div>
+        )}
         {(() => {
           const raw = (msg.meta && (msg.meta.raw as any)) || null;
           const structured = raw?.structured || raw;
@@ -338,23 +182,24 @@ const MessageBubble: React.FC<Props> = ({ msg, collapseCounter }) => {
           <div style={{ marginTop: 8 }}>
             <MediaRenderer media={{ type: msg.media.type, url: msg.media.url, overlay_text: null, mime_type: null }} />
             <button
+              type="button"
               onClick={() => {
                 setActiveMedia(msg.media?.url || null);
                 navigate('/media');
               }}
               style={{
-                marginTop: 8,
-                background: '#EFF6FF',
-                border: '1px solid #93C5FD',
+                marginTop: 6,
+                background: 'none',
+                border: 'none',
                 color: '#2563EB',
-                borderRadius: 6,
-                padding: '8px 10px',
                 cursor: 'pointer',
+                fontSize: 12,
                 fontWeight: 600,
-                fontSize: 13,
+                padding: 0,
+                textDecoration: 'underline',
               }}
             >
-              Open media page
+              View in Media
             </button>
           </div>
         )}

@@ -21,9 +21,6 @@ export interface MediaItem {
   id: string;
   url: string;
   timestamp: string;
-  prompt?: string;
-  source?: string;
-  filename?: string;
 }
 
 // Regexes shared with MediaStage for routing responses to the right layer
@@ -219,32 +216,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (systemMessages.length) {
       saveHistory(get().conversation).catch(() => { /* best-effort */ });
     }
-
-    const scanForMediaUrls = (node: TaskTree | null | undefined) => {
-      if (!node || typeof node !== 'object') return;
-      const meta = (node.metadata || {}) as Record<string, unknown>;
-      const blobs = [
-        meta.result_summary,
-        meta.summary,
-        meta.output,
-        node.result_summary,
-      ].filter((v) => typeof v === 'string') as string[];
-      for (const text of blobs) {
-        const matches = text.match(_IMG_RE) || [];
-        for (const raw of matches) {
-          get().pushImage(raw);
-        }
-      }
-      const children = Array.isArray(node.children) ? node.children : [];
-      for (const child of children) {
-        scanForMediaUrls(child as TaskTree);
-      }
-    };
-    scanForMediaUrls(tree);
-    if (nowTerminal) {
-      get().fetchMedia().catch(() => {});
-      set({ loading: false, streamingId: null });
-    }
   },
   setTaskThreadId: (id) => set({ taskThreadId: id }),
   setSelectedTaskMeta: (meta) => set({ selectedTaskMeta: meta }),
@@ -256,50 +227,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         clearInterval(poller);
         (window as any).__TASK_THREAD_POLLER__ = null;
       }
-      (window as any).__TASK_THREAD_POLL_STARTED__ = null;
     }
-    set({
-      taskThreadId: null,
-      taskTree: null,
-      workflowUpdates: [],
-      stepSnapshot: {},
-      selectedRiverNode: null,
-      selectedTaskMeta: null,
-      loading: false,
-      streamingId: null,
-    });
+    set({ taskThreadId: null, taskTree: null, workflowUpdates: [], stepSnapshot: {}, selectedRiverNode: null });
   },
   pollTaskThreadStatus: async (taskId: string) => {
     if (typeof window === 'undefined') return;
-    const POLL_MS = 2000;
-    const MAX_POLL_MS = 12 * 60 * 1000;
     try {
-      const stopPoller = () => {
-        const poller = (window as any).__TASK_THREAD_POLLER__;
-        if (poller) {
-          clearInterval(poller);
-          (window as any).__TASK_THREAD_POLLER__ = null;
-        }
-        (window as any).__TASK_THREAD_POLL_STARTED__ = null;
-      };
       const tick = async () => {
-        const started = (window as any).__TASK_THREAD_POLL_STARTED__ as number | null;
-        if (started && Date.now() - started > MAX_POLL_MS) {
-          stopPoller();
-          set({ loading: false, streamingId: null });
-          return;
-        }
         try {
           const tree = await fetchTaskTree(taskId);
           get().applyTaskTreeUpdate(tree, taskId);
           const terminal = isWorkflowTerminal(tree);
           const unavailable = tree.status === 'unavailable' || tree.status === 'pending';
           if (terminal || unavailable) {
-            stopPoller();
-            if (terminal) {
-              get().fetchMedia().catch(() => {});
+            const poller = (window as any).__TASK_THREAD_POLLER__;
+            if (poller) {
+              clearInterval(poller);
+              (window as any).__TASK_THREAD_POLLER__ = null;
             }
-            set({ loading: false, streamingId: null });
           }
         } catch {
           // ignore temporary fetch failures
@@ -308,9 +253,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       if ((window as any).__TASK_THREAD_POLLER__) {
         clearInterval((window as any).__TASK_THREAD_POLLER__);
       }
-      (window as any).__TASK_THREAD_POLL_STARTED__ = Date.now();
       await tick();
-      (window as any).__TASK_THREAD_POLLER__ = setInterval(tick, POLL_MS);
+      (window as any).__TASK_THREAD_POLLER__ = setInterval(tick, 2500);
     } catch {
       // ignore
     }
@@ -324,41 +268,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   fetchMedia: async () => {
-    let list: ConciergeAPI.MediaListItem[] = [];
     try {
-      list = await ConciergeAPI.getMedia();
-    } catch {
-      return;
+      const res = await ConciergeAPI.getMedia();
+      const list = res.data?.data || [];
+      // normalize and push as imageLayers (preserve existing order)
+      const imgs = Array.isArray(list) ? list.filter((m: any) => m.url && m.metadata?.mime_type?.startsWith('image') || m.url?.match(/\.(png|jpg|jpeg|gif|webp)$/i)).map((m: any) => ({ id: m.filename || `img-${Date.now()}`, url: _normalizeMediaUrl(m.url), timestamp: m.metadata?.created_at || m.mtime || new Date().toISOString() })) : [];
+      if (imgs.length) {
+        set((s) => ({ imageLayers: [...s.imageLayers, ...imgs].slice(-50) }));
+      }
+    } catch (e) {
+      // ignore errors
     }
-    if (!Array.isArray(list)) return;
-
-    const isImageEntry = (m: ConciergeAPI.MediaListItem) => {
-      if (!m?.url) return false;
-      const mime = String(m.metadata?.mime_type || '');
-      if (mime.startsWith('image')) return true;
-      return /\.(png|jpe?g|gif|webp|avif|svg)$/i.test(String(m.url));
-    };
-
-    const imgs: MediaItem[] = list
-      .filter(isImageEntry)
-      .sort((a, b) => {
-        const ta = new Date(a.metadata?.created_at || a.mtime || 0).getTime();
-        const tb = new Date(b.metadata?.created_at || b.mtime || 0).getTime();
-        return tb - ta;
-      })
-      .map((m) => ({
-        id: m.filename || m.url,
-        url: _normalizeMediaUrl(m.url),
-        timestamp: m.metadata?.created_at || m.mtime || new Date().toISOString(),
-        prompt: m.metadata?.prompt,
-        source: m.metadata?.source,
-        filename: m.filename,
-      }));
-
-    set((s) => ({
-      imageLayers: imgs.slice(0, 50),
-      activeMedia: s.activeMedia || imgs[0]?.url || null,
-    }));
   },
   startTimelineStream: () => {
     if (typeof window === 'undefined') return;

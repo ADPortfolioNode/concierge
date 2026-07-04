@@ -113,40 +113,19 @@ const SERVER_URLS: Record<string, string> = {
 
 export const API_PREFIX = '/api/v1';
 
-/** Resolve API base at call time so co-hosted Docker SPAs use the page origin (not build-time defaults). */
-export function getActiveApiBase(): string {
+export const ACTIVE_API_BASE: string = (() => {
   if (USE_RELATIVE_DEV_API) {
     return '';
   }
-
-  if (
-    typeof window !== 'undefined' &&
-    window.location &&
-    (isBrowserLocalHost || window.location.port)
-  ) {
-    const host = window.location.hostname.toLowerCase();
-    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
-    if (isLocal && !VITE_API_URL_LOCAL) {
-      return '';
-    }
-  }
-
-  const serverSet =
-    typeof window !== 'undefined' && window.location
-      ? detectServerSet()
-      : ACTIVE_SERVER_SET;
-
-  const candidate = SERVER_URLS[serverSet] ?? '';
+  const candidate = SERVER_URLS[ACTIVE_SERVER_SET] ?? '';
   if (MODE === 'production') {
     return candidate === '' ? '' : candidate;
   }
-  if (serverSet !== 'local') {
+  if (ACTIVE_SERVER_SET !== 'local') {
     return candidate;
   }
-  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8000');
-}
-
-export const ACTIVE_API_BASE: string = getActiveApiBase();
+  return normalizeServerUrl(VITE_API_URL_LOCAL || 'http://127.0.0.1:8001');
+})();
 
 export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : API_PREFIX;
 
@@ -154,9 +133,8 @@ export const API_ROOT = ACTIVE_API_BASE ? `${ACTIVE_API_BASE}${API_PREFIX}` : AP
 export function makeApiUrl(path: string) {
   if (!path) return path;
   const p = path.startsWith('/') ? path : `/${path}`;
-  const base = getActiveApiBase();
-  if (base) {
-    return `${base}${p}`;
+  if (ACTIVE_API_BASE) {
+    return `${ACTIVE_API_BASE}${p}`;
   }
 
   if (typeof window !== 'undefined' && window.location) {

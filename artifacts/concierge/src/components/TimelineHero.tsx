@@ -179,24 +179,33 @@ const TimelineHero: React.FC = () => {
           { task_id: 'review-output', title: 'Review results', status: 'pending' },
         ];
 
-    const total = Math.max(source.length, 1);
+    const byDepth = new Map<number, TimelineTask[]>();
+    source.forEach((task: TimelineTask) => {
+      const d = depths.get(task.task_id) ?? 0;
+      if (!byDepth.has(d)) byDepth.set(d, []);
+      byDepth.get(d)!.push(task);
+    });
+
     return source.map((task: TimelineTask, idx: number) => {
-      const x = 60 + (idx * (600 / Math.max(total - 1, 1)));
-      const y = 150;
+      const depth = depths.get(task.task_id) ?? 0;
+      const peers = byDepth.get(depth) ?? [task];
+      const peerIndex = peers.findIndex((t) => t.task_id === task.task_id);
+      const x = 120 + depth * 148;
+      const y = 110 + (peerIndex - (peers.length - 1) / 2) * 56;
       return {
         ...task,
         x,
         y,
+        depth,
         color: ['#38bdf8', '#7c3aed', '#f97316', '#22c55e', '#ec4899', '#8b5cf6', '#06b6d4'][idx % 7],
       };
     });
-  }, [tasks]);
+  }, [tasks, depths]);
 
   const branchMainPath = useMemo(() => {
     if (branchNodes.length === 0) return '';
-    const startX = branchNodes[0].x;
-    const endX = branchNodes[branchNodes.length - 1].x;
-    return `M ${startX} 150 L ${endX} 150`;
+    const endX = Math.max(...branchNodes.map((n: { x: number }) => n.x));
+    return `M 46 110 L ${endX - 12} 110`;
   }, [branchNodes]);
 
   const taskCards = useMemo(
@@ -207,7 +216,7 @@ const TimelineHero: React.FC = () => {
       return (
         <button
           key={t.task_id}
-          onClick={() => onSelectTask(t)}
+          onClick={() => onSelectTask(isActive ? null : t)}
           className={`timeline-hero-task ${isActive ? 'timeline-hero-task--active' : 'timeline-hero-task--collapsed'}`}
           style={{ marginLeft: indent }}
           aria-expanded={isActive}
@@ -216,10 +225,16 @@ const TimelineHero: React.FC = () => {
             <div className="timeline-hero-task-title">{t.title || 'Untitled task'}</div>
             <div className="timeline-hero-task-summary-label">{t.status ? t.status.toUpperCase() : 'PENDING'}</div>
           </div>
-          <div className="timeline-hero-task-details">{(t.instructions || t.summary || '').slice(0, 72)}</div>
-          <div className="timeline-hero-task-progress-bar">
-            <div style={{ width: `${progressForTask(t)}%` }} />
-          </div>
+          {isActive ? (
+            <>
+              <div className="timeline-hero-task-details">{(t.instructions || t.summary || '').slice(0, 220)}</div>
+              <div className="timeline-hero-task-progress-bar">
+                <div style={{ width: `${progressForTask(t)}%` }} />
+              </div>
+            </>
+          ) : (
+            <div className="timeline-hero-task-teaser">{progressForTask(t)}% · tap to expand</div>
+          )}
         </button>
       );
     }),
@@ -283,8 +298,8 @@ const TimelineHero: React.FC = () => {
             <ThreadVisualizer />
           </div>
         ) : (
-          <div className="timeline-hero__graph timeline-hero__branch-graph">
-            <svg viewBox="0 0 720 260" className="timeline-hero__branch-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assistant linear timeline">
+          <div className="timeline-hero__graph timeline-hero__branch-graph" data-testid="timeline-horizontal-tree">
+            <svg viewBox="0 0 720 220" className="timeline-hero__branch-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Assistant horizontal task tree">
               <defs>
                 <linearGradient id="branchGrad" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#60a5fa" />
@@ -292,25 +307,36 @@ const TimelineHero: React.FC = () => {
                   <stop offset="100%" stopColor="#38bdf8" />
                 </linearGradient>
               </defs>
-              <path className="timeline-branch-main-line" d={branchMainPath} />
-              {branchNodes.map((node: any) => (
-                <path
-                  key={`edge-${node.task_id}`}
-                  className="timeline-branch-edge"
-                  d={`M ${node.x} ${node.y} L ${node.x} 160`}
-                />
-              ))}
+              {/* root anchor — tree grows left → right */}
+              <circle cx="36" cy="110" r="10" fill="#2563EB" opacity="0.9" />
+              <text x="36" y="88" textAnchor="middle" className="timeline-branch-label">Start</text>
+              <path className="timeline-branch-main-line" d={branchMainPath.replace(/^M (\d+)/, 'M 46')} />
+              {branchNodes.map((node: any, idx: number) => {
+                const prevX = idx === 0 ? 46 : branchNodes[idx - 1].x + 12;
+                const midY = 110;
+                return (
+                  <path
+                    key={`edge-${node.task_id}`}
+                    className="timeline-branch-edge"
+                    d={`M ${prevX} ${midY} C ${(prevX + node.x) / 2} ${midY}, ${(prevX + node.x) / 2} ${node.y}, ${node.x - 12} ${node.y}`}
+                  />
+                );
+              })}
               {branchNodes.map((node: any, idx: number) => (
                 <g key={`node-${node.task_id}`} className="timeline-branch-node-group" style={{ animationDelay: `${idx * 0.15}s` }}>
-                  <circle className="timeline-branch-node-ring" cx={node.x} cy={node.y} r="24" />
-                  <circle className="timeline-branch-node" cx={node.x} cy={node.y} r="12" fill={node.color} />
-                  <text
-                    className="timeline-branch-label"
-                    x={node.x}
-                    y={node.y < 160 ? node.y - 20 : node.y + 28}
-                    textAnchor="middle"
-                  >
-                    {node.title?.slice(0, 18)}
+                  <rect
+                    x={node.x - 52}
+                    y={node.y - 22}
+                    width="104"
+                    height="44"
+                    rx="10"
+                    fill="#FFFFFF"
+                    stroke={node.color}
+                    strokeWidth="2"
+                  />
+                  <circle className="timeline-branch-node" cx={node.x} cy={node.y} r="6" fill={node.color} />
+                  <text className="timeline-branch-label" x={node.x} y={node.y + 4} textAnchor="middle">
+                    {node.title?.slice(0, 14)}
                   </text>
                 </g>
               ))}
@@ -324,28 +350,7 @@ const TimelineHero: React.FC = () => {
           ) : (
             <div className="timeline-hero__task-grid">{taskCards}</div>
           )}
-          {selectedTaskMeta && (
-            <div className="timeline-hero__selected-task-panel">
-              <div className="timeline-hero__selected-task-header">
-                <div>
-                  <div className="timeline-hero__selected-task-title">{selectedTaskMeta.title || selectedTaskMeta.task_id}</div>
-                  <div className="timeline-hero__selected-task-status">{selectedTaskMeta.status ? `Status: ${selectedTaskMeta.status}` : 'Status: unknown'}</div>
-                </div>
-                <button type="button" className="timeline-hero__selected-task-close" onClick={() => onSelectTask(null)}>
-                  Hide
-                </button>
-              </div>
-              <div className="timeline-hero__selected-task-progress">
-                <div className="timeline-hero__selected-task-bar">
-                  <div style={{ width: `${progressForTask(selectedTaskMeta)}%` }} />
-                </div>
-                <span>{progressForTask(selectedTaskMeta)}%</span>
-              </div>
-              {(selectedTaskMeta.summary || selectedTaskMeta.instructions) && (
-                <div className="timeline-hero__selected-task-summary">{selectedTaskMeta.summary || selectedTaskMeta.instructions}</div>
-              )}
-            </div>
-          )}
+
         </div>
       </div>
     </section>

@@ -309,7 +309,7 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               Retry
             </button>
           )}
-          <span style={{ marginLeft: 'auto', opacity: 0.7 }}>Chat &amp; pages load independently</span>
+
         </div>
       )}
 

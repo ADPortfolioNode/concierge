@@ -13,6 +13,6 @@ test('media page loads gallery from API', async ({ page }) => {
   expect(items.length).toBeGreaterThan(0);
 
   await expect(page.getByText(/Media library/i)).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText(/media\/images/i)).toBeVisible();
+  await expect(page.getByText(/media\/images/i).first()).toBeVisible();
   await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 10000 });
 });

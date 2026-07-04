@@ -34,6 +34,30 @@ async function navigateViaHeader(page: Page, label: string, path: string) {
   await page.waitForURL(`**${path}`);
 }
 
+async function resetTimelineToIdle(page: Page) {
+  await page.evaluate(() => {
+    const es = (window as any).__TIMELINE_ES__;
+    if (es) {
+      es.close();
+      (window as any).__TIMELINE_ES__ = null;
+    }
+    const store = (window as any).getAppStore?.();
+    store?.clearTaskThread?.();
+    store?.setTaskThreadId?.(null);
+    store?.setTimelinePlan?.({ tasks: [] });
+  });
+}
+
+async function mockEmptyTimeline(page: Page) {
+  await page.route('**/api/v1/concierge/timeline**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'success', data: { tasks: [] } }),
+    }),
+  );
+}
+
 test.describe('Layout shell', () => {
   test('header, nav links, and chat sidebar render on home', async ({ page }) => {
     await gotoHome(page);
@@ -126,11 +150,11 @@ test.describe('Routes — direct URL (production SPA fallback)', () => {
 });
 
 test.describe('Home workflows', () => {
-  test('use-case cards link to tasks', async ({ page }) => {
+  test('home links to tasks and media', async ({ page }) => {
     await gotoHome(page);
-    const tasksLinks = page.locator('main').getByRole('link', { name: /Open Tasks/i });
-    await expect(tasksLinks.first()).toBeVisible({ timeout: 10_000 });
-    await tasksLinks.first().click();
+    const tasksLink = page.locator('main').getByRole('link', { name: 'Tasks', exact: true });
+    await expect(tasksLink).toBeVisible({ timeout: 10_000 });
+    await tasksLink.click();
     await expect(page).toHaveURL(/\/tasks/);
   });
 
@@ -174,12 +198,22 @@ test.describe('Tasks workflows', () => {
     await expect(submit).toBeEnabled();
   });
 
-  test('timeline shows idle state until a thread is active', async ({ page }) => {
+  test('tasks page shows timeline hero (idle or active)', async ({ page }) => {
+    await mockEmptyTimeline(page);
     await gotoHome(page);
+    await resetTimelineToIdle(page);
     await navigateViaHeader(page, 'Tasks', '/tasks');
+    await resetTimelineToIdle(page);
 
-    await expect(page.getByText('No active thread')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: 'Visualizer' })).not.toBeVisible();
+    const hero = page.locator('section.timeline-hero');
+    const idle = hero.getByRole('heading', { name: 'No active thread' });
+    const active = hero.getByText(/Agentic thread visualizer/i);
+    await expect(idle.or(active).first()).toBeVisible({ timeout: 15_000 });
+    if (await idle.isVisible()) {
+      await expect(hero.getByRole('button', { name: 'Visualizer' })).not.toBeVisible();
+    } else {
+      await expect(hero.getByRole('button', { name: 'Visualizer' })).toBeVisible();
+    }
   });
 });
 
@@ -210,23 +244,26 @@ test.describe('Workspace & Media', () => {
   });
 
   test('media page loads gallery or empty state', async ({ page }) => {
-    const apiPromise = page.waitForResponse(
-      (res) => res.url().includes('/api/v1/concierge/media') && res.status() === 200,
-      { timeout: 15000 },
-    );
     await gotoHome(page);
     await navigateViaHeader(page, 'Media', '/media');
-    const apiRes = await apiPromise;
+    const apiRes = await page.waitForResponse(
+      (res) => res.url().includes('/api/v1/concierge/media') && res.status() === 200,
+      { timeout: 30_000 },
+    );
     const json = await apiRes.json();
-    const items = Array.isArray(json?.data) ? json.data : [];
+    const payload = json?.data;
+    const items = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.items)
+      ? payload.items
+      : [];
     await expect(page.getByRole('link', { name: '← Home' })).toBeVisible();
+    await expect(page.getByText(/Media library/i).first()).toBeVisible({ timeout: 10_000 });
     if (items.length > 0) {
-      await expect(
-        page.getByText(/Media library|media\/images|Generated images/i).first(),
-      ).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/Preview —|file\(s\)/i).first()).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText(/No images in/i)).not.toBeVisible();
     } else {
-      await expect(page.getByText(/No media is currently available|attached to the current chat/i).first()).toBeVisible();
+      await expect(page.getByText(/No images in/i).first()).toBeVisible({ timeout: 10_000 });
     }
   });
 });
@@ -258,6 +295,14 @@ test.describe('Chat workflows', () => {
     await expect(input).toHaveValue('Hello from UI test');
   });
 
+  test('chat sidebar shows empty-state prompt when no messages', async ({ page }) => {
+    await gotoHome(page);
+    await expect(page.getByRole('complementary', { name: 'AI Concierge chat' })).toBeVisible();
+    await expect(
+      page.getByText(/Ask Concierge to plan a goal|ready when you are/i).first(),
+    ).toBeVisible({ timeout: 10_000 });
+  });
+
   test('tasks page prompt fills chat draft after navigation', async ({ page }) => {
     await gotoHome(page);
     await navigateViaHeader(page, 'Tasks', '/tasks');
@@ -267,5 +312,50 @@ test.describe('Chat workflows', () => {
     await expect(page).toHaveURL(/\//);
     const input = page.getByPlaceholder(/message|ask|concierge/i);
     await expect(input).toHaveValue(/.{10,}/, { timeout: 5_000 });
+  });
+});
+
+test.describe('Full navigation workflow', () => {
+  test('visit every page in order and verify shell + page meta bar', async ({ page }) => {
+    await gotoHome(page);
+
+    for (const route of ROUTES) {
+      if (route.path !== '/') {
+        await navigateViaHeader(page, route.navLabel, route.path);
+      }
+      await expect(page.locator('main h1').first()).toContainText(route.heading, { timeout: 10_000 });
+      await expect(page.getByRole('complementary', { name: 'AI Concierge chat' })).toBeVisible();
+      // PageMetaBar shows route title chip on each page
+      await expect(page.getByText(route.navLabel === 'Home' ? 'Dashboard' : route.navLabel, { exact: false }).first()).toBeVisible();
+    }
+  });
+
+  test('page meta bar loads dashboard chips when API is reachable', async ({ page }) => {
+    await gotoHome(page);
+    await expect(page.getByText('Dashboard').first()).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByText(/Requests|Tasks|No active plan/i).first(),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+test.describe('Timeline tree layout', () => {
+  test('tasks page shows idle timeline without visualizer chrome', async ({ page }) => {
+    await mockEmptyTimeline(page);
+    await gotoHome(page);
+    await resetTimelineToIdle(page);
+    await navigateViaHeader(page, 'Tasks', '/tasks');
+    await resetTimelineToIdle(page);
+
+    const hero = page.locator('section.timeline-hero');
+    await expect(hero.getByRole('heading', { name: 'No active thread' })).toBeVisible({ timeout: 15_000 });
+    await expect(hero.getByRole('button', { name: 'Visualizer' })).not.toBeVisible();
+  });
+
+  test('home shows orchestrator status or live workflow tree', async ({ page }) => {
+    await gotoHome(page);
+    const hero = page.getByText(/Orchestrator ready|Active workflow/i);
+    const liveTree = page.getByTestId('timeline-horizontal-tree');
+    await expect(hero.or(liveTree).first()).toBeVisible({ timeout: 10_000 });
   });
 });

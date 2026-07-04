@@ -35,35 +35,27 @@ const MessageList: React.FC<Props> = ({ messages }) => {
     }
   }, [messages.length, streamingId]);
 
-  if (!messages || messages.length === 0) {
-    // first-load system prompt
+  const visible = messages.filter((m) => m.role !== 'system');
+
+  if (!visible.length) {
     return (
-      <div ref={listRef} style={{ padding: 16, overflow: 'auto', height: '100%' }}>
-        <MessageBubble
-          msg={{
-            id: 'welcome',
-            role: 'system',
-            content: 'Welcome. I\'m ready when you are. What would you like to work on today?',
-            timestamp: new Date().toISOString(),
-            media: null,
-          }}
-        />
+      <div ref={listRef} style={{ padding: 20, overflow: 'auto', height: '100%', color: '#64748B', fontSize: 14, lineHeight: 1.5 }}>
+        Ask Concierge to plan a goal, generate an image, or answer a question.
       </div>
     );
   }
 
-  // Aggregate consecutive assistant messages into a single bubble so the
-  // Concierge appears as a single conversant reply (magazine-style summary).
+  // Aggregate consecutive assistant messages into a single bubble.
   const displayMessages: typeof messages = [] as any;
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
+  for (let i = 0; i < visible.length; i++) {
+    const m = visible[i];
     // start a new aggregate for assistant messages
     if (m.role === 'assistant') {
       const agg = { ...m } as any;
       // merge following assistant messages
       let j = i + 1;
-      while (j < messages.length && messages[j].role === 'assistant') {
-        const nxt = messages[j];
+      while (j < visible.length && visible[j].role === 'assistant') {
+        const nxt = visible[j];
         // concatenate content with separation
         agg.content = `${agg.content}\n\n${nxt.content}`;
         // prefer the later meta (assume final summary at the end)

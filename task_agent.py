@@ -104,29 +104,125 @@ class TaskAgent:
             instr = self.task_input.get("instructions") or self.task_input.get("details") or ""
             title = self.task_input.get("title") or self.task_input.get("task_id") or self.task_name
             metadata_in = self.task_input.get("metadata") or {}
+            task_ctx = self.task_input.get("context") or {}
+            workflow_goal = task_ctx.get("goal") if isinstance(task_ctx, dict) else None
         else:
             instr = str(self.task_input)
             title = self.task_name
             metadata_in = {}
+            workflow_goal = None
 
-        # Detect image generation tasks and short-circuit directly to the plugin
-        _image_keywords = ("image generation", "generate image", "submit the prompt", "image plugin",
-                           "dall-e", "dall_e", "image of", "picture of", "generate an image")
-        _is_image_task = any(k in instr.lower() for k in _image_keywords) or \
-                         any(k in title.lower() for k in ("generate image", "image gen", "prepare image prompt"))
+        from tools.image_prompt_utils import (
+            build_prepare_image_prompt_request,
+            extract_goal_from_instructions,
+            is_image_generation_task,
+            is_prepare_image_prompt_task,
+            resolve_image_prompt,
+        )
+        from plugins.image_generation_plugin import ImageGenerationPlugin
 
-        if _is_image_task:
+        if is_prepare_image_prompt_task(title, instr):
+            subject = (workflow_goal or "").strip() or extract_goal_from_instructions(instr)
+            llm_prompt = build_prepare_image_prompt_request(goal=subject, instructions=instr)
+            if self.llm_tool is None:
+                self.llm_tool = LLMTool()
             try:
-                img_tool = ImageGenerationTool()
-                img_url = await img_tool.run(instr)
-                if img_url:
-                    output = img_url
-                    self.status = "complete"
-                    await self.memory.store_summary(task_name=title, summary=f"Image URL: {img_url}", metadata={"agent_id": self.id, **metadata_in})
-                    return {"agent_id": self.id, "status": self.status, "output": output,
-                            "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None)}
+                formulated = (await self.llm_tool.generate(llm_prompt, context=workflow_goal or subject)).strip()
             except Exception:
-                logger.exception("Image task short-circuit failed; falling through to LLM")
+                logger.exception("Prepare image prompt LLM failed for %r", title)
+                formulated = ""
+            if not formulated or "write concise, working code" in formulated.lower():
+                formulated = (
+                    f"Minimalist modern vector logo for {subject or 'Concierge'}, "
+                    "clean lines, professional brand mark, flat design, white background"
+                )
+            output = f"Image prompt: {formulated}"
+            self.status = "complete"
+            await self.memory.store_summary(
+                task_name=title,
+                summary=output,
+                metadata={
+                    "agent_id": self.id,
+                    "image_prompt": formulated,
+                    "workflow_goal": workflow_goal,
+                    **metadata_in,
+                },
+            )
+            return {
+                "agent_id": self.id,
+                "status": self.status,
+                "output": output,
+                "summary": output,
+                "image_prompt": formulated,
+                "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None),
+            }
+
+        if is_image_generation_task(title, instr):
+            image_prompt = resolve_image_prompt(
+                title=title,
+                instructions=instr,
+                goal=workflow_goal,
+                rag_context=ctx_str or None,
+            )
+            try:
+                plugin_result = await ImageGenerationPlugin().run(image_prompt)
+                url = str((plugin_result or {}).get("url") or (plugin_result or {}).get("saved_path") or "").strip()
+                if url:
+                    from core.media_persist import rewrite_image_urls, persist_remote_url
+
+                    local_url = (
+                        rewrite_image_urls(url, prompt=image_prompt)
+                        if url.startswith("http")
+                        else url
+                    )
+                    if not local_url.startswith("/media/images/") and local_url.startswith("http"):
+                        local_url = persist_remote_url(local_url, prompt=image_prompt) or local_url
+                    output = f"Image saved: {local_url}\n{local_url}"
+                    self.status = "complete"
+                    await self.memory.store_summary(
+                        task_name=title,
+                        summary=output,
+                        metadata={"agent_id": self.id, "image_url": local_url, **metadata_in},
+                    )
+                    return {
+                        "agent_id": self.id,
+                        "status": self.status,
+                        "output": output,
+                        "summary": output,
+                        "image_url": local_url,
+                        "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None),
+                    }
+                err = (plugin_result or {}).get("error") or (plugin_result or {}).get("note") or "lm-unavailable"
+                output = f"Image generation failed for '{image_prompt}': {err}"
+                self.status = "complete"
+                await self.memory.store_summary(
+                    task_name=title,
+                    summary=output,
+                    metadata={"agent_id": self.id, **metadata_in},
+                )
+                return {
+                    "agent_id": self.id,
+                    "status": self.status,
+                    "output": output,
+                    "summary": output,
+                    "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None),
+                }
+            except Exception as exc:
+                logger.exception("Image task short-circuit failed for %r", image_prompt)
+                output = f"Image generation failed for '{image_prompt}': {exc}"
+                self.status = "complete"
+                await self.memory.store_summary(
+                    task_name=title,
+                    summary=output,
+                    metadata={"agent_id": self.id, **metadata_in},
+                )
+                return {
+                    "agent_id": self.id,
+                    "status": self.status,
+                    "output": output,
+                    "summary": output,
+                    "task_id": (self.task_input.get("task_id") if isinstance(self.task_input, dict) else None),
+                }
 
         # Ask router which tool to use
         selected_tool_name = await router.select_tool(instr, available_tools=reg.list_tools())

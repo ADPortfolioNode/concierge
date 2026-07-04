@@ -1172,24 +1172,11 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
 
     task_tree = get_task_tree(thread_id)
     if task_tree is None:
-        return _api_response({
-            "thread_id": thread_id,
-            "node_id": node_id,
-            "memories": [],
-            "status": "pending",
-            "note": "task tree not yet available",
-        })
+        raise HTTPException(status_code=404, detail='thread_id not found')
 
     node = _find_task_node(task_tree, node_id)
-    if node is None and node_id == thread_id:
-        node = task_tree
     if node is None:
-        return _api_response({
-            "thread_id": thread_id,
-            "node_id": node_id,
-            "memories": [],
-            "status": "unknown_node",
-        })
+        raise HTTPException(status_code=404, detail='node_id not found')
 
     context_parts = [node_id]
     if isinstance(node, dict):
@@ -1279,10 +1266,7 @@ async def concierge_media_list(request: Request):
                                 item['metadata'] = {'error': 'failed to read metadata'}
                     except Exception:
                         item['metadata'] = None
-                    meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
-                    item['created_at'] = meta.get('created_at') or item['mtime']
                     items.append(item)
-        items.sort(key=lambda x: x.get('created_at') or x.get('mtime') or '', reverse=True)
         return _api_response(items)
     except Exception as exc:
         logger.exception('Failed to list media files')
@@ -1291,6 +1275,8 @@ async def concierge_media_list(request: Request):
 
 @app.get('/media/images/{path:path}', include_in_schema=False)
 async def serve_media_image(path: str):
+    from core.media_persist import media_type_for_path
+
     media_images = settings.media_images_dir
     candidate = media_images / path
     try:
@@ -1301,7 +1287,7 @@ async def serve_media_image(path: str):
         raise HTTPException(status_code=404, detail='Not Found')
     if not str(candidate_resolved).startswith(str(media_images.resolve())):
         raise HTTPException(status_code=404, detail='Not Found')
-    return FileResponse(candidate_resolved)
+    return FileResponse(candidate_resolved, media_type=media_type_for_path(candidate_resolved))
 
 
 # Register Phase 14-16 routers (only include if the router was loaded)
@@ -2854,24 +2840,11 @@ async def concierge_node_memories(thread_id: str, node_id: str, top_k: int = 8):
 
     task_tree = get_task_tree(thread_id)
     if task_tree is None:
-        return _api_response({
-            "thread_id": thread_id,
-            "node_id": node_id,
-            "memories": [],
-            "status": "pending",
-            "note": "task tree not yet available",
-        })
+        raise HTTPException(status_code=404, detail='thread_id not found')
 
     node = _find_task_node(task_tree, node_id)
-    if node is None and node_id == thread_id:
-        node = task_tree
     if node is None:
-        return _api_response({
-            "thread_id": thread_id,
-            "node_id": node_id,
-            "memories": [],
-            "status": "unknown_node",
-        })
+        raise HTTPException(status_code=404, detail='node_id not found')
 
     context_parts = [node_id]
     if isinstance(node, dict):
@@ -2981,10 +2954,7 @@ async def concierge_media_list(request: Request):
                                 item['metadata'] = {'error': 'failed to read metadata'}
                     except Exception:
                         item['metadata'] = None
-                    meta = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
-                    item['created_at'] = meta.get('created_at') or item['mtime']
                     items.append(item)
-        items.sort(key=lambda x: x.get('created_at') or x.get('mtime') or '', reverse=True)
         return _api_response(items)
     except Exception as exc:
         logger.exception('Failed to list media files')
@@ -2993,6 +2963,8 @@ async def concierge_media_list(request: Request):
 
 @app.get('/media/images/{path:path}', include_in_schema=False)
 async def serve_media_image(path: str):
+    from core.media_persist import media_type_for_path
+
     media_images = settings.media_images_dir
     candidate = media_images / path
     try:
@@ -3003,7 +2975,7 @@ async def serve_media_image(path: str):
         raise HTTPException(status_code=404, detail='Not Found')
     if not str(candidate_resolved).startswith(str(media_images.resolve())):
         raise HTTPException(status_code=404, detail='Not Found')
-    return FileResponse(candidate_resolved)
+    return FileResponse(candidate_resolved, media_type=media_type_for_path(candidate_resolved))
 
 
 # Register Phase 14-16 routers (only include if the router was loaded)

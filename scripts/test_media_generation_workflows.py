@@ -153,11 +153,7 @@ def test_plugin_direct(checks: Check) -> str | None:
         if url:
             checks.ok("plugin.run returns url", f"source={source}")
             assert_image_url(checks, "plugin image reachable", url)
-            if result.get("source", "").startswith("gemini"):
-                checks.ok("plugin gemini fallback used", result.get("source", ""))
-            elif result.get("source", "").startswith("ollama"):
-                checks.ok("plugin ollama/llama fallback used", result.get("source", ""))
-            elif result.get("error"):
+            if result.get("error"):
                 checks.ok("plugin error surfaced", str(result.get("error"))[:80])
             return url
         checks.fail("plugin.run returns url", str(result)[:200])
@@ -189,14 +185,10 @@ def test_plugin_job(checks: Check) -> str | None:
             source = result.get("source") or "unknown"
             if url:
                 assert_image_url(checks, "plugin job image reachable", url)
-                if source.startswith("gemini"):
-                    checks.ok("plugin job gemini fallback", f"source={source}")
-                elif source.startswith("ollama"):
-                    checks.ok("plugin job ollama/llama fallback", f"source={source}")
-                elif source.startswith("placeholder"):
-                    checks.ok("plugin job placeholder fallback", f"source={source}")
-                elif source == "gpt-image-1":
-                    checks.ok("plugin job openai generation", f"source={source}")
+                if source.startswith("placeholder"):
+                    checks.ok("plugin job fallback", f"source={source} (OpenAI billing/key may block live gen)")
+                elif source in ("gpt-image-1", "gemini"):
+                    checks.ok("plugin job live generation", f"source={source}")
                 return url
         checks.fail("plugin job result url", str(result)[:200])
     except Exception as exc:

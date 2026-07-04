@@ -1,31 +1,30 @@
 import React, { useState } from 'react';
 import { MediaMeta } from '@/types/api';
+import { resolveMediaUrl } from '@/utils/mediaUrl';
 
 interface MediaProps {
   media: MediaMeta;
 }
 
-const PLACEHOLDER_IMAGE_DATA_URI = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid meet">
-  <rect width="320" height="180" fill="#111827" />
-  <text x="160" y="95" text-anchor="middle" fill="#94a3b8" font-family="Inter,system-ui,sans-serif" font-size="18">Image unavailable</text>
-</svg>
-`)} `;
-
-const normalizeMediaPath = (url: string) => {
-  if (!url) return url;
-  return url.startsWith('/') ? url : `/${url}`;
-};
-
 const MediaRenderer: React.FC<MediaProps> = ({ media }) => {
   const [loadFailed, setLoadFailed] = useState(false);
-  const src = normalizeMediaPath(media.url || '');
+  const src = resolveMediaUrl(media.url || '');
   switch (media.type) {
     case 'image':
+      if (!src) {
+        return <div className="media-renderer__error">No image path provided.</div>;
+      }
+      if (loadFailed) {
+        return (
+          <div className="media-renderer__error">
+            Could not load <code>{media.url}</code>
+          </div>
+        );
+      }
       return (
         <img
-          src={loadFailed ? PLACEHOLDER_IMAGE_DATA_URI : src}
-          alt={media.overlay_text || 'Image'}
+          src={src}
+          alt={media.overlay_text || 'Generated image'}
           className="media-renderer__image"
           onError={() => setLoadFailed(true)}
         />

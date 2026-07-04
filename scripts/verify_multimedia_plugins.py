@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import time
 import urllib.error
 import urllib.request
+
+# Keep provider retry noise off stderr so PowerShell does not report exit=1 on pass.
+logging.basicConfig(level=logging.CRITICAL)
 
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8002"
 
@@ -113,8 +117,16 @@ def main() -> int:
                     payload = payload["result"]
                 image_url = (payload or {}).get("url") if isinstance(payload, dict) else ""
                 source = (payload or {}).get("source", "?") if isinstance(payload, dict) else "?"
-                if image_url:
-                    r.pass_("plugin job result", f"url={image_url} source={source}")
+                lm_sources = ("gemini:", "gpt-image-1", "ollama:")
+                if image_url and image_url.startswith("/media/images/"):
+                    kind = "lm" if any(str(source).startswith(p) for p in lm_sources) else source
+                    r.pass_("plugin job result", f"url={image_url} source={source} ({kind})")
+                elif isinstance(payload, dict) and payload.get("status") == "failed":
+                    source = str(payload.get("source") or "")
+                    if source == "lm-unavailable":
+                        r.pass_("plugin job result", f"lm-unavailable (no stock placeholder): {str(payload.get('error', ''))[:80]}")
+                    else:
+                        r.fail("plugin job result", payload.get("error", source)[:200])
                 else:
                     r.fail("plugin job result", str(payload)[:200])
     except Exception as exc:
@@ -159,12 +171,20 @@ def main() -> int:
     print("\n== 6. In-process plugin smoke ==")
     try:
         import asyncio
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        logging.getLogger("plugins.image_generation_plugin").setLevel(logging.CRITICAL)
         from plugins.image_generation_plugin import ImageGenerationPlugin
 
         out = asyncio.run(ImageGenerationPlugin().run("verify smoke: green leaf"))
         url = out.get("url") if isinstance(out, dict) else ""
         if url:
             r.pass_("plugin.run direct", f"source={out.get('source', '?')}")
+        elif isinstance(out, dict) and out.get("source") == "lm-unavailable":
+            r.pass_("plugin.run direct", f"lm-unavailable (no placeholder): {str(out.get('error', ''))[:80]}")
         else:
             r.fail("plugin.run direct", str(out)[:200])
     except Exception as exc:

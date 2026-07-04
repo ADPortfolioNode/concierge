@@ -22,6 +22,52 @@ _DDG_URL = "https://api.duckduckgo.com/"
 _TIMEOUT = 8.0  # seconds
 
 
+def _parse_ddg_instant_answer(data: dict) -> list[str]:
+    parts: list[str] = []
+    abstract = (data.get("Abstract") or "").strip()
+    if abstract:
+        source = data.get("AbstractSource") or ""
+        parts.append(f"{abstract} (Source: {source})" if source else abstract)
+    answer = (data.get("Answer") or "").strip()
+    if answer and answer not in parts:
+        parts.append(answer)
+    definition = (data.get("Definition") or "").strip()
+    if definition and definition not in parts:
+        src = data.get("DefinitionSource") or ""
+        parts.append(f"{definition} (Source: {src})" if src else definition)
+    for topic in (data.get("RelatedTopics") or [])[:3]:
+        if isinstance(topic, dict):
+            text = (topic.get("Text") or "").strip()
+            if text and text not in parts:
+                parts.append(text)
+    return parts
+
+
+def sync_instant_answer(query: str, *, timeout: float = _TIMEOUT) -> str | None:
+    """Synchronous DuckDuckGo instant answer (no API key). Returns None if empty."""
+    q = str(query or "").strip()
+    if not q:
+        return None
+    params = {
+        "q": q,
+        "format": "json",
+        "no_html": "1",
+        "skip_disambig": "1",
+        "no_redirect": "1",
+    }
+    url = _DDG_URL + "?" + urllib.parse.urlencode(params)
+    try:
+        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.warning("sync_instant_answer failed: %s", exc)
+        return None
+    parts = _parse_ddg_instant_answer(data)
+    return "\n".join(parts) if parts else None
+
+
 class WebSearchTool(BaseTool):
     name = "web_search"
     description = "Web search returning real results via DuckDuckGo Instant Answer API."
@@ -50,32 +96,7 @@ class WebSearchTool(BaseTool):
             logger.warning("WebSearchTool request failed: %s", exc)
             return f"Search results for '{query}' are currently unavailable. Please try again later."
 
-        parts: list[str] = []
-
-        # Abstract (instant answer paragraph)
-        abstract = (data.get("Abstract") or "").strip()
-        if abstract:
-            source = data.get("AbstractSource") or ""
-            parts.append(f"{abstract} (Source: {source})" if source else abstract)
-
-        # Answer (short factual answer, e.g. for calculations / definitions)
-        answer = (data.get("Answer") or "").strip()
-        if answer and answer not in parts:
-            parts.append(answer)
-
-        # Definition
-        definition = (data.get("Definition") or "").strip()
-        if definition and definition not in parts:
-            src = data.get("DefinitionSource") or ""
-            parts.append(f"{definition} (Source: {src})" if src else definition)
-
-        # Related topics — up to 3 titles/snippets
-        for topic in (data.get("RelatedTopics") or [])[:3]:
-            if isinstance(topic, dict):
-                text = (topic.get("Text") or "").strip()
-                if text and text not in parts:
-                    parts.append(text)
-
+        parts = _parse_ddg_instant_answer(data)
         if parts:
             return "\n".join(parts)
 

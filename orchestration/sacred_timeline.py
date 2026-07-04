@@ -63,6 +63,38 @@ _GOAL_INTENT_KEYWORDS = (
 )
 
 
+def _looks_like_offline_fallback(reply: str) -> bool:
+    low = (reply or "").lower()
+    markers = (
+        "built-in rules",
+        "live llm call didn't complete",
+        "limited offline reply",
+        "couldn't complete a live model call",
+        "rule-based rather than generative",
+    )
+    return any(m in low for m in markers)
+
+
+def _offline_factual_boost(user_input: str) -> str | None:
+    """When LM fails, try DuckDuckGo instant answers for who/what-style questions."""
+    import re as _re
+
+    msg = user_input.strip()
+    if not _re.match(
+        r"^(who is|who was|who are|what is|what are|what's|where is|when was|when is|tell me about)\b",
+        msg,
+        _re.I,
+    ):
+        return None
+    try:
+        from tools.llm_tool import _conversational_reply
+
+        return _conversational_reply(msg)
+    except Exception:
+        logger.exception("Offline factual boost failed")
+        return None
+
+
 def _is_conversational(text: str) -> bool:
     """Return True if *text* is a conversational question vs. an actionable goal."""
     lowered = text.strip().lower()
@@ -251,10 +283,18 @@ class SacredTimeline:
             + hint
         )
         try:
-            return (await llm.generate(prompt, context=user_input)).strip()
+            reply = (await llm.generate(prompt, context=user_input)).strip()
+            if reply and not _looks_like_offline_fallback(reply):
+                return reply
+            boosted = _offline_factual_boost(user_input)
+            return boosted or reply or user_input
         except Exception:
-            logger.exception("Chat reply generation failed; echoing input")
-            return user_input
+            logger.exception("Chat reply generation failed; trying offline factual boost")
+            boosted = _offline_factual_boost(user_input)
+            return boosted or (
+                "I had trouble reaching the language model just now. "
+                "Please try again in a moment, or phrase your request as a clear goal."
+            )
 
     def _publish_timeline_event(self, event: Dict[str, Any]) -> None:
         for q in list(self._timeline_subscribers):
@@ -419,7 +459,15 @@ class SacredTimeline:
             cycle_nodes = {tid for tid, deg in in_degree.items() if deg > 0}
             raise ValueError(f"A cycle was detected in the task graph involving tasks: {cycle_nodes}")
 
-    async def run_autonomous(self, goal: str, max_depth: int = 3, max_tasks: int = 20, per_task_timeout: int = 60, thread_id: Optional[str] = None) -> Dict[str, Any]:
+    async def run_autonomous(
+        self,
+        goal: str,
+        max_depth: int = 3,
+        max_tasks: int = 20,
+        per_task_timeout: int = 60,
+        thread_id: Optional[str] = None,
+        plan: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Coordinator: plan -> assign to specialized agents -> critic loop.
 
         Assigns tasks to ResearchAgent or CodingAgent where applicable, runs
@@ -434,7 +482,9 @@ class SacredTimeline:
         returned to the caller as part of the final result.
         """
         logger.info("Coordinator starting for goal: %s", goal)
-        plan = await self._planner.plan(goal)
+        if plan is None:
+            plan = await self._planner.plan(goal)
+        self._last_plan = plan
         tasks = plan.get("tasks", [])
 
         if not tasks:
@@ -864,7 +914,7 @@ class SacredTimeline:
             })
             # Directly call run_autonomous to plan and dispatch the Celery chain.
             # The web server's role is to kick off the workflow.
-            await self.run_autonomous(user_input, thread_id=thread_id)
+            await self.run_autonomous(user_input, thread_id=thread_id, plan=plan)
             # Return a response indicating the process has started.
             return {"status": "processing", "thread_id": thread_id, "response": "OK, I've started working on that. You can follow the progress in real-time."}
 

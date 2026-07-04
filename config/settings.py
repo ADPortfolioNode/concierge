@@ -17,16 +17,6 @@ def _resolve_path(env_name: str, default: str) -> Path:
     return path
 
 
-def _default_ollama_base_url() -> str:
-    explicit = os.getenv("OLLAMA_BASE_URL", "").strip()
-    if explicit:
-        return explicit
-    # Inside Docker, localhost is the container — reach the host Ollama daemon instead.
-    if Path("/.dockerenv").exists():
-        return "http://host.docker.internal:11434"
-    return "http://localhost:11434"
-
-
 @dataclass
 class Settings:
     """Runtime settings for Concierge."""
@@ -72,19 +62,6 @@ class Settings:
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
     gemini_models: str = os.getenv("GEMINI_MODELS", "")
-    gemini_image_models: str = os.getenv(
-        "GEMINI_IMAGE_MODELS",
-        "gemini-2.5-flash-image,gemini-3.1-flash-image",
-    )
-    ollama_base_url: str = field(default_factory=lambda: _default_ollama_base_url())
-    ollama_image_models: str = os.getenv(
-        "OLLAMA_IMAGE_MODELS",
-        "x/flux2-klein,x/z-image-turbo",
-    )
-    image_openai_timeout: int = int(os.getenv("IMAGE_OPENAI_TIMEOUT", "20"))
-    image_gemini_timeout: int = int(os.getenv("IMAGE_GEMINI_TIMEOUT", "25"))
-    image_ollama_timeout: int = int(os.getenv("IMAGE_OLLAMA_TIMEOUT", "12"))
-    image_placeholder_timeout: int = int(os.getenv("IMAGE_PLACEHOLDER_TIMEOUT", "15"))
     llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 
     # Integration secrets (centralized so key names are not repeated elsewhere in code)

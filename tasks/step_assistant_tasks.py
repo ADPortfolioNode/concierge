@@ -3,6 +3,7 @@ Step-based assistant tasks that run sequentially via Celery.
 """
 import asyncio
 import logging
+import re
 import time
 from typing import Any, Dict
 
@@ -63,18 +64,39 @@ class StepAssistant(Task):
         logger.info(f"Task {task_id} finished with status {status}.")
 
 
+def _contains_keyword(text: str, keywords: list[str]) -> bool:
+    """Match whole words/phrases so 'descriptive' does not match 'script'."""
+    for kw in keywords:
+        if " " in kw:
+            if kw in text:
+                return True
+        elif re.search(rf"\b{re.escape(kw)}\b", text):
+            return True
+    return False
+
+
 def _route_task_to_agent(task: Dict[str, Any], memory: MemoryStore, llm: LLMTool):
     """Deterministically select an agent based on task keywords."""
-    title = (task.get("title", "") or "").lower()
-    instr = (task.get("instructions", "") or "").lower()
-    text = f"{title} {instr}"
+    from tools.image_prompt_utils import is_prepare_image_prompt_task
 
-    coding_keywords = ["code", "script", "function", "implement", "generate code"]
+    title = task.get("title", "") or ""
+    instr = task.get("instructions", "") or ""
+    if is_prepare_image_prompt_task(title, instr):
+        return TaskAgent(
+            task_name=title or task.get("task_id"),
+            task_input=task,
+            memory=memory,
+            llm_tool=llm,
+        )
+
+    text = f"{title} {instr}".lower()
+
+    coding_keywords = ["code", "script", "function", "implement", "generate code", "write code"]
     research_keywords = ["research", "analyze", "investigate", "web", "search"]
 
-    if any(k in text for k in coding_keywords):
+    if _contains_keyword(text, coding_keywords):
         return CodingAgent(memory, llm=llm)
-    if any(k in text for k in research_keywords):
+    if _contains_keyword(text, research_keywords):
         return ResearchAgent(memory, llm=llm)
     return TaskAgent(
         task_name=task.get("title") or task.get("task_id"),
@@ -141,6 +163,12 @@ def execute_step_task(self, task: dict, thread_id: str, context: dict):
         return {"task_id": task_id, "result": {}, "summary": str(agent_exc)}
 
     summary = result.get("summary") or result.get("output") or str(result)
+    try:
+        from core.media_persist import rewrite_image_urls
+
+        summary = rewrite_image_urls(str(summary), prompt=task_name)
+    except Exception:
+        logger.exception("Failed to persist images in step summary for %s", task_id)
     upsert_task_node(
         thread_id=thread_id,
         task_id=task_id,

@@ -12,7 +12,7 @@ from .base_tool import BaseTool
 
 class ImageGenerationTool(BaseTool):
     name = "image_gen"
-    description = "Generate an image from a text prompt using the OpenAI image API (or a picsum placeholder)."
+    description = "Generate an image from a text prompt; saves to /media/images/ and returns the local path."
 
     async def run(self, input_data: str) -> str:
         """Run image generation and return the image URL."""
@@ -21,7 +21,11 @@ class ImageGenerationTool(BaseTool):
             from plugins.image_generation_plugin import ImageGenerationPlugin
             plugin = ImageGenerationPlugin()
             result = await plugin.run(input_data)
-            return result.get("url", "")
+            if isinstance(result, dict):
+                if result.get("status") == "failed":
+                    return ""
+                return str(result.get("url") or result.get("saved_path") or "")
+            return str(result or "")
         except Exception as exc:
             import logging
             logging.getLogger(__name__).exception("ImageGenerationTool failed: %s", exc)

@@ -92,7 +92,7 @@ const TaskStatusPage: React.FC = () => {
             📋 Task Status
           </h1>
           <p style={{ fontSize: 14, color: '#475569', margin: 0, lineHeight: 1.7 }}>
-            Live view of orchestration progress, child tasks, and execution metadata.
+            Infographic timeline of planned steps — tap a badge to expand details.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>

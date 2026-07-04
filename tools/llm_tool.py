@@ -184,7 +184,38 @@ def _rule_based_response(prompt: str, context: Optional[str] = None) -> str:
 
     # ── Task execution: TaskAgent asks for a concise result ─────────────────
     if "provide a concise result" in full or "use this in your concise result" in full:
-        return _task_execution_reply(prompt)
+        return _task_execution_reply(prompt, context)
+
+    # ── CodingAgent / prepare-prompt prompts must not hit conversational image gen ─
+    from tools.image_prompt_utils import (
+        build_prepare_image_prompt_request,
+        extract_goal_from_instructions,
+        is_prepare_image_prompt_task,
+    )
+
+    if "write concise, working code" in full and "return only the code" in full:
+        task_m = re.search(r"\bTask:\s*(.+?)(?:\n\n|\Z)", prompt, re.I | re.DOTALL)
+        task_text = task_m.group(1).strip() if task_m else ""
+        if is_prepare_image_prompt_task("", task_text):
+            subject = extract_goal_from_instructions(task_text)
+            live = _sync_live_llm_text(build_prepare_image_prompt_request(goal=subject, instructions=task_text), context)
+            if live:
+                return f"Image prompt: {live.strip()}"
+            return (
+                f"Image prompt: Minimalist modern vector logo for {subject or 'Concierge'}, "
+                "clean lines, professional brand mark, flat design, white background"
+            )
+
+    if "expert at writing prompts for text-to-image" in full:
+        live = _sync_live_llm_text(prompt, context)
+        if live:
+            return live.strip()
+        goal_m = re.search(r"image-generation prompt for:\s*(.+?)(?:\n|$)", prompt, re.I)
+        subject = goal_m.group(1).strip() if goal_m else "Concierge"
+        return (
+            f"Minimalist modern vector logo for {subject}, "
+            "clean lines, professional brand mark, flat design, white background"
+        )
 
     # ── Conversational: natural user interaction ─────────────────────────────
     user_match = re.search(r"the user said[:\s]+(.+?)(?:\nRespond|$)", prompt, re.IGNORECASE | re.DOTALL)
@@ -198,53 +229,172 @@ def _rule_based_response(prompt: str, context: Optional[str] = None) -> str:
     return _conversational_reply(prompt[:200].strip())
 
 
-def _task_execution_reply(prompt: str) -> str:
+def _has_lm_keys() -> bool:
+    s = get_settings()
+    return bool(s.gemini_api_key or s.openai_api_key or (s.openai_api_keys or "").strip())
+
+
+def _extract_gemini_text_payload(data: dict) -> str:
+    for cand in data.get("candidates") or []:
+        for part in (cand.get("content") or {}).get("parts") or []:
+            text = part.get("text")
+            if text:
+                return str(text).strip()
+    return ""
+
+
+def _sync_live_llm_text(prompt: str, context: Optional[str] = None) -> Optional[str]:
+    """Synchronous LM text call for Celery/task paths (no rule-based pseudo replies)."""
+    if not _has_lm_keys():
+        return None
+    settings = get_settings()
+    full_prompt = f"Context:\n{context}\n\nPrompt:\n{prompt}" if context else prompt
+
+    if settings.gemini_api_key:
+        models = [m.strip() for m in (settings.gemini_models or settings.gemini_model or "").split(",") if m.strip()]
+        if not models:
+            models = [settings.gemini_model or "gemini-1.5-flash"]
+        for model in models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.gemini_api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": full_prompt}]}],
+                "generationConfig": {"temperature": 0.7},
+            }
+            try:
+                with httpx.Client(timeout=90.0) as client:
+                    resp = client.post(url, json=payload)
+                    resp.raise_for_status()
+                    text = _extract_gemini_text_payload(resp.json())
+                    if text:
+                        return text
+            except Exception as exc:
+                logger.warning("Sync Gemini text failed model=%s: %s", model, exc)
+
+    if settings.openai_api_key:
+        base = settings.openai_api_base or "https://api.openai.com/v1"
+        payload = {
+            "model": settings.openai_default_chat_model,
+            "messages": [{"role": "user", "content": full_prompt}],
+            "max_tokens": settings.llm_max_tokens,
+        }
+        keys = [settings.openai_api_key]
+        keys.extend(k.strip() for k in (settings.openai_api_keys or "").split(",") if k.strip())
+        for key in keys:
+            try:
+                with httpx.Client(timeout=90.0) as client:
+                    resp = client.post(
+                        f"{base}/chat/completions",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    )
+                    if resp.status_code == 429:
+                        continue
+                    resp.raise_for_status()
+                    text = resp.json()["choices"][0]["message"]["content"]
+                    if text:
+                        return str(text).strip()
+            except Exception as exc:
+                logger.warning("Sync OpenAI text failed: %s", exc)
+
+    return None
+
+
+def _format_image_plugin_result(subject: str, out: dict) -> str:
+    url = str(out.get("url") or out.get("saved_path") or "").strip()
+    if url.startswith("http"):
+        from core.media_persist import persist_remote_url
+
+        url = persist_remote_url(url, prompt=subject) or url
+    if out.get("status") == "failed" or not url:
+        err = out.get("error") or out.get("note") or str(out)
+        return f"Image generation failed for '{subject}': {err}"
+    if url.startswith("/media/images/"):
+        source = out.get("source", "lm")
+        return (
+            f"Image generated by {source} for '{subject}'.\n"
+            f"Saved path: {url}\n"
+            f"{url}"
+        )
+    return f"Image generation completed: {out}"
+
+
+def _run_image_plugin_and_return_path(subject: str) -> str:
+    """Generate an image via the plugin and return a saved ``/media/images/`` path."""
+    try:
+        from core.async_bridge import run_coro_sync
+        from plugins.image_generation_plugin import ImageGenerationPlugin
+
+        out = run_coro_sync(ImageGenerationPlugin().run(subject))
+        if not isinstance(out, dict):
+            return f"Image generation failed for '{subject}': unexpected plugin response"
+        return _format_image_plugin_result(subject, out)
+    except Exception as exc:
+        logger.exception("Image plugin invocation failed for %r", subject)
+        return f"Image generation failed for '{subject}': {exc}"
+
+
+def _task_execution_reply(prompt: str, context: Optional[str] = None) -> str:
     """Return task-specific output for a TaskAgent 'Provide a concise result' prompt.
 
-    The prompt format is: '<title>: <instructions>\\nProvide a concise result.'
-    (or augmented with tool output).  We parse the title/instructions and return
-    relevant analysis text so each task in a multi-task pipeline produces a
-    *distinct*, useful output that the synthesizer can meaningfully combine.
+    Prefer live LM responses when API keys are configured. Image generation steps
+    call the image plugin and return saved ``/media/images/`` paths.
     """
     p = prompt.lower()
-    # Extract title (the part before the first colon on the first line)
     first_line = prompt.split("\n")[0]
     colon_idx = first_line.find(":")
     raw_title = first_line[:colon_idx].strip().lower() if colon_idx != -1 else first_line[:60].lower()
-    # Strip tool output section to get core instruction text
     core = re.sub(r"\nTool output:.*", "", prompt, flags=re.DOTALL | re.IGNORECASE).lower()
 
-    # ── Image / DALL-E tasks ──────────────────────────────────────────────────
-    if any(k in core for k in ("image prompt", "generate image", "submit the prompt", "image generation plugin", "flaming", "teddy bear", "dall-e", "visual prompt")):
-        # Extract the actual image subject: look for "image of X" or "picture of X" first,
-        # then fall back to the raw title
-        sub_match = re.search(
-            r"(?:image of\s+|picture of\s+|generate(?:\s+an?)?\s+image\s+of\s+)(.+?)(?:\n|Provide|and\s+return|$)",
-            prompt, re.IGNORECASE,
-        )
-        if sub_match:
-            subject = sub_match.group(1).strip()[:80]
-        else:
-            # Fall back: use the user goal in "generation: <goal>"
-            gen_match = re.search(r"generation:\s*(.+?)(?:\n|Provide|$)", prompt, re.IGNORECASE)
-            subject = gen_match.group(1).strip()[:80] if gen_match else raw_title
-        if "prepare" in raw_title or "formulate" in core:
-            return (
-                f"Image prompt for '{subject}': A vivid, photorealistic depiction of {subject}. "
-                "High contrast, dynamic lighting, detailed textures. "
-                "Style: cinematic photography, 8K resolution, dramatic composition."
-            )
-        elif "generate" in raw_title or "submit" in core:
-            # Build a deterministic seed from the subject so the same prompt
-            # always returns the same placeholder image
-            seed = abs(hash(subject)) % 10000
-            return (
-                f"Image generation initiated for '{subject}'. "
-                "To produce the image, set OPENAI_API_KEY to enable the OpenAI image API. "
-                f"Placeholder preview: https://picsum.photos/seed/{seed}/800/600"
-            )
+    # ── Prepare image prompt: formulate text only (no plugin) ─────────────────
+    from tools.image_prompt_utils import (
+        build_prepare_image_prompt_request,
+        extract_goal_from_instructions,
+        is_image_generation_task,
+        is_prepare_image_prompt_task,
+        resolve_image_prompt,
+    )
 
-    # ── Layout / design / UI tasks ────────────────────────────────────────────
+    title_from_prompt = first_line[:colon_idx].strip() if colon_idx != -1 else first_line.strip()
+    instr_from_prompt = first_line[colon_idx + 1 :].strip() if colon_idx != -1 else ""
+    if is_prepare_image_prompt_task(title_from_prompt, instr_from_prompt):
+        subject = extract_goal_from_instructions(instr_from_prompt)
+        if context:
+            goal_m = re.search(r"\bGoal:\s*(.+?)(?:\n|$)", context, re.I)
+            if goal_m and goal_m.group(1).strip():
+                subject = goal_m.group(1).strip()
+        live = _sync_live_llm_text(
+            build_prepare_image_prompt_request(goal=subject, instructions=instr_from_prompt),
+            context,
+        )
+        if live:
+            return f"Image prompt: {live.strip()}"
+        return (
+            f"Image prompt: Minimalist modern vector logo for {subject or 'Concierge'}, "
+            "clean lines, professional brand mark, flat design, white background"
+        )
+
+    # ── Image generation step: plugin saves LM image bytes to /media/images/ ─
+    if is_image_generation_task(title_from_prompt, instr_from_prompt):
+        subject = resolve_image_prompt(
+            title=title_from_prompt,
+            instructions=instr_from_prompt,
+            rag_context=context,
+            agent_prompt=prompt,
+        )
+        return _run_image_plugin_and_return_path(subject)
+
+    # ── All other tasks: live LM text (no pseudo layout/code stand-ins) ───────
+    live = _sync_live_llm_text(prompt)
+    if live:
+        return live
+
+    if _has_lm_keys():
+        return (
+            f"LM task execution failed for '{raw_title}'. "
+            "Check GEMINI_API_KEY / OPENAI_API_KEY quota and retry."
+        )
+
+    # ── Offline heuristics (no LM keys configured) ────────────────────────────
     if any(k in core for k in ("layout", "design", "ui", "ux", "style", "modern", "appearance", "theme", "css", "typography", "color", "spacing", "component")):
         if any(k in raw_title for k in ("audit", "review", "assess", "current", "analyze", "analyse", "examine")):
             return (
@@ -409,21 +559,27 @@ def _conversational_reply(user_msg: str) -> str:
     if any(k in msg for k in ("hello", "hi ", "hey", "howdy", "greetings", "good morning", "good afternoon", "good evening", "sup ")):
         return "Hello! I'm Concierge, your AI-powered assistant. I can help you plan tasks, research topics, generate code, analyze files, and more. What would you like to tackle today?"
 
+    meta_prompt = any(
+        k in msg
+        for k in (
+            "formulate a detailed",
+            "formulate a descriptive",
+            "descriptive prompt for image",
+            "write concise, working code",
+            "return only the code",
+            "prompt for image generation:",
+        )
+    )
     if any(k in msg for k in (
         "image", "images", "iages", "picture", "photo", "render", "logo", "icon",
         "generate an image", "draw", "create an image", "flaming", "teddy bear", "dall",
-    )):
-        if has_openai:
-            return (
-                "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
-                "Your OpenAI key is configured, so I can create detailed images from any text description. "
-                "What would you like me to generate?"
-            )
+    )) and not meta_prompt:
+        has_lm = bool(s.gemini_api_key or s.openai_api_key or s.openai_api_keys)
+        if has_lm or any(k in msg for k in ("generate", "create", "draw", "logo", "render", "make")):
+            return _run_image_plugin_and_return_path(user_msg)
         return (
-            "I'd love to generate that image for you! Image generation uses OpenAI's image API. "
-            "Once `OPENAI_API_KEY` is set, I can create detailed images from any text description. "
-            "To set it up: add `OPENAI_API_KEY=<your-key>` to your environment and restart the server. "
-            "Is there anything else I can help with in the meantime?"
+            "Image generation needs GEMINI_API_KEY or OPENAI_API_KEY. "
+            "Add a key to your environment and restart the server."
         )
 
     if any(k in msg for k in ("layout", "design", "ui", "ux", "modernize", "modern", "look", "appearance", "theme", "style")):
@@ -605,13 +761,23 @@ class LLMTool:
         """
         messages = self._build_messages(prompt, context)
 
-        # if we don't have *any* keys, stream the rule-based responder
-        if not self._api_keys:
+        if not self._api_keys and not self._gemini_key:
             logger.debug("LLMTool no API key; using rule-based fallback (streaming)")
             resp = _rule_based_response(prompt, context)
             async for tok in _stream_text_as_tokens(resp):
                 yield tok
             return
+
+        if not self._api_keys and self._gemini_key:
+            try:
+                self.last_provider = "gemini"
+                gem_resp = await self._call_gemini(prompt, context)
+                self.last_fallback = "gemini-only provider"
+                async for tok in _stream_text_as_tokens(gem_resp):
+                    yield tok
+                return
+            except Exception as exc:
+                logger.warning("Gemini-only stream failed: %s", exc)
 
         payload = {
             "model": self.model,
@@ -707,6 +873,13 @@ class LLMTool:
             except Exception as exc:
                 logger.warning("Gemini fallback failed: %s", exc)
                 # if Gemini fails, we'll fall through to the rule-based stub
+        live = _sync_live_llm_text(prompt, context)
+        if live:
+            self.last_provider = "gemini" if self._gemini_key else "openai"
+            self.last_fallback = "sync LM fallback after stream failure"
+            async for tok in _stream_text_as_tokens(live):
+                yield tok
+            return
         logger.error("Falling back to local rule-based responder (streaming)")
         self.last_provider = "rule-based"
         self.last_fallback = "using local rule-based responder"
